@@ -58,8 +58,23 @@ const DRIVE = /^([A-Za-z]):(.*)$/s;
 /** `/mnt/<单个小写字母>`（真机挂载点形态）；大写不算 —— `/mnt/E` 是发行版内的真实目录 */
 const MNT_DRIVE = /^\/mnt\/([a-z])(?:\/|$)/;
 
+/**
+ * 回显到 `message` 里的输入必须先「可见化」（Phase 4 自审缺陷②）：控制字符（ESC / LF / BEL …）
+ * 原样进 UI 或日志会破坏排版，**甚至注入 ANSI 转义**（实测 `E:\x\u001b[31mred` 的 ESC 被原样带出）。
+ * 同时**限长**：4 KB 的脏输入不该把错误消息撑成 4 KB（超长截断并报总长）。
+ */
+const ECHO_MAX = 120;
+
+function echo(raw: string): string {
+  const visible = raw.replace(
+    /[\u0000-\u001f\u007f]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
+  return visible.length <= ECHO_MAX ? visible : `${visible.slice(0, ECHO_MAX)}…（共 ${raw.length} 字符）`;
+}
+
 const unmappable = (raw: string, why: string): WslSharedError =>
-  fail('UnmappablePath', `无法翻译路径「${raw}」：${why}`);
+  fail('UnmappablePath', `无法翻译路径「${echo(raw)}」：${why}`);
 
 /** 去掉尾部分隔符（根保留） */
 const stripTail = (linux: string): string => (linux.length > 1 ? linux.replace(/\/+$/, '') : linux);
@@ -82,16 +97,22 @@ function validateInput(raw: string, kind: 'win' | 'linux'): WslSharedError | und
   return undefined;
 }
 
-/** 发行版名要拼进 UNC 路径 ⇒ 不许含分隔符/保留字符，也不许是 `.`/`..` */
+/**
+ * 发行版名要拼进 UNC 路径 ⇒ 不许含分隔符/保留字符，不许是 `.`/`..`，
+ * 也不许**以 `.` 或空格结尾**（Phase 4 自审缺陷③：`D.` 拼出的 `\\wsl.localhost\D.\…`
+ * 是 Windows **不可能存在**的共享名 —— Win32 会吃掉尾随点/空格）。
+ */
 function validateDistroName(name: string): WslSharedError | undefined {
-  const bad =
+  const why =
     CONTROL.test(name) || RESERVED.test(name) || /[:\\/]/.test(name)
       ? '含分隔符或非法字符'
       : name === '.' || name === '..'
         ? '不能是 . 或 ..'
-        : undefined;
-  if (bad === undefined) return undefined;
-  return fail('UnmappablePath', `发行版名「${name}」不能用于拼 UNC 路径：${bad}`);
+        : /[. ]$/.test(name)
+          ? '以 . 或空格结尾（Windows 共享名不允许）'
+          : undefined;
+  if (why === undefined) return undefined;
+  return fail('UnmappablePath', `发行版名「${echo(name)}」不能用于拼 UNC 路径：${why}`);
 }
 
 /**
@@ -113,12 +134,16 @@ export function winToWsl(input: string): PathMappingOutcome {
 
   const unc = WSL_UNC.exec(win);
   if (unc !== null) {
-    // 实测（2026-10-08）：`win32.normalize` 把 UNC 里的 `..` **夹在共享根** —— `\\wsl.localhost\D\..\..\x`
-    // → `\\wsl.localhost\D\x`，`\\wsl.localhost\D\..` → `\\wsl.localhost\D\`；这与 **Win32 的 UNC 语义**
-    // 一致（Windows 不允许用 `..` 爬出共享根）⇒ 走到这里 `rest` 里**不可能**再有 `..`。
-    // ⚠️ Phase 4 自审时曾判定"这里会把 `..` 静默夹进发行版、属错译"并加了拒绝分支 —— 该判定被上面这条
-    // 实测**推翻**（夹在共享根才是 Windows 的真实行为），拒绝分支已撤，改成 3 条把语义钉住的用例。
+    // 实测（2026-10-08）：`win32.normalize` 把 UNC 里越根的 `..` **夹在共享根** —— `\\wsl.localhost\D\..\..\x`
+    // → `\\wsl.localhost\D\x`（与 Win32 的 UNC 语义一致：Windows 不允许用 `..` 爬出共享根）。
+    // ⚠️ Phase 4 自审订正：早先注释写"走到这里 `rest` 里**不可能**再有 `..`"是**过头话** ——
+    // `\\wsl.localhost\..\x` 会被 normalize **原样保留**，`..` 落在**发行版段**上（distro=`..`、rest=`x`）。
+    // 段名是 `.`/`..` 的输入**不是可识别的 UNC**（REQ-3.5）⇒ 拒绝，不能当正常名字吞掉（自审缺陷①）；
+    // 对 `rest` 再查一遍是**廉价防御**（防 normalize 行为变化），实测目前到不了。
     const rest = (unc.groups?.rest ?? '').replace(/\\/g, '/');
+    if ([unc.groups?.distro ?? '', ...rest.split('/')].some((s) => s === '.' || s === '..')) {
+      return unmappable(raw, 'UNC 的发行版段或余下路径里有 `.`/`..` ⇒ 不是可识别的 UNC');
+    }
     return { ok: true, path: stripTail(path.posix.normalize(`/${rest}`)) };
   }
 
