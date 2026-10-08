@@ -72,7 +72,7 @@ handover 已拍板「三包 —— 两个插件包 + 一个非插件共享包」
 |---|---|---|---|
 | `distros` | `wsl.exe -l -v` 的原始字节 | `WslDistro[]` | 输出为 **UTF-16LE**；表头可能**本地化**；发行版名可含空格 |
 | `net` | 在发行版内跑 `ip -4 -o addr show dev eth0` | IPv4 字符串 | 多地址取 primary；eth0 缺失必须报错而非回落 |
-| `pathmap` | 路径字符串（+ 可选发行版名）| 对侧路径 | `/mnt/<盘>` 与 `\\wsl.localhost\<distro>\…` 双向；无盘符路径不许猜 |
+| `pathmap` | 路径字符串（+ 可选发行版名）| 对侧路径 | `/mnt/<盘>` 与 `\\wsl.localhost\<distro>\…` 双向；无盘符路径**不许猜**（无发行版名 ⇒ `NoWindowsEquivalent`）；非法字符检查**先于**形态判定；纯字符串变换，不碰 FS |
 | `wslconfig` | `%USERPROFILE%\.wslconfig` | `{ raw, resolved }` | 「文件不存在」= 缺省 NAT；「读不到」= **错误**，不许混为一谈 |
 | `exec` | `argv[]` + 选项 | `{ exitCode, stdout, stderr }` | argv 传参（无 shell）、超时杀进程树、编码由调用方指定 |
 
@@ -141,6 +141,7 @@ handover 已拍板「三包 —— 两个插件包 + 一个非插件共享包」
 
 1. 主人复核本 Spec（重点：REQ-2.4 的「Stopped 不静默冷启动」、REQ-4.6 的「读不到 ≠ 缺省 NAT」两条保守取舍）。
 2. ~~打掉 **B-1** 后把 Spec 转 `planned`，再进 `/leanspec-apply`~~ → ✅ **2026-10-08 已完成**：B-1 五条全部定案，五份 Spec 全部 `planned`。**本 Spec 已 `in-progress`**。
-3. ✅ **Phase 0 / 1 / 2 / 3 已完成**（真机 fixture + 错误模型 + 执行器 + 发行版发现 + eth0 探测 + 通用发行版执行件；`typecheck` / `vitest` **99** / `node --test` **11** / `check:exports` **运行时 5/12** / `check:size` **去注释 16,831/25,600 字节** 五道门全绿，真机复验 **115ms**，eth0 冷启动 **12,637ms** / 热 **192–237ms**）。证据见 [tasks.md](./tasks.md) 的「Phase 1–3 完成记录」；**三条口径均已由主人拍板**（导出预算只计运行时；体积按去注释、去空行计；**同日二次拍板把体积阈值 15KB → 25KB**），**两轮自审共 11 项**（8 个真缺陷 + 3 项工具/文档缺陷，见「复审补强」「Phase 3 完成记录」）。
+3. ✅ **Phase 0 / 1 / 2 / 3 已完成**（真机 fixture + 错误模型 + 执行器 + 发行版发现 + eth0 探测 + 通用发行版执行件；`typecheck` / `vitest` **99** / `node --test` **11** / `check:exports` **运行时 5/12** / `check:size` **去注释 16,831/25,600 字节** 五道门全绿，真机复验 **115ms**，eth0 冷启动 **12,637ms** / 热 **192–237ms**）。证据见 [tasks.md](./tasks.md) 的「Phase 1–4 完成记录」；**三条口径均已由主人拍板**（导出预算只计运行时；体积按去注释、去空行计；**同日二次拍板把体积阈值 15KB → 25KB**），**两轮自审共 11 项**（8 个真缺陷 + 3 项工具/文档缺陷，见「复审补强」「Phase 3 完成记录」）。
 4. ✅ **Phase 3 已完成**（T3.1–T3.4 + fixture `ip-eth0.raw`）。**关键收获**：① `wsl -d X -- ip …` 的输出是 **UTF-8**，与 `wsl -l -v` 的 **UTF-16LE** 不同 —— 猜错就是「eth0 没有 IPv4」的假阴性；② **T1.4 结案**：A/B 实测只杀 `wsl.exe` 也能回收发行版侧进程，`taskkill /T` 是保险而非必需；③ **T3.4**：守卫与执行抽成 `execInDistro` 单份实现，003 读层直接复用（避免 REQ-2.4 被重犯）。
-5. 下一步：**Phase 4（路径翻译，T4.x）** —— 纯函数、无真机副作用；之后 Phase 5（`.wslconfig` + NAT 判定）。体积已留足余量（**16.8/25 KB**）。
+5. ✅ **Phase 4 已完成**（T4.1–T4.4，`src/pathmap.ts` **181 行 / 3.9 KB 代码** + **76 条**单测；`vitest` **175** / 契约 **11** / `check:exports` **运行时 7/12**（类型 15 ⇒ 合计 22 ⚠️ 超软阈值，待定口径见 T6.1）/ `check:size` **20,975 / 25,600 字节（余 4,625）**）。**关键收获**：① 动手前实测 `node:path` 抓到 4 条会咬人的语义（`win32.normalize('E:')` → **`'E:.'`** 最典型）⇒ 先测再写；② 自审提出"UNC 里 `..` 越根 = 静默错译"，被实测**推翻**（normalize 夹在共享根正是 Win32 语义）⇒ 撤回误修、改为 3 条钉死语义的回归用例。
+6. 下一步：**Phase 5（`.wslconfig` INI 解析 + NAT 判定，T5.x）** —— 之后 Phase 6 收口（`scripts/check-scope.mjs` 落 T6.2 的新判据 + `scripts/probe.mjs` + 复盘）。体积余 **4.6 KB**，Phase 5 需按"最少新增"推进。
