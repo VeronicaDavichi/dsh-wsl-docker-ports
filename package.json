@@ -12,7 +12,8 @@
     "test": "pnpm -r test",
     "test:contract": "pnpm -r --if-present test:contract",
     "test:all": "pnpm -r --if-present test:all",
-    "check:exports": "pnpm -r --if-present check:exports"
+    "check:exports": "pnpm -r --if-present check:exports",
+    "check:size": "pnpm -r --if-present check:size"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

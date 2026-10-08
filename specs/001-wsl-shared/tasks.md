@@ -2,7 +2,7 @@
 
 > 任务引用 [requirements.md](./requirements.md) 的 REQ-N；设计依据见 [design.md](./design.md)。
 > 完成定义（每个任务）：代码 + **验证命令跑绿** + 无遗留副作用。
-> 校验门（`.lean-spec/config.json`）：单文件 warn 200 行 / max 400 行；本包目标体积源码 ≤ 15KB（软指标）。
+> 校验门（`.lean-spec/config.json`）：单文件 warn 200 行 / max 400 行；本包目标**代码**体积 ≤ 15KB（**注释与空行不计入** —— 2026-10-08 主人拍板，由 `scripts/check-size.mjs` 复算，软指标只告警）。
 
 ---
 
@@ -66,7 +66,7 @@
 
 ### ✅ Phase 1 + Phase 2 完成记录（2026-10-08）— 共 **57 条**测试全绿
 
-> 门禁：`typecheck` **exit 0** · `vitest` **50/50**（3 文件）· `node --test` 契约 **7/7** · `check:exports` **运行时 3/12**。
+> 门禁：`typecheck` **exit 0** · `vitest` **50/50**（3 文件）· `node --test` 契约 **7/7** · `check:exports` **运行时 3/12** · `check:size` **去注释 11.8 KB / 15 KB**。
 
 - **T1.1** `src/errors.ts`：`ErrorCode` **11 个**（含为 REQ-1.7 空列表路径新增的 **`NoDistro`**；design §2 的表已同步加行）；`WslSharedError` 是 `ok:false` 的**返回值**（不是异常），与 `ExecResult` 构成判别联合；`fail()` 单一工厂，**未提供的可选字段不出现在结果里**（不伪造 `undefined`）；`ERROR_CODES`/`ERROR_HINTS` 与 code 一一对应；`isWslFailure()` 守卫留模块内（消费者用 `if (!r.ok)`）。验证 `tests/unit/errors.test.ts` **5 条**。
 - **T1.2** `src/exec.ts`：`argv` 数组 + `stdio:'pipe'` + `windowsHide:true` + **`shell:false`**；Buffer 收集后按声明编码解码；**解码器在启动命令之前解析** ⇒ 非法编码标签返回 `Unexpected` 且**完全不启动进程**；错误里的 `argv` 是**完整命令行**（含 exe ⇒ 005 REQ-3.2 可直接展示「将执行的命令原文」）。验证 **9 条** + 静态断言（`shell:true` / `exec(` 零命中）。
@@ -82,12 +82,12 @@
 - **T2.4** `resolveDistro(distros, configured?) → { name, source }`：四级优先级 + `source`；**纯函数**（不读配置、不执行命令、不提问、不持久化）；**配置了但没装 → `DistroNotFound`**（不静默换一个）；空列表 → `NoDistro`（SHALL NOT 返回空名）；静态断言（**剥注释后**源码无 `set-default`、无 `node:` 依赖即无 spawn/无 fs）。
 - **真机复验**：真 `wsl.exe` 经 `listDistros(createExecutor())` → **115ms**、`Ubuntu2204 / Stopped / 2 / isDefault`；`resolveDistro` 四条路径（默认/配置/错名/空表）全对；**发行版仍为 `Stopped`（未被唤醒）**。副证：原文是 UTF-16LE 夹 NUL ⇒ PowerShell 直接 `Select-String Ubuntu2204` **匹配不到**，解码器不可省。
 
-### ⚠️ 口径待决（实现中被顶到，需主人点头；不阻塞已完成项）
+### ✅ 口径已定案（2026-10-08 主人拍板；不阻塞已完成项）
 
-> 第 1 条已于 **2026-10-08 由主人拍板**（见下），第 2 条仍待决。
+> 两条均已由主人拍板，口径写死如下；将来复算按同一口径，不再各自解释。
 
 1. ~~**导出预算计不计类型？**~~ → ✅ **2026-10-08 主人拍板：类型不计入**（「那 10 个名词不算在 12 样里面」）⇒ **REQ-6.4 已订正**为「运行时导出 ≤ 12；类型导出单独统计并打印，软阈值 20」，`design.md` / `tasks.md` T0.2·T6.1 / 自检脚本注释 / README 冻结决策速览已同步。当前实测：**运行时 3/12**，类型 10（合计 13）。
-2. **`源码 ≤ 15KB` 软指标**：Phase 1+2 四个源文件合计 **21.6 KB**（含大量注释与类型），已完成部分即已超；余下三个能力（eth0 / 路径 / NAT）还会涨。
+2. ~~**`源码 ≤ 15KB` 软指标怎么算？**~~ → ✅ **2026-10-08 主人拍板：注释与空行不计入** —— 统计「**去注释、去空行后的 UTF-8 字节数 ≤ 15 KiB**」（软指标，超限只告警；**单文件 ≤ 400 行**是 NFR-5 的 SHALL ⇒ 超限失败，且行数按**原始**行数算，与体积指标故意不同）。已落 `packages/wsl-shared/scripts/check-size.mjs` + 根/包 `check:size` 脚本。**Phase 1+2 实算：去注释 11.8 KB / 15 KB**（原始 21.6 KB，注释+空行占 **46%**）⇒ **达标，余量 3.2 KB**；Phase 3–5 还会涨，到时按同一口径复算。
 
 ---
 
@@ -146,7 +146,7 @@
   - 验证：`grep -ri "netsh\|portproxy\|docker\|RunAs\|taskkill /PID" src/` 的命中**只允许**出现在 `exec.ts` 的兜底注释里；出现 netsh/docker 解析即判失败（应留 003）
 
 - [ ] T6.3 [NFR-1][NFR-2][NFR-3][NFR-5] 质量门
-  - 验证：`pnpm -C packages/wsl-shared typecheck` + `test`（vitest）+ `test:contract`（node --test）三项全绿，并记录用例数；`package.json` 的 `dependencies` 为空（零运行时依赖）；单文件行数 ≤ 400
+  - 验证：`pnpm -C packages/wsl-shared typecheck` + `test`（vitest）+ `test:contract`（node --test）三项全绿，并记录用例数；`package.json` 的 `dependencies` 为空（零运行时依赖）；`check:size`（去注释代码 ≤ 15KB 软指标 + 单文件 ≤ 400 行 NFR-5）
 
 - [ ] T6.4 把结论回写文档
   - 内容：T0.1 的编码/表头结论、T1.4 的 `taskkill` 结论 → 更新 design.md §4/§8 与 requirements 的 A-1/A-2/A-3 状态（假设 → 已确认/已推翻）

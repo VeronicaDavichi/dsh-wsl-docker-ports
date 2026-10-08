@@ -141,5 +141,5 @@ handover 已拍板「三包 —— 两个插件包 + 一个非插件共享包」
 
 1. 主人复核本 Spec（重点：REQ-2.4 的「Stopped 不静默冷启动」、REQ-4.6 的「读不到 ≠ 缺省 NAT」两条保守取舍）。
 2. ~~打掉 **B-1** 后把 Spec 转 `planned`，再进 `/leanspec-apply`~~ → ✅ **2026-10-08 已完成**：B-1 五条全部定案，五份 Spec 全部 `planned`。**本 Spec 已 `in-progress`**。
-3. ✅ **Phase 0 / 1 / 2 已完成**（真机 fixture + 错误模型 + 执行器 + 发行版发现；`typecheck` / `vitest` **50** / `node --test` **7** / `check:exports` 四道门全绿，真机复验 **115ms**）。证据见 [tasks.md](./tasks.md) 的「Phase 1 + Phase 2 完成记录」；**导出预算口径已由主人拍板**（类型不计入，REQ-6.4 已订正），仅剩「源码 15KB 软指标」一条待决。
+3. ✅ **Phase 0 / 1 / 2 已完成**（真机 fixture + 错误模型 + 执行器 + 发行版发现；`typecheck` / `vitest` **50** / `node --test` **7** / `check:exports` **运行时 3/12** / `check:size` **去注释 11.8 KB/15 KB** 五道门全绿，真机复验 **115ms**）。证据见 [tasks.md](./tasks.md) 的「Phase 1 + Phase 2 完成记录」；**两条口径均已由主人拍板**（导出预算只计运行时；体积按去注释、去空行计），详见该节「口径已定案」。
 4. 下一步：**Phase 3（eth0 探测，T3.x）** —— 会**唤醒发行版**（约 10–12s 且拉起容器），因此顺带把 T1.4 遗留的「真机 `taskkill /T` 回收发行版侧进程」一并验掉。
