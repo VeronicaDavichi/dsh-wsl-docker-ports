@@ -10,8 +10,8 @@
  * 总量另有软阈值，仍能看到膨胀。
  *
  * 已完成：Phase 0（T0.1/T0.2）发行版表解析 · Phase 1（T1.1–T1.5）错误模型与执行器 ·
- * Phase 2（T2.1–T2.4）发行版发现与目标解析。
- * 未完成：eth0 / 路径翻译 / NAT 判定（T3.x–T5.x）。
+ * Phase 2（T2.1–T2.4）发行版发现与目标解析 · Phase 3（T3.1–T3.3）eth0 探测。
+ * 未完成：路径翻译 / NAT 判定（T4.x–T5.x）。
  */
 
 export { createExecutor } from './exec.ts';
@@ -25,5 +25,8 @@ export type {
   WslDistroState,
   WslVersion,
 } from './distros.ts';
+
+export { probeEth0 } from './net.ts';
+export type { Eth0Outcome } from './net.ts';
 
 export type { ErrorCode, WslSharedError } from './errors.ts';

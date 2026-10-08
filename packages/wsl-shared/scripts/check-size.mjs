@@ -55,9 +55,13 @@ for (const name of files) {
 const commentShare = rawTotal === 0 ? 0 : Math.round(((rawTotal - codeTotal) / rawTotal) * 100);
 const overBudget = codeTotal > SIZE_BUDGET_BYTES;
 
+// 判定与告警都用**字节**，不用四舍五入后的 KB：15,318 与 15,360 都会显示成「15.0 KB」，
+// 而小超限（例如 24 字节）会显示成「超出 0.0 KB」—— 两种都会让人读不出真实余量。
 console.log(
-  `${overBudget ? '⚠️' : '✓'} check-size: 去注释代码 ${kb(codeTotal)} / ${kb(SIZE_BUDGET_BYTES)}` +
-    `（原始 ${kb(rawTotal)}，注释+空行占 ${commentShare}%）`,
+  `${overBudget ? '⚠️' : '✓'} check-size: 去注释代码 ${kb(codeTotal)} / ${kb(SIZE_BUDGET_BYTES)}（` +
+    `${codeTotal} / ${SIZE_BUDGET_BYTES} 字节 ⇒ ` +
+    `${overBudget ? `超 ${codeTotal - SIZE_BUDGET_BYTES}` : `余 ${SIZE_BUDGET_BYTES - codeTotal}`} 字节；` +
+    `原始 ${kb(rawTotal)}，注释+空行占 ${commentShare}%）`,
 );
 for (const row of rows) {
   console.log(
@@ -68,8 +72,9 @@ for (const row of rows) {
 
 if (overBudget) {
   console.log(
-    `  ⚠️ 软指标超限：去注释代码超出 ${kb(SIZE_BUDGET_BYTES)} 共 ${kb(codeTotal - SIZE_BUDGET_BYTES)}。` +
-      '要么瘦身，要么带理由改 Spec（tasks.md 校验门那行）——不静默放过。',
+    `  ⚠️ 软指标超限：去注释代码 ${codeTotal} 字节，超出 ${SIZE_BUDGET_BYTES} 字节预算共` +
+      ` ${codeTotal - SIZE_BUDGET_BYTES} 字节。要么瘦身，要么带理由改 Spec（tasks.md 校验门那行）` +
+      '——不静默放过。',
   );
 }
 if (overLineLimit.length > 0) {

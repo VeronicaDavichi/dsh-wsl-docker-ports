@@ -64,16 +64,16 @@
 
 ---
 
-### ✅ Phase 1 + Phase 2 完成记录（2026-10-08）— 共 **70 条**测试全绿（单测 63 + 契约 7）
+### ✅ Phase 1–3 完成记录（2026-10-08）— 共 **95 条**测试全绿（单测 84 + 契约 11）
 
-> 门禁：`typecheck` **exit 0** · `vitest` **63/63**（3 文件）· `node --test` 契约 **7/7** · `check:exports` **运行时 3/12** · `check:size` **去注释 12.4 KB / 15 KB**（复审补强后重算）。
+> 门禁（Phase 3 后）：`typecheck` **exit 0** · `vitest` **84/84**（4 文件）· `node --test` 契约 **11/11** · `check:exports` **运行时 4/12**（类型 11）· `check:size` **去注释 15,318 / 15,360 字节**（原始 32.7 KB，注释+空行占 53%）⇒ **余 42 字节**。
 
 - **T1.1** `src/errors.ts`：`ErrorCode` **11 个**（含为 REQ-1.7 空列表路径新增的 **`NoDistro`**；design §2 的表已同步加行）；`WslSharedError` 是 `ok:false` 的**返回值**（不是异常），与 `ExecResult` 构成判别联合；`fail()` 单一工厂，**未提供的可选字段不出现在结果里**（不伪造 `undefined`）；`ERROR_CODES`/`ERROR_HINTS` 与 code 一一对应；`isWslFailure()` 守卫留模块内（消费者用 `if (!r.ok)`）。验证 `tests/unit/errors.test.ts` **5 条**。
 - **T1.2** `src/exec.ts`：`argv` 数组 + `stdio:'pipe'` + `windowsHide:true` + **`shell:false`**；Buffer 收集后按声明编码解码；**解码器在启动命令之前解析** ⇒ 非法编码标签返回 `Unexpected` 且**完全不启动进程**；错误里的 `argv` 是**完整命令行**（含 exe ⇒ 005 REQ-3.2 可直接展示「将执行的命令原文」）。验证 **9 条** + 静态断言（`shell:true` / `exec(` 零命中）。
 - **T1.3** stderr 非空 + 退出码 0 → `ok:true` 且 stderr **原样保留**（1 条）。
 - **T1.4** 超时 → 先 `kill()`，有 pid 时再 `taskkill /PID <pid> /T /F` → `Timeout`；**迟到 close 不覆盖结论**；拿不到 pid 时跳过 taskkill 但仍 `kill()`。
   - 🐛 **顺带修掉一个真缺陷（本次最有价值的发现）**：定时器原在挂事件处理器**之后**赋值 ⇒ 子进程若在注册阶段**同步** close，`finish()` 里的 `timer` 仍是 `undefined`，定时器永不清除、把事件循环拖到超时才退出（症状：契约层总耗时 **20,958ms**）。修法 = 定时器**先建**再挂事件 + `unref()` ⇒ 契约层 **129ms**（**160×**），并补了回归用例。
-  - ⏳ **待验证项（保留）**：真机 `taskkill /T` 能否回收 `wsl.exe` 拉起的**发行版侧**进程 —— 需唤醒发行版（约 10–12s 且会拉起容器），**留到 Phase 3 一并做**，本阶段不制造副作用。
+  - ⏳ ~~**待验证项（保留）**：真机 `taskkill /T` 能否回收 `wsl.exe` 拉起的**发行版侧**进程~~ → ✅ **2026-10-08 Phase 3 结案（A/B 对照）**：A 臂只 `child.kill()`、B 臂默认（kill + `taskkill /PID /T /F`），两臂超时后发行版内 `sleep` **都被回收**（每臂先 control 确认它在跑、事后清理残留）⇒ `taskkill /T` 是**保险**而非必需，**降级方案不需要启用**；局限：只测了单层直接子进程（详见 design §8 第 12 条）。
 - **T1.5** `createExecutor(spawnImpl, treeKillImpl)` 双注入点（第二个只给测试）；fake 执行器注入 `listDistros` → 只走注入件，且 `('wsl.exe', ['-l','-v'], { encoding:'utf16le' })` 契约被满足。
 - **T2.1** 解码按**字节指纹**兜底（BOM 或 NUL > 25%）；**双向负例**：UTF-16LE 字节按 UTF-8 解 → 乱码/NUL；UTF-8 文本不被误判为 UTF-16LE。
 - **T2.2** `parseDistroTable`：`*` 判默认（**至多一个**）、末列 `^[12]$` 判版本、中间拼回为名字；**无 VERSION 列的两列数据行 → `version:'unknown'`**；**两列表头 `NAME STATE` 不被当数据**（末列必须是**已知状态词**才认两列行 —— 否则会凭空造出名为 `NAME` 的发行版）；默认项置顶；中文/英文表头都被结构跳过。另记一条**已知局限**：两列 + **本地化状态词** 的行会被跳过（宁可漏，不可编）。
@@ -100,6 +100,14 @@
 只写文档、不改代码的两条（已进 design §4/§8）：`env` 是**整份替换**（合并是调用方责任）；stdout/stderr **无大小上限**（本包命令有界故不加选项，将来接 docker 日志必须先限流）。
 **保留的设计确认**（不是缺陷）：优先级**不看 `state`**（Stopped 的默认项照样胜出 ⇒ UI 走 003 REQ-6.4「启动并核验」）；名字只作 **argv 元素**下发（`shell:false` ⇒ 无注入面）。
 
+### ✅ Phase 3 完成记录（eth0 探测，2026-10-08）
+
+- 新增 `src/net.ts`（138 行 / 2.5 KB 代码）：`parseEth0Address` + `probeEth0`；单测 **21 条** + 契约 **4 条**。
+- 🔴 **真机事实（编码分叉 —— 本阶段最重要的发现）**：`wsl.exe -d X -- ip -4 -o addr show dev eth0` 是 **UTF-8**（NUL **0.0%**、LF），而 `wsl -l -v` 是 **UTF-16LE** ⇒ 同一个 `wsl.exe`：**自带消息** UTF-16LE、**透传 Linux 子进程字节** UTF-8。猜错即**假阴性**（`inet 172.…` 解成乱码 ⇒ 误报「eth0 没有 IPv4」）⇒ 两条路都留了反例，模块内写死 `utf8` 不再猜。
+- **成本实测**：冷启动（Stopped → 命令返回）**12,637ms**；热路径 **192 / 218 / 237ms** ⇒ 默认超时 10s（40× 余量）、显式启动路径 30s。
+- **fixture**：`tests/contract/fixtures/ip-eth0.raw`（**118 字节**，blob `154d0f72`；`.gitattributes` 的 `-text` 生效），解析值 `172.20.201.152` ✅ 与 19 条规则 connectaddress 一致。真机副作用（唤醒发行版 + 拉起用户容器）**已由主人预批**，事后如实报告。
+- 🐛 **本轮自审发现**：① `check-size.mjs` 的**判定与告警用四舍五入后的 KB** ⇒ 15,318 与 15,360 都显示「15.0 KB」、小超限显示「超出 0.0 KB」⇒ 读不出真实余量（已改为**按字节**判定 + 打印余量/超出）；② `net.ts` 状态守卫有 **TOCTOU 窗口**（`listDistros` 快照与 `wsl -d` 之间发行版可能被空闲回收 ⇒ 静默冷启动）⇒ 记入 design §8 第 11 条，不加心跳（影响有界，缓解=紧接状态读取后探测）；③ **我自己的流程缺陷**：用 PowerShell 内联 `node -e "…$1…"` 复核体积时 `$1` 被 PS 展开成空 ⇒ 算出 15,384、**误判"超 24 字节"** ⇒ 数值复核**一律写临时文件跑**（真值 15,318）。
+
 ### ✅ 口径已定案（2026-10-08 主人拍板；不阻塞已完成项）
 
 > 两条均已由主人拍板，口径写死如下；将来复算按同一口径，不再各自解释。
@@ -111,15 +119,15 @@
 
 ## Phase 3：eth0 探测
 
-- [ ] T3.1 [REQ-2.1][REQ-2.2] 解析 `ip -4 -o addr` 输出
-  - 验证：`vitest` —— 单地址取该值；多地址取首个；真机 fixture 断言等于探测到的地址（真机当前为 `172.20.201.152`，**以 fixture 为准**）
+- [x] T3.1 [REQ-2.1][REQ-2.2] 解析 `ip -4 -o addr` 输出
+  - ✅ 单测 **5 条** + 契约 **2 条**：真机 fixture 断言 `172.20.201.152`；多地址取首个（非数组/非拼接）；UTF-8 字节输入；**反例**（同批字节按 UTF-16LE 解 → 解析失败）；CRLF
 
-- [ ] T3.2 [REQ-2.3] eth0 缺失/无 IPv4 → `NoInterface`
-  - 验证：`vitest` 三个负例（无 eth0 段、只有 `inet6`、空输出）均返回错误码，且断言**未**出现 `127.0.0.1` / `0.0.0.0` / 空串
+- [x] T3.2 [REQ-2.3] eth0 缺失/无 IPv4 → `NoInterface`
+  - ✅ 单测 **9 条**：五个负例（空输出 / 只有 `inet6` / `lo` 输出 / `0.0.0.0` / 只有 `brd` 段）+ 前导零与越界 + `0.0.0.0` 跳过后仍取到真地址 + 探测层 `lo` → `NoInterface` 且 message 不含 `127.0.0.1` + **退出码非 0 原样透传** `NonZeroExit`（不吞成 `NoInterface`）
 
-- [ ] T3.3 [REQ-2.4] Stopped 发行版冷启动守卫
-  - 内容：先查 `distros`；非 Running → `DistroNotRunning`，不执行 `wsl -d`
-  - 验证：`vitest` + fake 执行器断言对 Stopped 发行版**一次都没调用**探测命令
+- [x] T3.3 [REQ-2.4] Stopped 发行版冷启动守卫
+  - 内容：先查 `distros`（存在性 → 状态）；非 Running → `DistroNotRunning`，**不执行** `wsl -d`
+  - ✅ 单测 **6 条** + 错误透传 1 条：Stopped/Installing → `DistroNotRunning` 且**零调用**；错名 → `DistroNotFound` 带列表且零调用；`allowColdStart`（REQ-2.4 唯一例外）→ 允许执行且用冷启动超时；Running → argv/编码/超时正确且用**权威名字**；`Timeout` 原样透传
 
 ---
 
@@ -181,3 +189,4 @@
 | chrome-devtools MCP 真机 | ❌ **不适用** | 本包**无 UI**；真机层由 002（终端页）与 003（docker/端口页）承担 |
 | 人工目视 | ✅（轻量）| `scripts/probe.mjs` 在真机打印 5 项事实，与 `.wslconfig` / `wsl -l -v` 人工输出的肉眼比对 —— ⏳ **尚未创建**（5 项事实跨 Phase 3–5，与 T3.x/T5.x 一起落） |
 | 真机只读探测 | ✅ **Phase 2 已做** | 2026-10-08：真 `wsl.exe` → `listDistros` **115ms**、`Ubuntu2204 / Stopped / 2 / isDefault`；`resolveDistro` 四条路径全对；**未唤醒发行版**（仍 `Stopped`）。临时探针在 `%TEMP%`，**不入库** |
+| 真机写入探测 | ✅ **Phase 3 已做** | 2026-10-08：`wsl -d Ubuntu2204 -- ip …` 冷启动 **12,637ms** / 热 **192–237ms**、输出 **UTF-8**（NUL 0%）；`taskkill /T` 的 A/B 对照（结论见 design §8 第 12 条）；探针脚本在 `%TEMP%`，**不入库**（fixture 除外） |
