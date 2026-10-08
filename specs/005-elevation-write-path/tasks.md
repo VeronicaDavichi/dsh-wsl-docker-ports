@@ -55,7 +55,7 @@
   - 验证：`vitest` —— `none` 时**未**调用 `Start-Process`（断言调用数 0）；`ask` 时先出确认且命令原文可见；成功 / 失败 / 超时三条路径的临时文件删除各有断言
 
 - [ ] T2.5 [REQ-4.1][REQ-4.2] 来源约束（Agent）
-  - 内容：服务层区分调用来源；**本期不注册任何模型工具**（REQ-4.2）；Agent 来源在 `passby` 下降级为 `ask`（A-1 口径，切换成本极小）
+  - 内容：服务层区分调用来源；**本期不注册任何模型工具**（REQ-4.2）；Agent 来源在 `passby` 下降级为 `ask`（**A-1 已于 2026-10-08 定案 = 方案 A**，切换成本极小）
   - 验证：`vitest` —— 同一动作分别以 `user` / `agent` 来源调用，断言 agent 路径**未**直接进入提权（先确认或拒绝）
 
 ---
@@ -77,8 +77,12 @@
   - 验证：`pnpm -C packages/wsl-docker-ports typecheck` + `test` + `build` 三绿并记录用例数；单文件 ≤ 400 行
 
 - [ ] T3.5 文档回写
-  - 内容：T0.1（提权链路真机结论）、T3.2（规则不变证据）→ 回写 requirements/design；并记 A-1 / A-2 的最终口径（**A-2 已于 2026-10-08 定案：卸载不自动清理**；A-1 待主人择一）
-  - 验证：`grep -n "A-1\|A-2\|reset" specs/005-elevation-write-path/*.md` 可见结论
+  - 内容：T0.1（提权链路真机结论）、T3.2（规则不变证据）→ 回写 requirements/design；**A-1（降级为 `ask`）与 A-2（卸载不自动清理）均已于 2026-10-08 定案** ⇒ 本任务只剩真机结论回写
+  - 验证：`grep -n "A-1\|A-2\|reset" specs/005-elevation-write-path/*.md` 可见结论（**A-1 已于 2026-10-08 定案 = 降级为 `ask`**；A-2 已确认）
+
+- [ ] T3.7 [REQ-3.4] 提权后端链（`gsudo → native`，A-3）
+  - 内容：探测**用户自装**的 `gsudo`（用 `where.exe gsudo`，**不认 `sudo` 别名** —— gsudo 安装器会造同名别名）；有则走其 **stdio 回传**，并把 **exit code 999** 判为「提权失败」；`gsudo status` 显示**缓存活跃** ⇒ 回落 `Start-Process -Verb RunAs` + 临时文件；**不安装 / 不改 PATH / 不动 gsudo 配置**（尤其 `CacheMode`）。Windows 自带 `sudo` 仅 `elevationBackend: winsudo` 时启用（本机 23H2 无法验证 ⇒ 登记为未验证项）
+  - 验证：真机各跑一次 —— ① `gsudo` 路径下 stdout / stderr / exit code 三样都拿得到（含故意失败 → **999**）② 造一个活跃缓存 → 回落 native 且**无临时文件残留** ③ `elevationBackend: native`（或未装 gsudo）仍成功
 
 - [ ] T3.6 [REQ-4.3] 红线断言：未注册 Agent 工具（来源约束的门禁）
   - 内容：本期**不注册任何 Agent 可调工具**；将来若注册，**必须先**补齐 REQ-4 的完整口径（错误语义、审批、日志）再放行，不得以「先能用」为由先行放行
@@ -98,6 +102,6 @@
 | 4 | 漂移修复 | `connectAddress` 更新为当前 eth0；状态转 ok | 人工 UAC + 快照 |
 | 5 | 拒绝 UAC | 显示「已取消」，规则零变化，临时文件已清理 | 人工点「否」+ `%TEMP%` 检查 |
 | 6 | 提权策略 `none` | 写控件置灰 + 原因；点击无弹窗（**调用数 0**）| 截图 + 日志 |
-| 7 | Agent 触发 + `passby` | **不静默执行**：降级为 ask（先确认）或直接拒绝 | 日志 + 截图 |
+| 7 | Agent 触发 + `passby` | **不静默执行**：降级为 `ask`（先应用内确认，展示命令原文）| 日志 + 截图 |
 | 8 | 半成品防护 | 人为让防火墙步骤失败 → portproxy 被回滚、报告「未改」、无残留 | 人工 UAC + 快照 |
 | 9 | 卸载后再看规则 | 规则**零变化**；清理清单可复制；临时文件归零 | 快照 + `%TEMP%` |
