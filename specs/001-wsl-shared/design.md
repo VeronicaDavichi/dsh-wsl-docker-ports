@@ -40,6 +40,7 @@
 | `Timeout` | 超时被杀 | 提示重试 / 检查发行版是否卡住 |
 | `DistroNotFound` | `-d <name>` 不存在 | 展示 `distros` 可用列表 |
 | `DistroNotRunning` | 目标发行版 Stopped（REQ-2.4）| 询问用户是否启动，**不自动启动** |
+| `NoDistro` | 本机一个发行版都没有（REQ-1.7 的空列表路径；**T1.1 新增**）| 提示「尚未安装任何发行版」并给安装指引 |
 | `NoInterface` | eth0 无 IPv4（REQ-2.3）| 显示「无法确定 WSL 地址」+ 建议 `wsl --shutdown` 后重试 |
 | `UnmappablePath` / `NoWindowsEquivalent` | 路径翻译失败（REQ-3.4/3.5）| 表单字段报错，不落库 |
 | `ConfigUnreadable` | `.wslconfig` 读不到（REQ-4.6）| **不得**当作缺省 NAT；显示路径与原因 |
@@ -122,7 +123,7 @@
 | 层 | 载体 | 覆盖 |
 |---|---|---|
 | 纯函数单测 | `vitest` | `parseDistroTable` / `parseWslConfig` / `pathmap` 全分支（含非法输入）；错误码判别 |
-| 离线契约测试 | `node --test` + `tests/contract/fixtures/*.txt` | 真机捕获的输出原文（`wsl -l -v` 原始字节、`ip -a`、`.wslconfig`）逐条断言；**断言对象是 fixture，不是我复述的常量** |
+| 离线契约测试 | `node --test` + `tests/contract/fixtures/*.raw`（**真机原始字节**，不是转写文本） | 真机捕获的输出原文（`wsl -l -v` 原始字节、`ip -a`、`.wslconfig`）逐条断言；**断言对象是 fixture，不是我复述的常量** |
 | 执行器测试 | `vitest` + fake spawn | 超时杀进程、`stderr` 非空 + 退出码 0、`ENOENT`、编码解码 |
 | 真机探测 | 手动脚本 `scripts/probe.mjs` | 在真机上打印 5 项事实；**不**进 CI，作为 002/003 真机验收的输入 |
 | 真机 UI 验收 | chrome-devtools MCP | **本包 N/A（无 UI）** —— 由 002 / 003 的页面承担 |
@@ -146,7 +147,9 @@
 ## 8. 已知限制
 
 1. **UTF-16LE 与表头本地化仍是假设**（A-1 / A-2），T0.1 fixture 到手前不写死；若假设错，改断言而非改结构。
-2. **`taskkill /T` 的回收能力未验证**（T2.3）；不能保证发行版侧无残留进程。
+2. **`taskkill /T` 的回收能力未验证**（**T1.4** —— 原文误写 T2.3）；不能保证发行版侧无残留进程。⏳ 需**唤醒发行版**才能验（约 10–12s 且会拉起用户的容器）⇒ 与 Phase 3 一起做，不在解析阶段制造副作用。
 3. **WSL 缺省网络模式是版本相关的经验值**（A-6）；`resolved` 是判定而非探测，真正的「通不通」由 003 的转发自检兜底。
 4. **不支持非 `/mnt/<盘>` 的自动反查**：Linux 路径 → Windows 路径需要发行版名（REQ-3.4），这是刻意的（不猜）。
 5. **不做 IPv6**：portproxy 的 v4tov4 是本项目目标；`netsh` 解析（003）也只覆盖 v4tov4。
+6. **两列 + 本地化状态词的行会被跳过**（`parseDistroTable` 的判定②只认英文状态词白名单）：宁可漏、不可编。目标形态是 `wsl -l -v`（三列带版本），无 `-v` 的两列输出只作容错。
+7. **超时定时器必须在挂事件处理器之前建立**：否则子进程若在注册阶段**同步** close，`finish()` 里 timer 尚未赋值 ⇒ 定时器永不清除、事件循环被拖到超时才退出（实测症状：契约层 20,958ms → 修复后 129ms）。回归用例在 `tests/unit/exec.test.ts`。

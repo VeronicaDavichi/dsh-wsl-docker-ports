@@ -18,7 +18,7 @@ transitions:
 # 共享底座：WSL 发行版发现 · eth0 IP · 路径翻译 · NAT 判定
 
 **类型**: 需求驱动（requirements-first）
-**状态**: in-progress（2026-10-08 主人拍板开工；Phase 0 的 T0.1 / T0.2 **已完成**，B-1 / B-2 均已定案）
+**状态**: in-progress（2026-10-08 主人拍板开工；Phase 0 的 T0.1 / T0.2 **已完成**、Phase 1（错误模型+执行器）与 Phase 2（发行版发现）**已实现并全绿**，B-1 / B-2 均已定案）
 **优先级**: high
 **包名**: `dsh-wsl-shared` —— **非插件包**（无 cordis 行、无 UI、无配置页、无 PTY）
 **位置**: `packages/wsl-shared/`
@@ -109,7 +109,7 @@ handover 已拍板「三包 —— 两个插件包 + 一个非插件共享包」
 | 编码 | 由调用方显式指定，**不猜** | `wsl.exe` 是 UTF-16LE、`netsh` 是 OEM 代码页 —— 猜错就是乱码解析 |
 | eth0 探测 | 失败**报错**，不回落 `127.0.0.1` / 空串 | 静默回落会让 portproxy 规则指向错误地址（handover 里的「坑 #4」）|
 | 发行版 Stopped | 探测时**报 `DistroNotRunning`**，不静默冷启动 | 跑 `wsl -d X -- cmd` 会启动该发行版，属用户未预期的副作用 |
-| 配置容错 | 解析函数遇脏输入返回 typed error，不抛裸异常 | 上层要能把原因显示给用户 |
+| 配置容错 | 解析**不抛裸异常**：脏输入按各自 REQ 收敛（发行版表「无数据行」→ `[]` 且成功，REQ-1.6；`.wslconfig`「读不到」→ typed error，REQ-4.6）| 上层要能把原因显示给用户，且「装好了但一个都没有」与「命令失败」不得混为一谈 |
 | 测试双层 | vitest（纯函数）+ `node:test`（真机 fixture 契约）| handover 拍板的验收手段；本包无 UI，故**不适用** chrome-devtools 真机层 |
 
 ---
@@ -139,4 +139,6 @@ handover 已拍板「三包 —— 两个插件包 + 一个非插件共享包」
 ## 下一步
 
 1. 主人复核本 Spec（重点：REQ-2.4 的「Stopped 不静默冷启动」、REQ-4.6 的「读不到 ≠ 缺省 NAT」两条保守取舍）。
-2. ~~打掉 **B-1** 后把 Spec 转 `planned`，再进 `/leanspec-apply`~~ → ✅ **2026-10-08 已完成**：B-1 五条全部定案，五份 Spec 全部 `planned`。**本 Spec 已 `in-progress`** —— Phase 0 完成，下一步进 **Phase 2（T2.x 解析任务）**，顺序与验收见 [tasks.md](./tasks.md)。
+2. ~~打掉 **B-1** 后把 Spec 转 `planned`，再进 `/leanspec-apply`~~ → ✅ **2026-10-08 已完成**：B-1 五条全部定案，五份 Spec 全部 `planned`。**本 Spec 已 `in-progress`**。
+3. ✅ **Phase 0 / 1 / 2 已完成**（真机 fixture + 错误模型 + 执行器 + 发行版发现；`typecheck` / `vitest` **50** / `node --test` **7** / `check:exports` 四道门全绿，真机复验 **115ms**）。证据与两条**口径待决**（导出预算计不计类型、源码 15KB 软指标）见 [tasks.md](./tasks.md) 的「Phase 1 + Phase 2 完成记录」。
+4. 下一步：**Phase 3（eth0 探测，T3.x）** —— 会**唤醒发行版**（约 10–12s 且拉起容器），因此顺带把 T1.4 遗留的「真机 `taskkill /T` 回收发行版侧进程」一并验掉。

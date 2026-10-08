@@ -1,16 +1,29 @@
 /**
- * WSL 发行版表解析（001 REQ-1 / 任务 T0.1）
+ * WSL 发行版发现（001 REQ-1 / 任务 T0.1 + T2.1–T2.4）
  *
  * **真机事实**（2026-10-08 本机捕获，原始字节见 `tests/contract/fixtures/wsl-list-verbose.raw`）：
  * - `wsl.exe -l -v` 输出是 **UTF-16LE**（NUL 字节占 50%），行尾 **LF**（无 CRLF）
  * - 表头在本机是**英文** `NAME STATE VERSION`；而同一个 `wsl.exe --version` 是**中文**表头
  *   ⇒ 同工具不同子命令的本地化行为**不一致**，解析器**不得**把任何表头文本当硬前提
- * - 默认发行版用**名字列前的 `*`** 标记
- * - 发行版名**可含空格** ⇒ 只能从右往左吃掉 `VERSION` / `STATE` 两列，剩下的整体才是名字
+ * - 默认发行版用**名字列前的 `*`** 标记；发行版名**可含空格**
  *
- * 表头识别策略：**数据行的最后一列必须是版本号（1 或 2）**。表头（无论何种语言）都不满足，
- * 因此被自然跳过 —— 不依赖任何表头字面量。
+ * ## 判定结构（REQ-1.3：不看表头文字）
+ *
+ * 1. 最后一列匹配 `^[12]$` 且至少 3 列 → 数据行：`名字 = 中间全部拼接`，`状态 = 倒数第二列`
+ * 2. 恰好 2 列且最后一列是**已知状态词** → 数据行，`version: 'unknown'`（design §3.1 的「无 VERSION 列」）
+ *    - 这条同时挡掉了 `wsl -l`（无 `-v`）的两列表头：`NAME STATE` 的 `STATE` 不是状态词
+ * 3. 其余（空行 / 表头 / 横幅 / 噪声）→ 跳过
+ *
+ * 因此**中文表头**（`名称 状态 版本`）与英文表头都被第 3 条自然跳过，无需识别任何字面量。
+ *
+ * ## 空结果的口径（REQ-1.6，T2.2）
+ *
+ * 解析**不抛异常**：一个数据行都没有 → 返回 `[]`。「装好了但一个都没有」（命令成功、结果为空）
+ * 与「命令失败」（`CommandNotFound` / `NonZeroExit`，由 `exec.ts` 给出）是**两种事实**，不得混淆。
  */
+
+import { fail, type WslSharedError } from './errors.ts';
+import type { Executor } from './exec.ts';
 
 export type WslDistroState =
   | 'Running'
@@ -20,7 +33,8 @@ export type WslDistroState =
   | 'Converting'
   | 'Unknown';
 
-export type WslVersion = 1 | 2;
+/** `'unknown'` = 该行没有 VERSION 列（design §2） */
+export type WslVersion = 1 | 2 | 'unknown';
 
 export interface WslDistro {
   readonly name: string;
@@ -30,21 +44,29 @@ export interface WslDistro {
   readonly isDefault: boolean;
 }
 
-/** 解析失败的**类型化**错误（上层要把原因显示给用户，不做裸异常） */
-export class WslParseError extends Error {
-  readonly detail: Readonly<Record<string, unknown>>;
+/** 目标发行版的**来源**（REQ-1.7：解析结果必须能解释「为什么是它」） */
+export type DistroSource = 'config' | 'wslDefault' | 'onlyOne' | 'first';
 
-  constructor(message: string, detail: Record<string, unknown> = {}) {
-    super(message);
-    this.name = 'WslParseError';
-    this.detail = detail;
-  }
+export interface DistroResolution {
+  readonly name: string;
+  readonly source: DistroSource;
 }
 
 const UTF16LE_BOM_0 = 0xff;
 const UTF16LE_BOM_1 = 0xfe;
 const BOM_CHAR = 0xfeff;
 const NUL = '\u0000';
+const VERSION_TOKEN = /^[12]$/;
+const DEFAULT_MARKER = /^\s*\*/;
+
+/** 已知状态词（大小写不敏感）。**只用于第 2 条判定**，不用于识别表头 */
+const KNOWN_STATES: ReadonlyMap<string, WslDistroState> = new Map<string, WslDistroState>([
+  ['running', 'Running'],
+  ['stopped', 'Stopped'],
+  ['installing', 'Installing'],
+  ['uninstalling', 'Uninstalling'],
+  ['converting', 'Converting'],
+]);
 
 /** 判断字节流是否疑似 UTF-16LE：有 BOM，或 NUL 占比 > 25% */
 function looksLikeUtf16Le(bytes: Uint8Array): boolean {
@@ -63,7 +85,7 @@ function stripBomAndNuls(text: string): string {
 /**
  * 把 `wsl.exe` 的原始输出解码成文本。
  * 调用方**显式**决定编码是本包的既定口径；这里是「wsl.exe 专用」的窄口径：
- * 实测 UTF-16LE，但为了在别的机器/locale 上不炸，用字节指纹兜底。
+ * 实测 UTF-16LE（A-1 已定案），但为了在别的机器/locale 上不炸，用字节指纹兜底。
  */
 export function decodeWslOutput(input: Uint8Array | string): string {
   if (typeof input === 'string') return stripBomAndNuls(input);
@@ -72,65 +94,139 @@ export function decodeWslOutput(input: Uint8Array | string): string {
 }
 
 function normalizeState(token: string): WslDistroState {
-  switch (token.trim().toLowerCase()) {
-    case 'running':
-      return 'Running';
-    case 'stopped':
-      return 'Stopped';
-    case 'installing':
-      return 'Installing';
-    case 'uninstalling':
-      return 'Uninstalling';
-    case 'converting':
-      return 'Converting';
-    default:
-      return 'Unknown';
-  }
+  return KNOWN_STATES.get(token.trim().toLowerCase()) ?? 'Unknown';
 }
 
 /**
- * 解析一行数据；不是数据行（表头 / 空行 / 其它噪声）返回 `undefined`。
- * 判据：最后一列是 `1` 或 `2`，且至少还有状态与名字两列。
+ * 解析一行；不是数据行（表头 / 空行 / 噪声）返回 `undefined`。
+ * 判定见文件头「判定结构」。
  */
 function parseDistroLine(line: string): WslDistro | undefined {
-  const isDefault = /^\s*\*/.test(line);
+  const isDefault = DEFAULT_MARKER.test(line);
   const body = line.replace(/^\s*[*+]\s*/, '').trim();
   if (body.length === 0) return undefined;
 
   const tokens = body.split(/\s+/);
-  if (tokens.length < 3) return undefined;
+  const last = tokens[tokens.length - 1];
+  if (last === undefined) return undefined;
 
-  const versionToken = tokens[tokens.length - 1];
-  const stateToken = tokens[tokens.length - 2];
-  if (versionToken !== '1' && versionToken !== '2') return undefined;
-  if (stateToken === undefined) return undefined;
+  // ① 末列是版本号 → 名字取中间全部拼接（含空格的名字天然正确，REQ-1.4）
+  if (VERSION_TOKEN.test(last) && tokens.length >= 3) {
+    const stateToken = tokens[tokens.length - 2];
+    const name = tokens.slice(0, tokens.length - 2).join(' ');
+    if (name.length === 0 || stateToken === undefined) return undefined;
+    return { name, state: normalizeState(stateToken), version: last === '1' ? 1 : 2, isDefault };
+  }
 
-  const name = tokens.slice(0, tokens.length - 2).join(' ');
-  if (name.length === 0) return undefined;
+  // ② 恰好两列且末列是已知状态词 → 无 VERSION 列的数据行（design §3.1）
+  const twoColumnState = tokens.length === 2 ? KNOWN_STATES.get(last.toLowerCase()) : undefined;
+  const twoColumnName = tokens[0];
+  if (twoColumnState !== undefined && twoColumnName !== undefined) {
+    return { name: twoColumnName, state: twoColumnState, version: 'unknown', isDefault };
+  }
 
-  return {
-    name,
-    state: normalizeState(stateToken),
-    version: versionToken === '1' ? 1 : 2,
-    isDefault,
-  };
+  return undefined;
 }
 
 /**
- * 解析 `wsl -l -v` 输出为发行版数组（顺序与 WSL 输出一致）。
- * @throws {WslParseError} 一个发行版都解析不出来时（调用方需要报错，而不是当成「没有发行版」）
+ * 解析 `wsl -l -v` 输出为发行版数组。
+ *
+ * - 不抛异常；无数据行 → `[]`（REQ-1.6）
+ * - `isDefault === true` **至多一个**（REQ-1.1）：即使输入里出现多个 `*`，也只认第一个
+ * - 默认项**置顶**，其余保持 WSL 原顺序（design §3.1）
  */
-export function parseDistroList(input: Uint8Array | string): WslDistro[] {
-  const lines = decodeWslOutput(input).split(/\r?\n/);
-  const distros: WslDistro[] = [];
-  for (const line of lines) {
+export function parseDistroTable(input: Uint8Array | string): WslDistro[] {
+  const parsed: WslDistro[] = [];
+  let defaultTaken = false;
+
+  for (const line of decodeWslOutput(input).split(/\r?\n/)) {
     const distro = parseDistroLine(line);
-    if (distro !== undefined) distros.push(distro);
+    if (distro === undefined) continue;
+    if (distro.isDefault) {
+      if (defaultTaken) {
+        parsed.push({ ...distro, isDefault: false });
+        continue;
+      }
+      defaultTaken = true;
+    }
+    parsed.push(distro);
   }
-  if (distros.length === 0) {
-    throw new WslParseError('未能从 `wsl -l -v` 输出中解析出任何发行版', {
-      lineCount: lines.length,
+
+  return [...parsed.filter((d) => d.isDefault), ...parsed.filter((d) => !d.isDefault)];
+}
+
+/** 兼容旧名（Phase 0 的 `parseDistroList`）；语义已按 REQ-1.6 收敛为「无数据行 → `[]`」 */
+export const parseDistroList = parseDistroTable;
+
+export interface ListDistrosOptions {
+  /** 状态查询也要超时：首次 `wsl -l -v` 实测可达 8.6s（A-4） */
+  readonly timeoutMs?: number;
+}
+
+/** 默认超时：给冷启动/首次调用留足余量，同时保证不会永久挂起 */
+export const LIST_DISTROS_TIMEOUT_MS = 20_000;
+
+export type ListDistrosOutcome =
+  | { readonly ok: true; readonly distros: readonly WslDistro[] }
+  | WslSharedError;
+
+/**
+ * 发行版发现（REQ-1.1/1.2/1.5/1.6）。
+ * 命令固定 `wsl.exe -l -v`，编码固定 `utf16le`（A-1 已定案），**不启动**任何发行版
+ * （`wsl -l -v` 实测无唤醒副作用，A-4）。
+ */
+export async function listDistros(
+  executor: Executor,
+  options: ListDistrosOptions = {},
+): Promise<ListDistrosOutcome> {
+  const outcome = await executor('wsl.exe', ['-l', '-v'], {
+    encoding: 'utf16le',
+    timeoutMs: options.timeoutMs ?? LIST_DISTROS_TIMEOUT_MS,
+  });
+  if (!outcome.ok) return outcome;
+  return { ok: true, distros: parseDistroTable(outcome.stdout) };
+}
+
+/**
+ * 目标发行版解析（REQ-1.7 / D-4）。**纯函数**：不读配置、不执行命令、**不提问**、不持久化。
+ *
+ * 四级优先级：① 显式配置 → ② `isDefault`（WSL 自己的 `*`）→ ③ 唯一 → ④ 首个。
+ * 配置了但**没装** → `DistroNotFound`（不静默换一个，否则用户配的发行版被悄悄替换）。
+ * 一个都没有 → `NoDistro`（SHALL NOT 返回空名）。
+ * 本函数**不会**执行 `wsl --set-default`（改写用户的 WSL 全局默认不在本插件职责内）。
+ */
+export function resolveDistro(
+  distros: readonly WslDistro[],
+  configured?: string | undefined,
+): DistroResolution | WslSharedError {
+  const wanted = configured?.trim() ?? '';
+  if (wanted.length > 0) {
+    const hit = distros.find((d) => d.name.toLowerCase() === wanted.toLowerCase());
+    if (hit !== undefined) return { name: hit.name, source: 'config' };
+    return fail('DistroNotFound', `配置的发行版「${wanted}」不在已安装列表中`, {
+      distros: distros.map((d) => d.name),
     });
   }
-  return distros;
+
+  const flagged = distros.find((d) => d.isDefault);
+  if (flagged !== undefined) return { name: flagged.name, source: 'wslDefault' };
+
+  const first = distros[0];
+  if (first === undefined) return fail('NoDistro', '本机没有任何 WSL 发行版', { distros: [] });
+  if (distros.length === 1) return { name: first.name, source: 'onlyOne' };
+  return { name: first.name, source: 'first' };
+}
+
+/**
+ * 目标发行版存在性守卫（REQ-2.5）。返回 `undefined` 表示存在。
+ * 供 eth0 探测与写路径在拼 `-d <name>` 之前调用 —— 错误里必须带**可用发行版名列表**。
+ */
+export function guardDistroExists(
+  name: string,
+  distros: readonly WslDistro[],
+): WslSharedError | undefined {
+  const wanted = name.trim().toLowerCase();
+  const hit = distros.some((d) => d.name.toLowerCase() === wanted);
+  if (hit) return undefined;
+  return fail('DistroNotFound', `发行版「${name}」不存在`, { distros: distros.map((d) => d.name) });
 }
