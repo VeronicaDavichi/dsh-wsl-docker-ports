@@ -4,12 +4,11 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
+import { parseEth0Address, probeEth0 } from '../../src/net.ts';
 import {
-  ETH0_COLD_START_TIMEOUT_MS,
-  ETH0_PROBE_TIMEOUT_MS,
-  parseEth0Address,
-  probeEth0,
-} from '../../src/net.ts';
+  DISTRO_EXEC_COLD_START_TIMEOUT_MS,
+  DISTRO_EXEC_TIMEOUT_MS,
+} from '../../src/distro-exec.ts';
 import type { WslDistro } from '../../src/distros.ts';
 import type { Executor } from '../../src/exec.ts';
 
@@ -151,7 +150,7 @@ describe('T3.3 冷启动守卫（REQ-2.4）与存在性守卫（REQ-2.5）', () 
 
     expect(outcome.ok).toBe(true);
     expect(executor).toHaveBeenCalledTimes(1);
-    expect(executor.mock.calls[0]?.[2]?.timeoutMs).toBe(ETH0_COLD_START_TIMEOUT_MS);
+    expect(executor.mock.calls[0]?.[2]?.timeoutMs).toBe(DISTRO_EXEC_COLD_START_TIMEOUT_MS);
   });
 
   it('Running → 执行一次，argv / 编码 / 超时正确，且用列表里的**权威名字**（大小写以 WSL 为准）', async () => {
@@ -176,7 +175,7 @@ describe('T3.3 冷启动守卫（REQ-2.4）与存在性守卫（REQ-2.5）', () 
     ]);
     expect(executor.mock.calls[0]?.[2]).toMatchObject({
       encoding: 'utf8',
-      timeoutMs: ETH0_PROBE_TIMEOUT_MS,
+      timeoutMs: DISTRO_EXEC_TIMEOUT_MS,
     });
   });
 

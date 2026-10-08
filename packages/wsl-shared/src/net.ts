@@ -16,16 +16,21 @@
  *
  * 取不到就报 `NoInterface`：静默回落成 `127.0.0.1` / `0.0.0.0` / 空串会让 portproxy 规则
  * 指向**错误地址**（handover 原脚本坑 #4 的同类错误 —— 那种错误不会报错，只会"连不上"）。
+ *
+ * ## 与 `distro-exec.ts` 的分工（T3.4，2026-10-08 主人拍板抽出）
+ *
+ * 本文件只管 **eth0 的解析与语义**；「存在性/状态守卫 + 执行 + 编码声明」在
+ * `distro-exec.ts` 的 `execInDistro` 里**只有一份实现**（003 读层复用同一件，避免守卫分叉）。
+ * 编码那层是**结构上**写死的：`probeEth0` 不透传 `encoding` ⇒ 谁也没法把 eth0 路径改成 utf16le。
  */
 
 import { fail, type WslSharedError } from './errors.ts';
-import { guardDistroExists, type WslDistro } from './distros.ts';
+import type { WslDistro } from './distros.ts';
 import type { Executor } from './exec.ts';
+import { execInDistro } from './distro-exec.ts';
 
-/** 热路径超时：实测热路径 192–237ms，留足余量；**不覆盖**冷启动（见下） */
-export const ETH0_PROBE_TIMEOUT_MS = 10_000;
-/** 显式启动路径的超时：冷启动实测 12,637ms（还会连带拉起 WSL 内服务） */
-export const ETH0_COLD_START_TIMEOUT_MS = 30_000;
+/** eth0 探针在发行版内执行的命令（无 shell、argv 数组下发，REQ-5.2） */
+const ETH0_ARGV = ['ip', '-4', '-o', 'addr', 'show', 'dev', 'eth0'];
 
 /**
  * `ip -4 -o addr` 里的 `inet <ipv4>/<prefix>`；`inet6` 不会被命中（`inet` 后紧跟 `6`，不满足 `\s+`）。
@@ -87,8 +92,8 @@ export type Eth0Outcome = { readonly ok: true; readonly ip: string } | WslShared
 /**
  * 探测目标发行版的 eth0 IPv4（REQ-2.1–2.5）。
  *
- * 顺序即防线：**① 存在性守卫（REQ-2.5）→ ② 状态守卫（REQ-2.4，非 Running 一律不执行
- * `wsl -d`）→ ③ 执行 → ④ 解析（取不到 → `NoInterface`）**。
+ * 守卫顺序（**由 `execInDistro` 强制，本文件不重复实现**）：
+ * ① 存在性（REQ-2.5）→ ② 状态（REQ-2.4，非 Running 一律不执行 `wsl -d`）→ ③ 执行 → ④ 解析。
  * 第 ② 步是「绝不用自动路径叫醒发行版」的落点：`wsl -d X -- …` 本身就会启动 X。
  */
 export async function probeEth0(
@@ -97,43 +102,20 @@ export async function probeEth0(
   distros: readonly WslDistro[],
   options: Eth0ProbeOptions = {},
 ): Promise<Eth0Outcome> {
-  // ① REQ-2.5：名字不存在 → DistroNotFound，错误里必须带可用发行版名列表
-  const missing = guardDistroExists(distro, distros);
-  if (missing !== undefined) return missing;
-
-  // 用列表里的**权威名字**拼 argv（大小写以 WSL 为准，不用调用方的写法）
-  const wanted = distro.trim().toLowerCase();
-  const row = distros.find((d) => d.name.toLowerCase() === wanted);
-  if (row === undefined) {
-    // 逻辑上已被 guardDistroExists 拦下；这里只做类型收窄，错误口径保持一致
-    return fail('DistroNotFound', `发行版「${distro}」不存在`, {
-      distros: distros.map((d) => d.name),
-    });
-  }
-
-  const allowColdStart = options.allowColdStart === true;
-  // ② REQ-2.4：非 Running 直接报错，**不执行**命令（执行即冷启动，实测 12.6s + 拉起用户容器）
-  if (!allowColdStart && row.state !== 'Running') {
-    return fail(
-      'DistroNotRunning',
-      `发行版「${row.name}」当前是 ${row.state}，未自动启动（冷启动约 10–12 秒，且会拉起 WSL 内服务）`,
-    );
-  }
-
-  // ③ 编码固定 utf8：真机指纹 NUL 0.0%（见文件头），**不改用 utf16le** —— 那是 `wsl -l -v` 的形态
-  const argv = ['-d', row.name, '--', 'ip', '-4', '-o', 'addr', 'show', 'dev', 'eth0'];
-  const outcome = await executor('wsl.exe', argv, {
-    encoding: 'utf8',
-    timeoutMs:
-      options.timeoutMs ?? (allowColdStart ? ETH0_COLD_START_TIMEOUT_MS : ETH0_PROBE_TIMEOUT_MS),
+  // 守卫与执行都在 `execInDistro`（T3.4：REQ-2.4/2.5 的实现只有一份）。
+  // 只透传这两个选项、**不透传 encoding** ⇒ eth0 路径恒为 utf8，结构上改不坏。
+  const { timeoutMs, allowColdStart } = options;
+  const outcome = await execInDistro(executor, distro, distros, ETH0_ARGV, {
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    ...(allowColdStart === undefined ? {} : { allowColdStart }),
   });
   if (!outcome.ok) return outcome;
 
   // ④ REQ-2.2/2.3：取首个；取不到 → NoInterface（绝不回落，绝不返回空串）
   const ip = parseEth0Address(outcome.stdout);
   if (ip === undefined) {
-    return fail('NoInterface', `发行版「${row.name}」的 eth0 上没有 IPv4 地址`, {
-      argv: ['wsl.exe', ...argv],
+    return fail('NoInterface', `发行版「${outcome.distro}」的 eth0 上没有 IPv4 地址`, {
+      argv: outcome.argv,
       stderr: outcome.stderr,
     });
   }

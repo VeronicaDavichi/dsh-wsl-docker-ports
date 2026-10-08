@@ -2,10 +2,15 @@
  * 体积与单文件行数自检（001 校验门 + NFR-5）
  *
  * **口径（2026-10-08 主人拍板）**：算代码体积时**注释与空行不计入** ——
- * 统计对象是「去注释、去空行后」的 **UTF-8 字节数**（`SIZE_BUDGET_BYTES` = 15 KiB）。
+ * 统计对象是「去注释、去空行后」的 **UTF-8 字节数**（`SIZE_BUDGET_BYTES`）。
  * 那条是**软指标**：超限只打印醒目告警、不失败（与 `warn 200` 同一套口径）。
  * NFR-5 的「单文件 ≤ 400 行」是 **SHALL** ⇒ 超限**失败**；行数按**原始行数**算
  * （含注释 —— 那是可读性指标，不是体积指标，两者故意不同）。
+ *
+ * **预算值变更（2026-10-08 主人二次拍板）：15 KiB → 25 KiB**。理由：Phase 3 后实测
+ * 15,318/15,360 字节（余 42），而本包还要落 Phase 4（pathmap）+ Phase 5（`.wslconfig`/NAT）
+ * + 消费方复用的通用执行件（T3.4）⇒ 15 KiB 是「当初只有 3 个模块」时定的，必然被超。
+ * **复算口径与判定逻辑不变，只换阈值**（留痕见 specs/001-wsl-shared/tasks.md 的口径节）。
  *
  * 去注释用正则启发式（本包不引解析器依赖，NFR-1）：块注释 + 行注释；
  * 行注释带 `(^|[^:])` 保护，避免把 `https://` 里的 `//` 当成注释起点。
@@ -14,8 +19,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** 软指标：去注释、去空行后的源码 ≤ 15 KiB */
-const SIZE_BUDGET_BYTES = 15 * 1024;
+/** 软指标：去注释、去空行后的源码 ≤ 25 KiB（2026-10-08 主人二次拍板：15 → 25） */
+const SIZE_BUDGET_BYTES = 25 * 1024;
 /** NFR-5（SHALL）：单文件 ≤ 400 行 */
 const FILE_LINE_LIMIT = 400;
 

@@ -2,7 +2,7 @@
 
 > 任务引用 [requirements.md](./requirements.md) 的 REQ-N；设计依据见 [design.md](./design.md)。
 > 完成定义（每个任务）：代码 + **验证命令跑绿** + 无遗留副作用。
-> 校验门（`.lean-spec/config.json`）：单文件 warn 200 行 / max 400 行；本包目标**代码**体积 ≤ 15KB（**注释与空行不计入** —— 2026-10-08 主人拍板，由 `scripts/check-size.mjs` 复算，软指标只告警）。
+> 校验门（`.lean-spec/config.json`）：单文件 warn 200 行 / max 400 行；本包目标**代码**体积 ≤ **25KB**（**注释与空行不计入** —— 2026-10-08 主人拍板；**同日二次拍板把阈值 15KB → 25KB**，理由见「口径已定案」；由 `scripts/check-size.mjs` 复算，软指标只告警）。
 
 ---
 
@@ -64,9 +64,9 @@
 
 ---
 
-### ✅ Phase 1–3 完成记录（2026-10-08）— 共 **95 条**测试全绿（单测 84 + 契约 11）
+### ✅ Phase 1–3 完成记录（2026-10-08）— 共 **110 条**测试全绿（单测 99 + 契约 11）
 
-> 门禁（Phase 3 后）：`typecheck` **exit 0** · `vitest` **84/84**（4 文件）· `node --test` 契约 **11/11** · `check:exports` **运行时 4/12**（类型 11）· `check:size` **去注释 15,318 / 15,360 字节**（原始 32.7 KB，注释+空行占 53%）⇒ **余 42 字节**。
+> 门禁（Phase 3 + T3.4 后）：`typecheck` **exit 0** · `vitest` **99/99**（5 文件）· `node --test` 契约 **11/11** · `check:exports` **运行时 5/12**（类型 13）· `check:size` **去注释 16,831 / 25,600 字节**（余 **8,769**；原始 36.7 KB，注释+空行占 55%）。
 
 - **T1.1** `src/errors.ts`：`ErrorCode` **11 个**（含为 REQ-1.7 空列表路径新增的 **`NoDistro`**；design §2 的表已同步加行）；`WslSharedError` 是 `ok:false` 的**返回值**（不是异常），与 `ExecResult` 构成判别联合；`fail()` 单一工厂，**未提供的可选字段不出现在结果里**（不伪造 `undefined`）；`ERROR_CODES`/`ERROR_HINTS` 与 code 一一对应；`isWslFailure()` 守卫留模块内（消费者用 `if (!r.ok)`）。验证 `tests/unit/errors.test.ts` **5 条**。
 - **T1.2** `src/exec.ts`：`argv` 数组 + `stdio:'pipe'` + `windowsHide:true` + **`shell:false`**；Buffer 收集后按声明编码解码；**解码器在启动命令之前解析** ⇒ 非法编码标签返回 `Unexpected` 且**完全不启动进程**；错误里的 `argv` 是**完整命令行**（含 exe ⇒ 005 REQ-3.2 可直接展示「将执行的命令原文」）。验证 **9 条** + 静态断言（`shell:true` / `exec(` 零命中）。
@@ -97,23 +97,23 @@
 | R1 | 空列表 + 有配置 → 报 `DistroNotFound`（候选 `[]`）⇒ 把排查方向引到**配置**，而根因是**没装发行版** | 空集判定提到配置判定**之前** → `NoDistro` |
 | R2 | `configured?.trim()` 在配置被写坏（非字符串）时抛 `TypeError` ⇒ **破坏"公开面不抛异常"硬契约**，且炸在 002 的回调里 | `typeof configured === 'string'` 守卫，非字符串按"未配置"回落 |
 
-只写文档、不改代码的两条（已进 design §4/§8）：`env` 是**整份替换**（合并是调用方责任）；stdout/stderr **无大小上限**（本包命令有界故不加选项，将来接 docker 日志必须先限流）。
-**保留的设计确认**（不是缺陷）：优先级**不看 `state`**（Stopped 的默认项照样胜出 ⇒ UI 走 003 REQ-6.4「启动并核验」）；名字只作 **argv 元素**下发（`shell:false` ⇒ 无注入面）。
+只写文档、不改代码的两条（已进 design §4/§8）：`env` 是**整份替换**（合并是调用方责任）；stdout/stderr **无大小上限**（本包命令有界故不加选项，将来接 docker 日志必须先限流）。**保留的设计确认**（不是缺陷）：优先级**不看 `state`**（Stopped 的默认项照样胜出 ⇒ UI 走 003 REQ-6.4「启动并核验」）；名字只作 **argv 元素**下发（`shell:false` ⇒ 无注入面）。
 
 ### ✅ Phase 3 完成记录（eth0 探测，2026-10-08）
 
-- 新增 `src/net.ts`（138 行 / 2.5 KB 代码）：`parseEth0Address` + `probeEth0`；单测 **21 条** + 契约 **4 条**。
+- 新增 `src/net.ts`（124 行 / 1.8 KB 代码）+ `src/distro-exec.ts`（120 行 / 2.0 KB 代码，T3.4 通用件）：`parseEth0Address` + `probeEth0` + `execInDistro`；单测 **36 条**（net 21 + distro-exec 15）+ 契约 **4 条**。
 - 🔴 **真机事实（编码分叉 —— 本阶段最重要的发现）**：`wsl.exe -d X -- ip -4 -o addr show dev eth0` 是 **UTF-8**（NUL **0.0%**、LF），而 `wsl -l -v` 是 **UTF-16LE** ⇒ 同一个 `wsl.exe`：**自带消息** UTF-16LE、**透传 Linux 子进程字节** UTF-8。猜错即**假阴性**（`inet 172.…` 解成乱码 ⇒ 误报「eth0 没有 IPv4」）⇒ 两条路都留了反例，模块内写死 `utf8` 不再猜。
-- **成本实测**：冷启动（Stopped → 命令返回）**12,637ms**；热路径 **192 / 218 / 237ms** ⇒ 默认超时 10s（40× 余量）、显式启动路径 30s。
-- **fixture**：`tests/contract/fixtures/ip-eth0.raw`（**118 字节**，blob `154d0f72`；`.gitattributes` 的 `-text` 生效），解析值 `172.20.201.152` ✅ 与 19 条规则 connectaddress 一致。真机副作用（唤醒发行版 + 拉起用户容器）**已由主人预批**，事后如实报告。
+- **成本实测 + fixture**：冷启动（Stopped → 命令返回）**12,637ms**；热路径 **192 / 218 / 237ms** ⇒ 默认超时 10s（40× 余量）、显式启动路径 30s。`ip-eth0.raw`（**118 字节**，blob `154d0f72`，`-text` 生效）解析出 `172.20.201.152` ✅ 与 19 条规则 connectaddress 一致；真机副作用（唤醒发行版 + 拉起用户容器）**已由主人预批**并如实报告。
 - 🐛 **本轮自审发现**：① `check-size.mjs` 的**判定与告警用四舍五入后的 KB** ⇒ 15,318 与 15,360 都显示「15.0 KB」、小超限显示「超出 0.0 KB」⇒ 读不出真实余量（已改为**按字节**判定 + 打印余量/超出）；② `net.ts` 状态守卫有 **TOCTOU 窗口**（`listDistros` 快照与 `wsl -d` 之间发行版可能被空闲回收 ⇒ 静默冷启动）⇒ 记入 design §8 第 11 条，不加心跳（影响有界，缓解=紧接状态读取后探测）；③ **我自己的流程缺陷**：用 PowerShell 内联 `node -e "…$1…"` 复核体积时 `$1` 被 PS 展开成空 ⇒ 算出 15,384、**误判"超 24 字节"** ⇒ 数值复核**一律写临时文件跑**（真值 15,318）。
 
 ### ✅ 口径已定案（2026-10-08 主人拍板；不阻塞已完成项）
 
 > 两条均已由主人拍板，口径写死如下；将来复算按同一口径，不再各自解释。
 
-1. ~~**导出预算计不计类型？**~~ → ✅ **2026-10-08 主人拍板：类型不计入**（「那 10 个名词不算在 12 样里面」）⇒ **REQ-6.4 已订正**为「运行时导出 ≤ 12；类型导出单独统计并打印，软阈值 20」，`design.md` / `tasks.md` T0.2·T6.1 / 自检脚本注释 / README 冻结决策速览已同步。当前实测：**运行时 3/12**，类型 10（合计 13）。
-2. ~~**`源码 ≤ 15KB` 软指标怎么算？**~~ → ✅ **2026-10-08 主人拍板：注释与空行不计入** —— 统计「**去注释、去空行后的 UTF-8 字节数 ≤ 15 KiB**」（软指标，超限只告警；**单文件 ≤ 400 行**是 NFR-5 的 SHALL ⇒ 超限失败，且行数按**原始**行数算，与体积指标故意不同）。已落 `packages/wsl-shared/scripts/check-size.mjs` + 根/包 `check:size` 脚本。**Phase 1+2 实算：去注释 12.4 KB / 15 KB**（原始 25.1 KB，注释+空行占 **51%**）⇒ **达标，余量 2.6 KB**；Phase 3–5 还会涨，到时按同一口径复算。**注**：本阶段复审补强只加了约 **0.6 KB 代码**、却加了约 **3.5 KB 注释与证据** —— 若按"原始体积"看会以为涨了 16%，这正是注释不计入的意义。
+1. ~~**导出预算计不计类型？**~~ → ✅ **2026-10-08 主人拍板：类型不计入**（「那 10 个名词不算在 12 样里面」）⇒ **REQ-6.4 已订正**为「运行时导出 ≤ 12；类型导出单独统计并打印，软阈值 20」，`design.md` / `tasks.md` T0.2·T6.1 / 自检脚本注释 / README 冻结决策速览已同步。**Phase 3 后实测：运行时 5/12，类型 13（合计 18）**。
+2. ~~**`源码 ≤ 15KB` 软指标怎么算？**~~ → ✅ **2026-10-08 主人拍板：注释与空行不计入** —— 统计「**去注释、去空行后的 UTF-8 字节数**」（软指标，超限只告警；**单文件 ≤ 400 行**是 NFR-5 的 SHALL ⇒ 超限失败，且行数按**原始**行数算，与体积指标故意不同）。已落 `packages/wsl-shared/scripts/check-size.mjs` + 根/包 `check:size` 脚本。
+   - **预算值变更（2026-10-08 主人二次拍板）：15 KB → 25 KB**。理由：Phase 3 后实测 **15,318/15,360 字节（余 42 字节）**，而本包还要落 Phase 4（pathmap）+ Phase 5（`.wslconfig`/NAT）+ 消费方复用的通用执行件（T3.4）⇒ 15 KB 是**「当初只有 3 个模块」时定的**，必然被超。选择"提高软指标并留痕"而不是"删防御分支/拆包"（后者伤可读性与 L3 布局）。**复算口径与判定逻辑不变，只换阈值**。
+   - ⚠️ **同时修掉一个判定缺陷**：`check-size.mjs` 原先把判定与告警建立在**四舍五入后的 KB** 上 ⇒ 15,318 与 15,360 都显示「15.0 KB」、小超限显示「超出 0.0 KB」（读不出真实余量）⇒ 已改为**按字节**判定并打印「余/超 N 字节」。**历史实算（同一口径）**：Phase 1+2 = 12.4 KB（原始 25.1 KB，注释+空行 51%）→ Phase 1–3 = **15,318 字节**（原始 32.2 KB，53%）→ 换阈值后（含 T3.4）= **16,831 / 25,600 字节，余 8,769**。**注**：复审补强只加约 **0.6 KB 代码**、却加约 **3.5 KB 注释与证据** —— 按"原始体积"看会以为涨了 16%，这正是注释不计入的意义。
 
 ---
 
@@ -128,6 +128,12 @@
 - [x] T3.3 [REQ-2.4] Stopped 发行版冷启动守卫
   - 内容：先查 `distros`（存在性 → 状态）；非 Running → `DistroNotRunning`，**不执行** `wsl -d`
   - ✅ 单测 **6 条** + 错误透传 1 条：Stopped/Installing → `DistroNotRunning` 且**零调用**；错名 → `DistroNotFound` 带列表且零调用；`allowColdStart`（REQ-2.4 唯一例外）→ 允许执行且用冷启动超时；Running → argv/编码/超时正确且用**权威名字**；`Timeout` 原样透传
+
+- [x] T3.4 [REQ-6.1][REQ-2.4] 抽出通用「带守卫的发行版内执行」`execInDistro`（**2026-10-08 主人拍板新增**）
+  - 内容：**存在性 → 状态 → 执行（+ 编码声明）**收在 `src/distro-exec.ts` **一处**；`probeEth0` 改为复用它；003 读层（`docker ps` 等）直接复用 ⇒ 守卫**不分叉**
+  - 准入依据（REQ-6.1：能力需 ≥2 个消费方）：① eth0 探测（本包）② 003 读层
+  - ✅ 单测 **15 条**：空 argv 拒绝且零调用（防 `wsl -d X --` 空命令变成交互式 shell —— 既挂住又唤醒发行版）；错名零调用；**五种**非 Running 状态全拦且零调用；Running → stdout/stderr 透传 + **权威名字** + 完整 argv；默认 `utf8` + 热路径超时；显式 `utf16le`；`allowColdStart` → 冷启动超时；三种底层错误（`NonZeroExit`/`Timeout`/`CommandNotFound`）原样透传
+  - 结构防线：`probeEth0` **不透传** `encoding` ⇒ eth0 路径恒 `utf8`，谁也没法把它改坏
 
 ---
 
@@ -169,10 +175,10 @@
   - 验证：自检脚本断言**运行时**导出数 ≤ 12（类型导出单独打印，超软阈值 20 需说明，见 REQ-6.4 的订正留痕）；`grep -n "export" src/index.ts` 人工复核一遍
 
 - [ ] T6.2 [REQ-6.1] 准入标准回归（防杂物袋）
-  - 验证：`grep -ri "netsh\|portproxy\|docker\|RunAs\|taskkill /PID" src/` 的命中**只允许**出现在 `exec.ts` 的兜底注释里；出现 netsh/docker 解析即判失败（应留 003）
+  - 验证（**判据已订正，原判据是坏门**）：原写法「命中只允许出现在 `exec.ts` 注释里」—— 2026-10-08 预检出 **7 处命中全在注释**（`index.ts` 的 `dsh-wsl-docker-ports` 是**包名**、`net.ts`/`distro-exec.ts` 的 `portproxy`/`dockerd`/`docker ps` 是**领域词汇**），按原判据**无论如何都过不去**。改判据：**剥注释后**源码里 `netsh|portproxy|docker|RunAs|taskkill /PID` 命中 **0**（= 001 不含这些解析/提权逻辑，应留 003/005）；建议做成 `scripts/check-scope.mjs`（复用 check-size 的剥注释逻辑，**待 Phase 6 落**）。
 
 - [ ] T6.3 [NFR-1][NFR-2][NFR-3][NFR-5] 质量门
-  - 验证：`pnpm -C packages/wsl-shared typecheck` + `test`（vitest）+ `test:contract`（node --test）三项全绿，并记录用例数；`package.json` 的 `dependencies` 为空（零运行时依赖）；`check:size`（去注释代码 ≤ 15KB 软指标 + 单文件 ≤ 400 行 NFR-5）
+  - 验证：`pnpm -C packages/wsl-shared typecheck` + `test`（vitest）+ `test:contract`（node --test）三项全绿，并记录用例数；`package.json` 的 `dependencies` 为空（零运行时依赖）；`check:size`（去注释代码 ≤ **25KB** 软指标 + 单文件 ≤ 400 行 NFR-5）
 
 - [ ] T6.4 把结论回写文档
   - 内容：T0.1 的编码/表头结论、T1.4 的 `taskkill` 结论 → 更新 design.md §4/§8 与 requirements 的 A-1/A-2/A-3 状态（假设 → 已确认/已推翻）
