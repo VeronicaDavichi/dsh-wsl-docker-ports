@@ -39,6 +39,9 @@
 | **Track status transitions**        | `planned` → `in-progress` (before coding) → `complete` (after done)                                                   |
 | **Keep specs current**              | Document progress, decisions, and learnings as work happens. Obsolete specs mislead both humans and AI                |
 | **No nested code blocks**           | Use indentation instead                                                                                               |
+| **导出预算只计运行时导出**          | 类型导出（`export type` / `interface`）编译后被完全擦除 ⇒ **不计入**「≤ 12 导出」的预算，由自检脚本单独统计并打印。**2026-10-08 主人拍板**；SSoT = [001 requirements.md](./specs/001-wsl-shared/requirements.md) 的 REQ-6.4（含订正留痕）|
+| **代码体积不算注释**                | 体积 = **去注释、去空行**后的 UTF-8 字节数（≤ 15KB 是**软指标**，超限只告警，不静默放过）；单文件 ≤ 400 行是 SHALL、按**原始**行数算（可读性指标，与体积故意分开）。**2026-10-08 主人拍板**；复算 `pnpm check:size`，口径 SSoT = [001 tasks.md](./specs/001-wsl-shared/tasks.md) 的校验门行 |
+| **指标必须可复算**                  | 任何「软指标 / 预算 / 阈值」都要有脚本能当场算出数（现为 `pnpm check:exports` + `pnpm check:size`）；**不许各自解释口径**，改口径 = 改 Spec + 追加留痕 |
 
 ### 🚫 Common Mistakes
 
@@ -184,6 +187,6 @@ Validation checks:
 
 - 已实测可用的检查手段：`leanspec board` / `list` / `view <spec>` / `stats` / `capabilities` / `templates`；行数阈值见 [`.lean-spec/config.json`](./.lean-spec/config.json)（warn 200 / max 400），依赖与引用一致性用本地脚本核对。
 - 建 Spec：`leanspec create <name> -f <body.md>`（正文一次性写入，frontmatter 由 CLI 生成）；状态流转用 `leanspec update <spec> --status <status>`，**不手改 frontmatter**。
-- 🚨 **`leanspec crystallize` 会整体覆盖 `AGENTS.md`**（实测：把本文件替换成一段 `<!-- BEGIN crystallize:generated -->` 块，并额外写入 `.claude/skills/*.md`）。**跑它之前先备份本文件** —— 本仓库尚未 `git init`，覆盖了没有版本历史可回滚。
+- 🚨 **`leanspec crystallize` 会整体覆盖 `AGENTS.md`**（实测：把本文件替换成一段 `<!-- BEGIN crystallize:generated -->` 块，并额外写入 `.claude/skills/*.md`）。**跑它之前先确认工作区干净** —— 本仓库**已是 git 仓库**（2026-10-08 起，`main` 分支有提交），覆盖后可 `git checkout -- AGENTS.md` 回滚；但**未提交**的改动仍会丢。
 - 🔴 **MCP `update` 对 `status` 是空操作**（2026-10-08 实测：`mcp__leanspec__update_spec` 传 `status: planned` 只刷新 `updated_at`，frontmatter 字段**不变**）⇒ **状态流转一律用 CLI** `leanspec update <spec> --status <status>`（CLI 同时自动追加 `transitions` 记录）。MCP 的**只读**工具（`list_specs` / `get_spec` / `board` / `stats`）正常。
 - 🔴 **leanspec MCP server 的项目根 = 该 server 进程的 cwd**（其 Rust 二进制没有 `--root` / `--project` 选项，只读 `LEANSPEC_SPECS_DIR`），而本机 DSH app 的 cwd **不是**本工作区 ⇒ 直接写 `npx -y @leanspec/mcp` 会**永远返回 0 个 spec**。已在 `~/.dsh/profiles/desktop/cordis.patch.yml` 改成 `command: cmd` + `args: ["/c","cd","/d","E:\\NodeProjects\\dsh-wsl-toolkit","&&","npx","-y","@leanspec/mcp"]`（`patchReload: live` 热生效，无需重启 app）。⚠️ `dsh-mcp-manager` **只有 add / enable / restart，没有「改」**，且 add 拒绝同名 ⇒ 改这条配置只能手改该 yml（改完别让管理器写回）。另：server 进程若早于 `.lean-spec/` 创建而启动，即使 cwd 正确也必须重启它才会看到项目。
