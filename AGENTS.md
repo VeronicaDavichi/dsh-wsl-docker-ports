@@ -39,7 +39,7 @@
 | **Track status transitions**        | `planned` → `in-progress` (before coding) → `complete` (after done)                                                   |
 | **Keep specs current**              | Document progress, decisions, and learnings as work happens. Obsolete specs mislead both humans and AI                |
 | **No nested code blocks**           | Use indentation instead                                                                                               |
-| **导出预算只计运行时导出**          | 类型导出（`export type` / `interface`）编译后被完全擦除 ⇒ **不计入**「≤ 12 导出」的预算，由自检脚本单独统计并打印。**2026-10-08 主人拍板**；SSoT = [001 requirements.md](./specs/001-wsl-shared/requirements.md) 的 REQ-6.4（含订正留痕）|
+| **导出预算只计运行时导出**          | 类型导出（`export type` / `interface`）编译后被完全擦除 ⇒ **不计入**「≤ 12 导出」的预算，由自检脚本单独统计并打印。类型总量的**软阈值 25**（**2026-10-08 主人同日二次拍板 20 → 25**：Phase 4 后实测运行时 7/12 ✅、类型 15 —— 而 15 个类型逐个都有消费方，故提阈值留痕而非砍类型/拆包）。**2026-10-08 主人拍板**；SSoT = [001 requirements.md](./specs/001-wsl-shared/requirements.md) 的 REQ-6.4（含两次订正留痕）|
 | **代码体积不算注释**                | 体积 = **去注释、去空行**后的 UTF-8 字节数（≤ **25KB** 是**软指标**，超限只告警，不静默放过；判定与告警**按字节**，不用四舍五入后的 KB）；单文件 ≤ 400 行是 SHALL、按**原始**行数算（可读性指标，与体积故意分开）。**2026-10-08 主人拍板**（同日二次拍板把阈值 15KB → 25KB：Phase 3 后已 15,318/15,360 字节，而 Phase 4–5 与 T3.4 还要加）；复算 `pnpm check:size`，口径 SSoT = [001 tasks.md](./specs/001-wsl-shared/tasks.md) 的校验门行 |
 | **指标必须可复算**                  | 任何「软指标 / 预算 / 阈值」都要有脚本能当场算出数（现为 `pnpm check:exports` + `pnpm check:size`）；**不许各自解释口径**，改口径 = 改 Spec + 追加留痕 |
 

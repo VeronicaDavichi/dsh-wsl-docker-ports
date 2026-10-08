@@ -7,6 +7,12 @@
  * 约束对象是**可调用的运行时面**（原文曾写「含类型」，Phase 1+2 实测后按此订正并留痕）。
  * 两个数都打印，总量另设软阈值（`TOTAL_SOFT_MAX`），所以膨胀仍然看得见。
  *
+ * **软阈值变更（2026-10-08 主人拍板）：20 → 25**。理由与体积阈值（15 KB → 25 KB）同构：
+ * 阈值 20 是「只有 3 个模块」时定的，Phase 3/4 落地后包长到 **7 个模块**，类型导出到 **15** 个
+ * （合计 22），而 15 个类型**逐个都有消费方**（002/003/005 的配置与 UI）⇒ 选择「提高软指标并留痕」
+ * 而不是「砍掉类型/拆包」（后者伤可读性与 L3 布局）。**运行时口径（≤ 12，SHALL）不变**，
+ * 判定逻辑不变，只换阈值。SSoT = 001 requirements.md 的 REQ-6.4。
+ *
  * 为什么用正则而不是 AST：本包不引入任何构建/解析依赖（离线可跑，NFR-1），
  * 而检查对象是**我们自己**的单一入口文件，形状受控。
  * 两道防呆：① 解析不到任何运行时导出 → 失败（正则失效必须响）
@@ -16,7 +22,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const RUNTIME_BUDGET = 12;
-const TOTAL_SOFT_MAX = 20;
+/** 类型导出的软阈值（2026-10-08 主人拍板 20 → 25；只告警，不失败） */
+const TOTAL_SOFT_MAX = 25;
 
 const entry = fileURLToPath(new URL('../src/index.ts', import.meta.url));
 const source = readFileSync(entry, 'utf8');
