@@ -1,0 +1,15 @@
+{
+  "name": "dsh-wsl-shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "WSL 事实层共享底座（非插件包）：发行版发现 / eth0 IP / 路径翻译 / NAT 判定 / 结构化命令执行",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test \"tests/**/*.test.ts\"",
+    "check:exports": "node scripts/check-exports.mjs"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "dsh-wsl-toolkit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH 的 WSL 工具集：可配置受管终端（受管 PTY）+ WSL Docker 端口转发管理",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "check:exports": "pnpm -r --if-present check:exports"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2"
+  }
+}

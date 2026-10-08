@@ -1,0 +1,3 @@
+# fixture 是「真机字节样本」：UTF-16LE / CRLF / LF 本身就是被测对象，禁止任何行尾或编码转换
+packages/*/tests/contract/fixtures/*.raw   -text
+packages/*/tests/contract/fixtures/*.jsonl -text

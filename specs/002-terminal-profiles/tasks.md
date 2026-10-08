@@ -1,0 +1,182 @@
+# 实现任务：dsh-terminal-profiles 受管终端
+
+> 任务引用 [requirements.md](./requirements.md) 的 REQ-N；设计依据见 [design.md](./design.md)。
+> 完成定义（每个任务）：代码 + **验证命令跑绿** + 无遗留注册/监听/进程。
+> 口径：`pnpm -C packages/terminal-profiles {typecheck,test,build}`。
+
+---
+
+## Phase 0：前置（阻塞项，必须先打掉）
+
+- [x] **T0.1 [REQ-2.1]（B-1 行为链确认）`volatile` 端到端行为验证** —— **2026-10-08 五条全部定案**
+  - **前置结论（2026-10-08，宿主源码实证，不必重验）**：整数组标 `.volatile()` **机制成立** —— `equal()` 首行 `if (schema?.meta?.volatile) return true`，递归到 `profiles` 键时立即判等；`.volatile()` 定义在 schemastery 的 `Schema.prototype` 上、不挑类型。依据见 [stack-decision.md](../../stack-decision.md) 的 `plugin.profileConfigLiveness.evidence`（含 app.asar 字节偏移）
+  - 内容：最小插件 `profiles` 整数组标 `.volatile()`，跑以下 5 条（**证伪导向**，不再问「是否生效」）：
+    1. ✅ **2026-10-08 真机定案**（临时 profile `volatile-probe` + 一次性探针插件，`--port 0`）：`settings.update('volatile-probe', { profiles: [{ name: 'a', cwd: 'C1' }] })` → **152ms 成功**；`applySeq 1→1`（**无** dispose/apply）**且** volatile 引用 `.get()` 从 `seed` 变 `C1`（**值真传播**）⇒ **不重挂载成立**。⚠️ 两个诚实的限定：① 该实例没产生日志文件，故 `loader/volatile-update` **事件名未经日志直接观测**（以「无重新 apply」为代理证据）② 「PTY pid 不变」由真实插件在自己的验收清单里补测（探索探针没有 PTY）
+    2. ✅ **2026-10-08 真机定案**（对照组）：把 ordinary `label` 从 `L0` 改成 `L1`（volatile 部分逐字不变）→ **apply #2** ⇒ 判定在工作、**不是恒真**。附带：向 patch 层写入**完全相同**的内容 → **不触发任何更新**（无差异即无动作）
+    3. ⚠️ **2026-10-08 真机部分定案**：写非法 config（`label: 42`，schema 要求 string）→ **不崩**（心跳持续）、**applySeq 不变**、旧值保留（该值来自 patch 层，校验在到达 volatile 提交前就被拒）⇒ 宿主**静默拒绝**非法值。**但原预期的「`_commitVolatile()` 失败后回落 remount」本次未被命中**（走的是 patch 层而非 live 写入路径）→ 该分支留待真实插件在 settings 写入路径上复测
+    4. ✅ **2026-10-08 离线定案**（直接 require `@deepseek-ai/schemastery`）：标到**数组元素内** → **构造不抛错**，**parse/校验时抛 `ValidationError`**，原文 `$.profiles.*.cwd volatile fields require a fixed object path without an enclosing volatile field`（原措辞「预期构造时抛错」已订正；判定走 schemastery `validateVolatileSchema`）
+    5. ✅ **2026-10-08 离线定案**：`config.profiles` **不是裸数组** —— `Array.isArray=false`、`typeof .get === 'function'`、下标 `profiles[0]` 为 `undefined`、`.get()` 值**深冻结**（`isFrozen=true`）→ **本 Spec 读配置必须走 `.get()`**
+  - 验证：5 条各留一行证据（日志 / 错误原文 / 类型探测结果）→ 回写 design.md §4.1 与 requirements A-1。**5 条全部有证据**：第 4/5 条离线（schemastery 直跑）、第 1/2/3 条真机（临时 profile + 探针插件）。**额外真机发现（已另立 T0.6）**：`settings.update` 的值**没有落盘** —— 重启后 volatile 值回到 patch 层的旧值，全盘找不到 `settings.*` 文件
+- [x] **T0.6 [REQ-2.2] `settings.update` 的落盘语义**（2026-10-08 真机新发现 → 当日定案）
+  - 内容（当时待查的三问）：已知写入实时生效，但不知道**落没落盘** → ① settings 文档在什么条件下才创建/写入 ② 是否依赖**优雅退出** ③ 若确实只活内存，则「改配置不杀终端」**必须**另配落盘路径，否则重启即丢
+  - 验证：`node --test` 契约测试 + 真机重启对照（优雅停止 vs 强杀各一次）；结论回写 design.md §4 与 requirements A-6
+  - ✅ **2026-10-08 当日定案（结论：不是问题）**：`settings.documentPath` 直读出 settings 文档**就是** profile 的 `cordis.patch.yml`，`writable = true`；`settings.update` 后 **3s（进程仍在运行）文件内容已更新** ⇒ **立即落盘**（非退出时刷）；**重启后值被正常加载**（`[a,C1]` 复现）⇒ 「改配置不杀终端」+「改完不丢」双闭环，**不需要**额外落盘路径。⚠️ 我先前「不落盘」的判断是**自伤假阳性**：对照步手写了同一个 patch 文件（`profiles: seed`）把它覆盖了 —— 教训：**同一文件既是 patch 层又是 settings 落盘处，实验里不能再手写它**
+  - 若第 1 条被推翻（真机不生效）：REQ-2.2 从安全网升级为主路径（弹确认框），**不假装无痛**
+  - 🔴 红线：plugin config schema **必须用 Schemastery**。`equalExceptVolatile` 先做 `isSchemastery()`，非 Schemastery（Zod 等）直接退化为 `deepEqual` → volatile **静默失效**、每次保存都重挂载
+
+- [ ] T0.2 基线能力复核（0.2.0-rc.2）
+  - 内容：确认 `ctx.subprocess.spawnTerminal` 的 spec 形状（`argv`/`cwd`/`env`/`rows`/`cols`/`terminalType`）、`ctx.sidebarRightTabs` + `ctx.sidebarRight.openTab`、`ctx.webServer` 具名路由与 upgrade、`ctx.sandboxPolicy`、`ctx.settings`、`ctx.configEditor.edit()`、`dsh-tools` 的 `defineTool` 均存在
+  - **2026-10-08 部分结论（源码实证）**：`ctx.settings` ✅、`ctx.configEditor.edit()` ✅、`dsh-config-editor` 插件 ✅ 均存在；🔴 **`ctx.settings.register(ns, schema)` 已移除**（app.asar 0 命中）→ schema 改由模块**静态 `Config` 导出**、命名空间 = **patch 条目 id**；live 字段走 `settings.{update,replace,mutate}`，`configEditor.edit()` 是**完整配置**路径（**会重挂载**）。剩 `spawnTerminal` / `sidebarRightTabs` / `webServer` / `sandboxPolicy` / `defineTool` 待真机核对
+  - 验证：最小插件起一个 PTY 并打印 spec 接受结果；每个能力各留一行证据（包名 + 事实），写入 design.md/README
+
+- [ ] T0.3 [REQ-7.1][REQ-7.6]（B-3 **已由源码定案**，真机只验行为）路由注册与卸载
+  - 前置结论（源码）：匹配顺序 **exact → 最长 prefix → fallback**、注册顺序无语义、fallback 单座位且只答「无具名路由匹配」的请求 → **SPA 抢不走我们的具名路由**；**但 `registerUpgrade` 只接受 exact path** → 原「独占前缀的 upgrade 路由」写法被推翻，REQ-7.1 已修正
+  - 真机验证项（证伪导向）：① 注册 `/dsh-managed-terminal/ping` 能**被命中**（返回我们的响应，而非官方 404 / 405）② **卸载后**该 path 回落到官方 fallback（REQ-7.6）③ 重复注册同一 path 确认**抛** `duplicate ... route`（若不抛 → 说明我们认错了 API）④ upgrade 端点以 **exact path** 建连成功
+  - 验证：真机请求返回我们的响应（非 SPA HTML）；卸载后同一路径回落官方行为（REQ-7.6）
+
+- [x] T0.4 [REQ-全]（原阻塞 B-2，全线共用）6 项 `backend.*` 的 `confirmed: implied` 由主人逐条点头 —— ✅ **2026-10-08 确认全为 `none`**，结论记入 [stack-decision.md](../../stack-decision.md) 的「复核记录（已闭环）」
+  - 验证：`stack-decision.md` 的 `pendingReview` 清空；本 Spec 不因此改动（全为 `none`）
+
+- [ ] T0.5 [REQ-13.1][REQ-13.2][REQ-13.3][REQ-13.4] 安装接入验证（D-1）
+  - 内容：按 `link:<绝对路径>` 写入 profile `package.json` 的 `dependencies` + `dsh.profile.bundles`（与同机 `@xxxyz/dsh-mcp-manager` 同型），`pnpm install` 后重载
+  - 验证（真机，二值）：① 行出现在 profile 行列表 ② 终端页 kind 已注册 ③ **无** compatibility 预检 `disabled`（宿主 stderr 无 `disabling profile plugin`）④ 卸载后行消失、路由/页/工具注销、patch 无孤儿条目 ⑤ README 已明示 `link:` 模式「**路径即版本**」的开发工作流（改源码 → 重载/重启生效）
+
+---
+
+## Phase 1：配置模型与容错
+
+- [ ] T1.1 [REQ-1.1][REQ-1.2][REQ-1.3] `parseProfiles`
+  - 内容：schemastery 声明 + 单条容错（跳过无效项并记警告）、重名拒绝、缺省 `args: []`/`env: {}`
+  - 验证：`vitest` 覆盖 —— 有效项、缺 `command`、类型错、重名、空数组、全无效；断言无效项**未**影响其余项
+
+- [ ] T1.2 [REQ-1.4] `cwdLinux` 推导接线（消费 001）
+  - 内容：只填 `cwd` 时经 001 的 `winToWsl` 推导；失败 → 该条标「需修复」且不可启动
+  - 验证：`vitest` + fake 001 —— 推导成功、推导失败（`UnmappablePath`）、显式给了 `cwdLinux` 时不推导（不覆盖用户输入）
+
+- [ ] T1.3 [REQ-1.5] 空配置引导态
+  - 验证：`vitest` 渲染断言 —— 无 profile 时显示引导、不报错
+
+---
+
+## Phase 2：Host PTY 与屏幕模型
+
+- [ ] T2.1 [REQ-3.1][REQ-3.2][REQ-3.4] session-manager 起实例
+  - 内容：`spawnTerminal({ argv:[command,...args], cwd: cwdLinux ?? cwd, env, rows, cols, terminalType })`；每次启动新实例
+  - 验证：`vitest` + fake spawnTerminal —— spec 字段逐项断言（含 WSL profile 用 `cwdLinux`）；同 profile 两次启动 → 两个不同 id
+
+- [ ] T2.2 [REQ-3.3][REQ-3.5] 失败路径
+  - 验证：`vitest` —— cwd 不存在（fake 抛错）→ 错误含该路径且**未**回落工作区/`$HOME`；spawnTerminal 抛错 → UI 文案含原因且无幽灵实例
+
+- [ ] T2.3 [REQ-6.1][REQ-6.2][REQ-6.4] 屏幕模型与有界缓冲
+  - 内容：`@xterm/headless` + serializer；`seq` 单调；双上限（块数/字节）FIFO 丢弃 + `dropped`
+  - 验证：`vitest` —— 写入后快照含期望文本；超上限后 `dropped > 0` 且内存不随写入线性增长（块数 ≤ 常量）
+
+- [ ] T2.4 [REQ-6.3] `lost` 语义
+  - 验证：`vitest` —— `sinceSeq` 早于下界 → 返回 `lost: true` + 快照；`sinceSeq` 合法 → 只回增量块
+
+- [ ] T2.5 [REQ-6.5][REQ-5.4] 只读性
+  - 验证：`vitest` —— 连续 `read` 后 PTY 的写入调用计数为 0（读不注入输入）
+
+---
+
+## Phase 3：WS 通道
+
+- [ ] T3.1 [REQ-7.1][REQ-7.6] 路由与 upgrade 注册
+  - 内容：`ctx.webServer` 具名路由 + upgrade；注册返回 disposer
+  - 验证：`vitest` + fake webServer —— 注册/卸载计数归零；卸载后不劫持未知路径
+
+- [ ] T3.2 [REQ-7.2][REQ-7.5] 握手校验
+  - 内容：校验 `Origin` + 一次性短 TTL 令牌；list 路由同样校验
+  - 验证：`vitest` —— 无令牌/错令牌/过期令牌/跨源 → 立即关闭且响应体**不含**实例信息；令牌只能用一次
+
+- [ ] T3.3 [REQ-7.3][REQ-7.4] 重连续传与单活跃连接
+  - 内容：重连带 `sinceSeq`；新连接顶掉旧连接（旧连接收 `error:'superseded'`）
+  - 验证：`vitest` —— 断线重连后块连续无重复；并发两连接时旧连接被关闭且新连接正常收块
+
+- [ ] T3.4 [REQ-7.7][REQ-6.4] 背压与丢弃
+  - 验证：`vitest` —— 消费者暂停后缓冲触顶 → 触发丢弃策略；断言**未**出现无界队列（队列长度 ≤ 常量）
+
+---
+
+## Phase 4：客户端渲染与页类型
+
+- [ ] T4.1 [REQ-4.1][REQ-4.2][REQ-4.4][REQ-4.5] 页类型与 seat 注册
+  - 内容：kind `managedTerminal` + 标题 seat，走 extension 档；作用域注入 + disposer 收集；缺能力降级
+  - 验证：`vitest` + fake ctx —— 注册 2 个 seat、缺 `sidebarRight` 时不注册且给原因、卸载后归零；断言 kind 不是官方 6 个中的任何一个
+
+- [ ] T4.2 [REQ-5.1][REQ-5.2] 懒加载 chunk + 样式作用域
+  - 内容：`import('@xterm/xterm')` 动态加载；`xterm.css` 局部作用域注入
+  - 验证：`pnpm build` 产物中 xterm 落在**独立 chunk**（主 bundle 体积记账）；`grep` 断言无全局样式写入（无 `document.head` 全局注入路径）
+
+- [ ] T4.3 [REQ-5.3] fit 与尺寸同步
+  - 内容：容器 resize → `fit()` → 计算 `rows/cols` → 同步 PTY
+  - 验证：`vitest` —— 尺寸变化时同步调用一次（节流断言）；夹具尺寸 → 期望 rows/cols
+
+- [ ] T4.4 [REQ-5.5] 主题 token
+  - 验证：`vitest` 样式断言 —— 零硬编码 hex，只用 `--dsw-*`
+
+- [ ] T4.5 [REQ-12.3][REQ-4.3] tab 关闭后实例存活 + 重开恢复
+  - 内容：tab `×` 只卸载视图；再开页从屏幕模型取快照重建；**每 tab 恰好承载一个实例，列表按创建序稳定**（REQ-4.3）
+  - 验证：`vitest` + fake —— 卸载视图后实例表不变；重开走 `attached` 快照路径（**不**重放历史字节流）
+
+---
+
+## Phase 5（已迁出）：Agent 工具族与权限
+
+T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent-surface/tasks.md)** 的 Phase 1–2（2026-10-08 拆分；内容逐条保留）。**Phase 编号 5 保留为空位**，以免 T6.x / T7.x 等既有引用错位。
+
+---
+
+## Phase 6：配置页
+
+- [ ] T6.1 [REQ-10.1][REQ-10.2] 自绘配置页 + 写入管道
+  - 内容：`plugins.row.config`（键 `<包名>#<行 id>`）+ `configure({ auto: false })`；写入只经 **settings 三写操作**（live 字段），**不用** `ctx.configEditor.edit()`（完整配置路径会重挂载）
+  - 验证：`vitest` + fake ctx —— 注册键正确、`auto: false` 生效；`grep` 断言本包**无** YAML 手写（无 `writeFile` 到 `cordis.patch.yml`）
+
+- [ ] T6.2 [REQ-2.2][REQ-2.3] volatile-only 判定与确认
+  - 内容：保存前判定变更是否 volatile-only；否则弹确认「正在运行的终端将被终止」；不为 ordinary 字段声明造新实例的 transform
+  - 验证：`vitest` —— volatile-only → 不弹确认且走 settings 路径；含 ordinary → 弹确认且**未**写盘（直到确认）；transform 断言（连续两次 parse 结构相等）
+
+- [ ] T6.3 [REQ-10.3][REQ-10.4][REQ-10.5] 失败与只读态
+  - 验证：`vitest` —— home patch 覆盖 → 只读 + 原因 + 路径；revision 冲突 → 提示且**保留输入**；不满足唯一寻址 → 展示限制
+
+- [ ] T6.4 [REQ-1.2][REQ-2.4] 容错与语义明示
+  - 验证：`vitest` —— 单条无效不影响保存其余；配置页文案含「改 cwd 只影响新建实例」
+
+---
+
+## Phase 7：服务导出与收口
+
+- [ ] T7.1 [REQ-11.1][REQ-11.2][REQ-11.3] 导出 `managedTerminal` 服务
+  - 内容：`open/list/read/write/resize/kill/subscribe`；本包不 import 003，也不要求 003 import 本包
+  - 验证：`vitest` + fake —— 服务面方法齐全；无消费方时**不**报错、不注册多余内容；契约测试断言服务名与 design.md §5 一致
+
+- [ ] T7.2 [REQ-12.1][REQ-12.2] 卸载清理
+  - 验证：`vitest` + fake —— 卸载后 WS 连接数、路由数、页类型数、工具数、resize 监听数全部归零；**全部实例被终止**（PTY kill 调用数 = 实例数）
+
+- [ ] T7.3 [NFR-1..NFR-6] 质量门
+  - 验证：`pnpm -C packages/terminal-profiles typecheck` + `test` + `build` 三项全绿；记录用例数、主 bundle 与 xterm chunk 体积；`package.json` 的 `peerDependencies.react` = `^18.2.0` 且**不在** `dependencies`；单文件 ≤ 400 行
+
+- [ ] T7.4 文档回写
+  - 内容：T0.1（B-1 结论）、T0.3（前缀）、体积基线、REQ-7.4 的顶掉策略 → 回写 README/design
+  - 验证：`grep -n "B-1\|B-3\|superseded" specs/002-terminal-profiles/*.md` 可见结论；`leanspec validate` 无新增告警
+
+---
+
+## 真机验收清单（chrome-devtools MCP，替代 Playwright E2E）
+
+> 依据：handover 明确「vitest 单元 + `node:test` 离线契约 + chrome-devtools MCP 真机验收」，**否决** propose 默认的 `harness/verify-e2e.sh` 与视觉对照。
+
+| # | 场景 | 期望 | 手段 |
+|---|------|------|------|
+| 1 | 打开终端页 | 右栏出现 `managedTerminal` 标签，与官方 `terminal` 并存不互踩 | chrome-devtools 截图 + 快照 |
+| 2 | 启动 pwsh profile | 面板出现提示符，PTY pid 可见 | 截图 + list 工具输出 |
+| 3 | 键盘输入 `echo hi` | 回显 `hi`，无字符丢失 | 截图 |
+| 4 | 启动 `wsl.exe -d Ubuntu2204` profile | 提示符在 `cwdLinux` 下（`pwd` 验证）| 截图 |
+| 5 | 拉伸窗口 / 收窄右栏 | 终端重排，`rows/cols` 同步（`stty size` 验证）| 截图 + 工具 resize 返回 |
+| 6 | 配置页改 profile 的 `cwd` 并保存 | **运行中终端仍存活**（B-1 的最终真机证据）| 截图（终端未重挂载）+ 日志 |
+| 7 | 关闭 tab `×` 后再打开 | 实例存活，画面从快照恢复（`dropped` 计数可见）| 截图 |
+| 8 | 禁用插件再启用 | 无重复页类型/路由（`grep` 日志），无孤儿 PTY | 日志 + 快照 |
+
+> **Agent 面**的真机清单（`read` 两模式 / `write` 发 `C-c` / `resize` 夹紧 / `read-only` 拒绝 / `kill` 后 `list`）**已迁至 [004-terminal-agent-surface](../004-terminal-agent-surface/tasks.md)**（2026-10-08 拆分），此处不再重复。
+| 12 | 窗口很宽 / 很窄（宿主两栏布局）| 终端画布自适应，无横向溢出 | 两种视口截图 |
