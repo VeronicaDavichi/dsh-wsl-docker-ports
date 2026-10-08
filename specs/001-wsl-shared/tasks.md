@@ -18,7 +18,7 @@
   - 备注：本次冷启动实测 **12,827 ms**（发行版 Stopped 态），与既有 11.1 s / 12.5 s 同量级；发行版名 **`Ubuntu2204`**、WSL **2.7.3.0** 均与 `stack-decision.md` 一致
 
 - [x] T0.2 确认包骨架与公开面预算 [REQ-6.2][REQ-6.4] — ✅ **2026-10-08 完成**
-  - 内容：workspace 根（`pnpm-workspace.yaml` + `package.json` + `tsconfig.base.json`）与 `packages/wsl-shared/{package.json,tsconfig.json,src/,tests/,scripts/}`；`package.json` **不带** `cordis.patch.yml`、无 `dsh-plugin` 字段；`scripts/check-exports.mjs` 写死预算 **12**
+  - 内容：workspace 根（`pnpm-workspace.yaml` + `package.json` + `tsconfig.base.json`）与 `packages/wsl-shared/{package.json,tsconfig.json,src/,tests/,scripts/}`；`package.json` **不带** `cordis.patch.yml`、无 `dsh-plugin` 字段；`scripts/check-exports.mjs` 写死预算 **12**（**运行时口径** —— 类型导出另计，2026-10-08 主人拍板，见 REQ-6.4）
   - 验证：`pnpm -C packages/wsl-shared typecheck` **干净**（tsc **7.0.2**；`tsconfig.base.json` 必须显式 `types: ["node"]` —— TS 7 不再自动纳入 `@types`）；`check:exports` → **6/12 通过**（`decodeWslOutput, parseDistroList, WslParseError, WslDistro, WslDistroState, WslVersion`）
 
 ---
@@ -84,7 +84,9 @@
 
 ### ⚠️ 口径待决（实现中被顶到，需主人点头；不阻塞已完成项）
 
-1. **导出预算计不计类型？** REQ-6.4 / T6.1 的「≤ 12 导出」本阶段实测：**运行时 3**（`createExecutor` / `listDistros` / `resolveDistro`）+ **类型 10** = 合计 **13**，已超 12。当前实现口径 = **类型不计入运行时预算**（类型运行时被擦除、不进 bundle；REQ-6.4 的意图是约束**可调用面**），阈值仍写死 12 且脚本**两个数都打印**。若坚持合计 ≤ 12，本包在 Phase 3–5 完成后**必然做不到**。
+> 第 1 条已于 **2026-10-08 由主人拍板**（见下），第 2 条仍待决。
+
+1. ~~**导出预算计不计类型？**~~ → ✅ **2026-10-08 主人拍板：类型不计入**（「那 10 个名词不算在 12 样里面」）⇒ **REQ-6.4 已订正**为「运行时导出 ≤ 12；类型导出单独统计并打印，软阈值 20」，`design.md` / `tasks.md` T0.2·T6.1 / 自检脚本注释 / README 冻结决策速览已同步。当前实测：**运行时 3/12**，类型 10（合计 13）。
 2. **`源码 ≤ 15KB` 软指标**：Phase 1+2 四个源文件合计 **21.6 KB**（含大量注释与类型），已完成部分即已超；余下三个能力（eth0 / 路径 / NAT）还会涨。
 
 ---
@@ -138,7 +140,7 @@
 
 - [ ] T6.1 [REQ-6.4] 公开面收缩
   - 内容：`src/index.ts` 只导出消费方真正需要的符号与类型
-  - 验证：自检脚本断言导出数 ≤ 12；`grep -n "export" src/index.ts` 人工复核一遍
+  - 验证：自检脚本断言**运行时**导出数 ≤ 12（类型导出单独打印，超软阈值 20 需说明，见 REQ-6.4 的订正留痕）；`grep -n "export" src/index.ts` 人工复核一遍
 
 - [ ] T6.2 [REQ-6.1] 准入标准回归（防杂物袋）
   - 验证：`grep -ri "netsh\|portproxy\|docker\|RunAs\|taskkill /PID" src/` 的命中**只允许**出现在 `exec.ts` 的兜底注释里；出现 netsh/docker 解析即判失败（应留 003）

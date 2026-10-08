@@ -13,7 +13,7 @@
       ├─ src/pathmap.ts          双向路径翻译（纯字符串）
       ├─ src/wslconfig.ts        .wslconfig 读取 + networkingMode 判定
       ├─ src/errors.ts           typed error 联合类型
-      └─ src/index.ts            公开面（≤ 12 导出，REQ-6.4）
+      └─ src/index.ts            公开面（**运行时** ≤ 12 导出，REQ-6.4；类型导出另计）
 
 依赖方向**单向**：`002 → 001`、`003 → 001`；`001 → node:` 内置。A **不**依赖任何 DSH 宿主服务，因此可以在没有宿主、没有网络的 Node 进程里跑全量测试（REQ-6.3）。
 
