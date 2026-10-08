@@ -77,7 +77,7 @@
   - 验证：`pnpm -C packages/wsl-docker-ports typecheck` + `test` + `build` 三绿并记录用例数；单文件 ≤ 400 行
 
 - [ ] T3.5 文档回写
-  - 内容：T0.1（提权链路真机结论）、T3.2（规则不变证据）→ 回写 requirements/design；并记 A-1 / A-2 的最终口径
+  - 内容：T0.1（提权链路真机结论）、T3.2（规则不变证据）→ 回写 requirements/design；并记 A-1 / A-2 的最终口径（**A-2 已于 2026-10-08 定案：卸载不自动清理**；A-1 待主人择一）
   - 验证：`grep -n "A-1\|A-2\|reset" specs/005-elevation-write-path/*.md` 可见结论
 
 - [ ] T3.6 [REQ-4.3] 红线断言：未注册 Agent 工具（来源约束的门禁）
