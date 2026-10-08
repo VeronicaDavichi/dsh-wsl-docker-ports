@@ -9,7 +9,7 @@
  *
  * ## 判定结构（REQ-1.3：不看表头文字）
  *
- * 1. 最后一列匹配 `^[12]$` 且至少 3 列 → 数据行：`名字 = 中间全部拼接`，`状态 = 倒数第二列`
+ * 1. 最后一列匹配 `^[12]$` 且至少 3 列 → 数据行：`名字` = 中间全部（**原样捕获，含连续空格**），`状态` = 倒数第二列
  * 2. 恰好 2 列且最后一列是**已知状态词** → 数据行，`version: 'unknown'`（design §3.1 的「无 VERSION 列」）
  *    - 这条同时挡掉了 `wsl -l`（无 `-v`）的两列表头：`NAME STATE` 的 `STATE` 不是状态词
  * 3. 其余（空行 / 表头 / 横幅 / 噪声）→ 跳过
@@ -56,7 +56,14 @@ const UTF16LE_BOM_0 = 0xff;
 const UTF16LE_BOM_1 = 0xfe;
 const BOM_CHAR = 0xfeff;
 const NUL = '\u0000';
-const VERSION_TOKEN = /^[12]$/;
+/**
+ * 三列数据行：末组是版本号。
+ * `name` 用**非贪婪 + 行尾锚定**捕获 → 正则回溯会把 `Ubuntu  22.04` 整段留给名字，
+ * **连续空格原样保留**（切词再拼会把它压成单空格，拿去 `-d <name>` 就找不到发行版）。
+ */
+const VERSIONED_ROW = /^(?<name>.+?)\s+(?<state>\S+)\s+(?<version>[12])$/;
+/** 两列数据行：`name` 同样原样捕获；`state` 还需过**状态词白名单**（第 2 条判定） */
+const TWO_COLUMN_ROW = /^(?<name>.+?)\s+(?<state>\S+)$/;
 const DEFAULT_MARKER = /^\s*\*/;
 
 /** 已知状态词（大小写不敏感）。**只用于第 2 条判定**，不用于识别表头 */
@@ -103,26 +110,29 @@ function normalizeState(token: string): WslDistroState {
  */
 function parseDistroLine(line: string): WslDistro | undefined {
   const isDefault = DEFAULT_MARKER.test(line);
-  const body = line.replace(/^\s*[*+]\s*/, '').trim();
+  // 只剥 WSL 真正会打的默认标记 `*`；不再顺带剥 `+`，否则会吃掉以 `+` 开头的发行版名首字符
+  const body = line.replace(/^\s*\*\s*/, '').trim();
   if (body.length === 0) return undefined;
 
-  const tokens = body.split(/\s+/);
-  const last = tokens[tokens.length - 1];
-  if (last === undefined) return undefined;
-
-  // ① 末列是版本号 → 名字取中间全部拼接（含空格的名字天然正确，REQ-1.4）
-  if (VERSION_TOKEN.test(last) && tokens.length >= 3) {
-    const stateToken = tokens[tokens.length - 2];
-    const name = tokens.slice(0, tokens.length - 2).join(' ');
-    if (name.length === 0 || stateToken === undefined) return undefined;
-    return { name, state: normalizeState(stateToken), version: last === '1' ? 1 : 2, isDefault };
+  // ① 末列是版本号 → 名字**原样捕获**（REQ-1.4：名字可含空格，且必须与 `-d` 用的名字逐字节一致）
+  const versioned = VERSIONED_ROW.exec(body);
+  const versionedGroups = versioned?.groups;
+  if (versionedGroups !== undefined) {
+    const { name, state, version } = versionedGroups;
+    if (name !== undefined && state !== undefined && version !== undefined) {
+      return { name, state: normalizeState(state), version: version === '1' ? 1 : 2, isDefault };
+    }
   }
 
   // ② 恰好两列且末列是已知状态词 → 无 VERSION 列的数据行（design §3.1）
-  const twoColumnState = tokens.length === 2 ? KNOWN_STATES.get(last.toLowerCase()) : undefined;
-  const twoColumnName = tokens[0];
+  const twoColumn = TWO_COLUMN_ROW.exec(body)?.groups;
+  const twoColumnState = twoColumn?.state;
+  const twoColumnName = twoColumn?.name;
   if (twoColumnState !== undefined && twoColumnName !== undefined) {
-    return { name: twoColumnName, state: twoColumnState, version: 'unknown', isDefault };
+    const known = KNOWN_STATES.get(twoColumnState.toLowerCase());
+    if (known !== undefined) {
+      return { name: twoColumnName, state: known, version: 'unknown', isDefault };
+    }
   }
 
   return undefined;
@@ -199,7 +209,14 @@ export function resolveDistro(
   distros: readonly WslDistro[],
   configured?: string | undefined,
 ): DistroResolution | WslSharedError {
-  const wanted = configured?.trim() ?? '';
+  // 空集**先判**（2026-10-08 复审补强）：一个发行版都没有时任何配置都不可能命中，
+  // 根因是「没装发行版」，报 `DistroNotFound` 会把用户的排查方向引到配置上。
+  // 这不违反「① 配置优先」—— 空集下配置本就无从命中。
+  if (distros.length === 0) return fail('NoDistro', '本机没有任何 WSL 发行版', { distros: [] });
+
+  // 配置被写坏（非字符串，例如 YAML 里写成数字）时按「未配置」回落：
+  // 公开面**不抛异常**是硬契约，不能在这里丢一个 `trim is not a function`
+  const wanted = typeof configured === 'string' ? configured.trim() : '';
   if (wanted.length > 0) {
     const hit = distros.find((d) => d.name.toLowerCase() === wanted.toLowerCase());
     if (hit !== undefined) return { name: hit.name, source: 'config' };
@@ -212,6 +229,7 @@ export function resolveDistro(
   if (flagged !== undefined) return { name: flagged.name, source: 'wslDefault' };
 
   const first = distros[0];
+  // 类型收窄用；逻辑上已被上面的空集判定拦下（`noUncheckedIndexedAccess` 不认 length 检查）
   if (first === undefined) return fail('NoDistro', '本机没有任何 WSL 发行版', { distros: [] });
   if (distros.length === 1) return { name: first.name, source: 'onlyOne' };
   return { name: first.name, source: 'first' };

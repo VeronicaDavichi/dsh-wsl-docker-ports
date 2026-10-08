@@ -229,3 +229,37 @@ describe('T2.3 发行版存在性守卫（REQ-2.5）', () => {
     expect(error?.distros).toEqual([]);
   });
 });
+
+describe('复审补强：名字保真与错误码（2026-10-08 自审）', () => {
+  it('名字里的**连续空格**原样保留（切词再拼会压缩，拿去 `-d <name>` 就找不到发行版）', () => {
+    const distros = parseDistroTable(`${EN_HEADER}* Ubuntu  22.04   Stopped   2\n`);
+    expect(distros[0]?.name).toBe('Ubuntu  22.04');
+    expect(distros[0]?.state).toBe('Stopped');
+    expect(distros[0]?.version).toBe(2);
+  });
+
+  it('名字以 `+` 开头时不被削掉（只剥 WSL 真正会打的 `*`）', () => {
+    const distros = parseDistroTable(`${EN_HEADER}+weird   Running   2\n`);
+    expect(distros[0]?.name).toBe('+weird');
+    expect(distros[0]?.isDefault).toBe(false);
+  });
+
+  it('两列行同样原样保留名字空格，且 version 为 unknown', () => {
+    const distros = parseDistroTable(`${EN_HEADER}My  Distro   Stopped\n`);
+    expect(distros.map((d) => d.name)).toEqual(['My  Distro']);
+    expect(distros[0]?.version).toBe('unknown');
+  });
+
+  it('一个发行版都没有时，即使配了也报 NoDistro（根因是没装，不是配置写错）', () => {
+    const result = resolveDistro([], 'Ubuntu2204');
+    expect((result as WslSharedError).code).toBe('NoDistro');
+  });
+
+  it('configured 传非字符串（配置被写坏）不抛异常，按「未配置」回落', () => {
+    const distros: WslDistro[] = [{ name: 'A', state: 'Running', version: 2, isDefault: true }];
+    expect(resolveDistro(distros, 123 as unknown as string)).toEqual({
+      name: 'A',
+      source: 'wslDefault',
+    });
+  });
+});

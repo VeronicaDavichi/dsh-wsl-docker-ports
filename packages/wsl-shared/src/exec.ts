@@ -15,12 +15,18 @@
 import { spawn as nodeSpawn } from 'node:child_process';
 import { fail, type WslSharedError } from './errors.ts';
 
-/** 执行参数（`timeoutMs` 必填，见 REQ-5.3） */
+/** 执行参数（`timeoutMs` 必填且**有界**，见 REQ-5.3 + design §4） */
 export interface ExecOptions {
+  /** 必须满足 `0 < t ≤ 2147483647`：越界在**启动前**判 `Unexpected`（见 design §4 的「假超时」） */
   readonly timeoutMs: number;
   /** `'utf16le'` / `'utf8'` / 任何 `TextDecoder` 接受的标签 */
   readonly encoding: string;
+  /** ⚠️ 不存在时命令报 `CommandNotFound`（Windows 上「找不到命令」与「工作目录不存在」同名 ENOENT） */
   readonly cwd?: string;
+  /**
+   * ⚠️ **整份替换**，不是追加（`spawn` 语义）：只想加一个变量也要写
+   * `{ ...process.env, FOO: '1' }`，否则子进程会连 `PATH` 一起丢（症状是莫名的 `CommandNotFound`）。
+   */
   readonly env?: Readonly<Record<string, string>>;
 }
 
@@ -120,6 +126,16 @@ export function createExecutor(
     // 错误对象里带**完整命令**（含可执行文件），UI 可直接展示「将执行什么」（005 REQ-3.2 口径）
     const command = [file, ...args];
 
+    // 入口校验（2026-10-08 复审补强）：`setTimeout` 对 > 2^31-1 的延时只警告并**按 1ms** 处理，
+    // `Infinity` / `NaN` / 0 / 负数同理 ⇒ 会得到「命令在 …ms 内未结束」这种**误导性假超时**。
+    // 与其给错结论，不如在启动前明确拒绝（REQ-5.3：超时必填且有界）。
+    const timeoutMs = options.timeoutMs;
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
+      return fail('Unexpected', `timeoutMs 非法：${String(timeoutMs)}（需 0 < t ≤ 2147483647）`, {
+        argv: command,
+      });
+    }
+
     let decoder: TextDecoder;
     try {
       decoder = new TextDecoder(normalizeEncodingLabel(options.encoding));
@@ -159,13 +175,15 @@ export function createExecutor(
       // 否则一旦子进程在注册阶段就同步 close/error（fake 或极端情况），
       // `finish()` 里 timer 还是 undefined → 定时器永远不会被 clear，会把事件循环拖到超时才退出。
       timer = setTimeout(() => {
-        void killTree(child, treeKillImpl);
+        // 注入的 treeKill 可能 reject（默认实现不会）⇒ 必须显式吞掉：
+        // unhandled rejection 在 Node 默认直接崩宿主进程（2026-10-08 复审补强）
+        void killTree(child, treeKillImpl).catch(() => undefined);
         finish(
-          fail('Timeout', `命令在 ${String(options.timeoutMs)}ms 内未结束，已终止：${file}`, {
+          fail('Timeout', `命令在 ${String(timeoutMs)}ms 内未结束，已终止：${file}`, {
             argv: command,
           }),
         );
-      }, options.timeoutMs);
+      }, timeoutMs);
       // 不因这个定时器本身而阻止进程退出（子进程句柄在运行时仍会让事件循环存活，超时照常触发）
       timer.unref();
 
@@ -174,10 +192,20 @@ export function createExecutor(
 
       child.on('error', (error) => {
         const code = (error as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT') {
+          finish(fail('Unexpected', `命令执行失败：${describe(error)}`, { argv: command }));
+          return;
+        }
+        // Windows 上 **cwd 不存在**时 spawn 报的同样是 ENOENT ⇒ 设了 cwd 就必须把两种可能都写出来，
+        // 否则用户会去查一个明明存在的 wsl.exe（2026-10-08 复审补强）
         finish(
-          code === 'ENOENT'
-            ? fail('CommandNotFound', `找不到命令：${file}`, { argv: command })
-            : fail('Unexpected', `命令执行失败：${describe(error)}`, { argv: command }),
+          fail(
+            'CommandNotFound',
+            options.cwd === undefined
+              ? `找不到命令：${file}`
+              : `找不到命令或工作目录：${file}（cwd=${options.cwd}）`,
+            { argv: command },
+          ),
         );
       });
 
@@ -189,11 +217,15 @@ export function createExecutor(
           return;
         }
         finish(
-          fail('NonZeroExit', `命令以退出码 ${String(code)} 结束：${file}`, {
-            argv: command,
-            exitCode: code ?? -1,
-            stderr,
-          }),
+          fail(
+            'NonZeroExit',
+            // `code === null` = 被外部终止（任务管理器 / 我们自己的 taskkill / 宿主杀），
+            // 原文案会写成「退出码 null」，而 003 的 UI 是原样显示的（2026-10-08 复审补强）
+            code === null
+              ? `命令被外部终止（无退出码）：${file}`
+              : `命令以退出码 ${String(code)} 结束：${file}`,
+            { argv: command, exitCode: code ?? -1, stderr },
+          ),
         );
       });
     });

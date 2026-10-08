@@ -273,3 +273,83 @@ describe('T1.5 可注入执行器', () => {
     expect(outcome.distros[0]?.name).toBe('Ubuntu2204');
   });
 });
+
+describe('复审补强：非法 timeoutMs / 终止文案 / 注入实现炸掉（2026-10-08 自审）', () => {
+  const badTimeouts: [string, number][] = [
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['NaN', Number.NaN],
+    ['0', 0],
+    ['负数', -1],
+    ['超出 setTimeout 上限', 2_147_483_648],
+  ];
+
+  it.each(badTimeouts)(
+    'timeoutMs = %s → 启动前判 Unexpected，且**零 spawn**（回归：Node 对超上限延时按 1ms 处理 ⇒ 假超时）',
+    async (_label, bad) => {
+      const fake = fakeSpawn();
+      const exec = createExecutor(fake.spawn, neverKill);
+      const result = await exec('wsl.exe', ['-l'], { encoding: 'utf8', timeoutMs: bad });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.code).toBe('Unexpected');
+      expect(result.message).toContain('timeoutMs');
+      expect(fake.calls).toHaveLength(0);
+    },
+  );
+
+  it('注入的 treeKill reject 时不产生 unhandled rejection（会崩宿主进程）', async () => {
+    const fake = fakeSpawn(4321);
+    const boom: TreeKillLike = async () => {
+      throw new Error('treeKill 炸了');
+    };
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => void unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const result = await createExecutor(fake.spawn, boom)('wsl.exe', ['-l'], {
+        encoding: 'utf8',
+        timeoutMs: 10,
+      });
+      // 让微任务清空：若实现退回 `void killTree(...)`（无 catch），这里就会捕获到
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(result.ok).toBe(false);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
+  it('ENOENT 且设了 cwd → 文案同时点出命令与工作目录（Windows 上两者同名）', async () => {
+    const fake = fakeSpawn();
+    const exec = createExecutor(fake.spawn, neverKill);
+    const pending = exec('wsl.exe', ['-l'], {
+      encoding: 'utf8',
+      timeoutMs: 1000,
+      cwd: 'E:\\不存在的目录',
+    });
+    fake.emitError('ENOENT');
+    const result = await pending;
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('CommandNotFound');
+    expect(result.message).toContain('wsl.exe');
+    expect(result.message).toContain('E:\\不存在的目录');
+  });
+
+  it('close(null)（被外部终止）→ 文案不再出现「退出码 null」，exitCode 为 -1', async () => {
+    const fake = fakeSpawn();
+    const exec = createExecutor(fake.spawn, neverKill);
+    const pending = exec('wsl.exe', ['-l'], { encoding: 'utf8', timeoutMs: 1000 });
+    fake.emitClose(null);
+    const result = await pending;
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('NonZeroExit');
+    expect(result.exitCode).toBe(-1);
+    expect(result.message).not.toContain('null');
+    expect(result.message).toContain('外部终止');
+  });
+});

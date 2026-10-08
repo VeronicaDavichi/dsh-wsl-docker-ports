@@ -98,11 +98,13 @@
 ## 4. 执行器（`exec.ts`）
 
 - `spawn(file, argv, { cwd, env, windowsHide: true })`，`stdio: 'pipe'`；**无 shell**（REQ-5.2）。
-- 收集 `stdout`/`stderr` 为 `Buffer`，结束后按 `options.encoding` 解码（REQ-5.5）。
-- 超时：`setTimeout(timeoutMs)` → 先 `child.kill()`，再兜底 `taskkill /PID <pid> /T /F`（Windows 无 POSIX 进程组信号，`wsl.exe` 会派生 `wslhost`/发行版进程）。
-  > **待验证（T2.3）**：`taskkill` 是否真能回收 `wsl.exe` 拉起的发行版侧进程；若不能，降级为「杀 `wsl.exe` + 在 UI 明示可能有残留」。
-- 事件：`error` → `CommandNotFound`（`ENOENT`）或 `Unexpected`；`close` → 组装结果。
-- 可注入：`createExecutor(spawnImpl)` 供测试传 fake（REQ-6.3）。
+- `env` 是**整份替换**（`spawn` 语义），不是追加：调用方要合并必须自己展开 `process.env`（否则连 `PATH` 一起丢，症状是莫名其妙的 `CommandNotFound`）。
+- 收集 `stdout`/`stderr` 为 `Buffer`，结束后按 `options.encoding` 解码（REQ-5.5）；**先拼 Buffer 再一次性解码** —— 逐 chunk 解码会把多字节字符从边界切开成乱码。
+- `timeoutMs` **入口校验** `0 < t ≤ 2147483647`，越界在**启动前**判 `Unexpected`：`setTimeout` 对超上限延时只警告并**按 1ms** 处理（`Infinity` / `NaN` / 0 / 负数同理）⇒ 否则会给出「命令在 …ms 内未结束」这种**误导性假超时**。
+- 超时：`setTimeout(timeoutMs)` → 先 `child.kill()`，再兜底 `taskkill /PID <pid> /T /F`（Windows 无 POSIX 进程组信号，`wsl.exe` 会派生 `wslhost`/发行版进程）；**定时器必须先建立再挂事件处理器**。
+  > **待验证（T1.4）**：`taskkill` 是否真能回收 `wsl.exe` 拉起的发行版侧进程；若不能，降级为「杀 `wsl.exe` + 在 UI 明示可能有残留」。
+- 事件：`error` → `CommandNotFound`（`ENOENT`）或 `Unexpected`；**设了 `cwd` 时 ENOENT 文案必须同时点出「命令或工作目录」**（Windows 上两者同名，只说命令会把人引向错误的排查方向）。`close` → 组装结果；`code === null`（被外部终止）用单独文案，`exitCode` 记 `-1`。
+- 可注入：`createExecutor(spawnImpl, treeKillImpl)` 供测试传 fake（REQ-6.3）；**注入实现的 rejection 必须显式吞掉**（`void … .catch()`），否则 unhandled rejection 在 Node 默认直接崩宿主。
 
 ---
 
@@ -153,3 +155,6 @@
 5. **不做 IPv6**：portproxy 的 v4tov4 是本项目目标；`netsh` 解析（003）也只覆盖 v4tov4。
 6. **两列 + 本地化状态词的行会被跳过**（`parseDistroTable` 的判定②只认英文状态词白名单）：宁可漏、不可编。目标形态是 `wsl -l -v`（三列带版本），无 `-v` 的两列输出只作容错。
 7. **超时定时器必须在挂事件处理器之前建立**：否则子进程若在注册阶段**同步** close，`finish()` 里 timer 尚未赋值 ⇒ 定时器永不清除、事件循环被拖到超时才退出（实测症状：契约层 20,958ms → 修复后 129ms）。回归用例在 `tests/unit/exec.test.ts`。
+8. **`env` 是整份替换**（`spawn` 语义）：合并环境变量是调用方的责任（`{ ...process.env, FOO: '1' }`），本包不做隐式合并 —— 隐含合并会让「传了什么环境」变得不可推理。
+9. **stdout/stderr 无大小上限**：`spawn` 不像 `execFile` 有 `maxBuffer`，输出全进内存。本包自己的命令（`wsl -l -v` / `netsh … show v4tov4`）输出都有界，故**不加** `maxBytes` 选项（不为假想需求膨胀公开面）；将来若用于「docker 日志」这类无界输出，**必须先加限流**。
+10. **PID 复用窗口**：`child.kill()` 与兜底 `taskkill /PID` 之间理论上 PID 可被系统回收给别的进程（毫秒级窗口，Windows 的常见风险）；不额外加防护，记录在案。
