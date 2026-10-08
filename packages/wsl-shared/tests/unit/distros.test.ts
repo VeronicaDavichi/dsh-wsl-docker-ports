@@ -12,7 +12,7 @@ import {
   resolveDistro,
   type WslDistro,
 } from '../../src/distros.ts';
-import type { WslSharedError } from '../../src/errors.ts';
+import { isWslFailure } from '../../src/errors.ts';
 
 const EN_HEADER = '  NAME            STATE           VERSION\n';
 const ZH_HEADER = '  名称            状态            版本\n';
@@ -153,48 +153,65 @@ describe('T2.4 目标发行版解析（REQ-1.7 / D-4）', () => {
   ];
 
   it('③ 唯一发行版（且没被 `*` 标记）→ source:onlyOne（一个就是默认，不追问）', () => {
-    expect(resolveDistro(onlyNoFlag)).toEqual({ name: 'Ubuntu2204', source: 'onlyOne' });
+    expect(resolveDistro(onlyNoFlag)).toEqual({ ok: true, name: 'Ubuntu2204', source: 'onlyOne' });
   });
 
   it('② 优先于 ③：唯一但带 `*` → source:wslDefault（优先级顺序即 REQ-1.7 的枚举顺序）', () => {
     expect(
       resolveDistro([{ name: 'Ubuntu2204', state: 'Stopped', version: 2, isDefault: true }]),
-    ).toEqual({ name: 'Ubuntu2204', source: 'wslDefault' });
+    ).toEqual({ ok: true, name: 'Ubuntu2204', source: 'wslDefault' });
   });
 
   it('② 无配置 + 有 `*` → source:wslDefault', () => {
-    expect(resolveDistro(multi)).toEqual({ name: 'Debian', source: 'wslDefault' });
+    expect(resolveDistro(multi)).toEqual({ ok: true, name: 'Debian', source: 'wslDefault' });
   });
 
   it('① 配置存在 → source:config，且优先于 `*`', () => {
-    expect(resolveDistro(multi, 'Ubuntu2204')).toEqual({ name: 'Ubuntu2204', source: 'config' });
+    expect(resolveDistro(multi, 'Ubuntu2204')).toEqual({
+      ok: true,
+      name: 'Ubuntu2204',
+      source: 'config',
+    });
   });
 
   it('① 配置大小写不敏感，回填**列表里的真名**', () => {
-    expect(resolveDistro(multi, 'ubuntu2204')).toEqual({ name: 'Ubuntu2204', source: 'config' });
+    expect(resolveDistro(multi, 'ubuntu2204')).toEqual({
+      ok: true,
+      name: 'Ubuntu2204',
+      source: 'config',
+    });
   });
 
   it('④ 无配置 + 多个 + 无 `*` → source:first（列表首项）', () => {
-    expect(resolveDistro(noFlag)).toEqual({ name: 'Ubuntu2204', source: 'first' });
+    expect(resolveDistro(noFlag)).toEqual({ ok: true, name: 'Ubuntu2204', source: 'first' });
+  });
+
+  it('成功态带 `ok: true` ⇒ `isWslFailure()` 能收窄联合（Phase 4 自审补齐的一致性）', () => {
+    const hit = resolveDistro(onlyNoFlag);
+    expect(isWslFailure(hit)).toBe(false);
+    if (isWslFailure(hit)) throw new Error('成功态不该被收窄成失败');
+    expect(hit.name).toBe('Ubuntu2204'); // 收窄后可直接取字段（编译期保证，无需断言/强转）
+    expect(isWslFailure(resolveDistro([], 'x'))).toBe(true);
   });
 
   it('⑤ 空列表 → NoDistro（SHALL NOT 返回空名）', () => {
     const result = resolveDistro([]);
-    expect('ok' in result && result.ok === false).toBe(true);
-    if (!('ok' in result)) return;
-    const error = result as WslSharedError;
-    expect(error.code).toBe('NoDistro');
-    expect(error.message.length).toBeGreaterThan(0);
+    expect(isWslFailure(result)).toBe(true);
+    if (!isWslFailure(result)) throw new Error('空列表必须失败');
+    expect(result.code).toBe('NoDistro');
+    expect(result.message.length).toBeGreaterThan(0);
   });
 
   it('配置了但没装 → DistroNotFound 且带可用发行版名列表（不静默换一个）', () => {
     const result = resolveDistro(multi, 'Fedora');
-    expect('code' in result ? result.code : '').toBe('DistroNotFound');
-    expect((result as WslSharedError).distros).toEqual(['Ubuntu2204', 'Debian']);
+    expect(isWslFailure(result)).toBe(true);
+    if (!isWslFailure(result)) throw new Error('未安装的配置必须失败');
+    expect(result.code).toBe('DistroNotFound');
+    expect(result.distros).toEqual(['Ubuntu2204', 'Debian']);
   });
 
   it('配置为空串/纯空白 → 视为未配置（走后续优先级）', () => {
-    expect(resolveDistro(onlyNoFlag, '   ')).toEqual({ name: 'Ubuntu2204', source: 'onlyOne' });
+    expect(resolveDistro(onlyNoFlag, '   ')).toEqual({ ok: true, name: 'Ubuntu2204', source: 'onlyOne' });
   });
 
   it('⑥ 纯函数性：源码里没有 `set-default`，也没有 spawn/文件系统调用', () => {
@@ -252,12 +269,15 @@ describe('复审补强：名字保真与错误码（2026-10-08 自审）', () =>
 
   it('一个发行版都没有时，即使配了也报 NoDistro（根因是没装，不是配置写错）', () => {
     const result = resolveDistro([], 'Ubuntu2204');
-    expect((result as WslSharedError).code).toBe('NoDistro');
+    expect(isWslFailure(result)).toBe(true);
+    if (!isWslFailure(result)) throw new Error('空列表必须失败');
+    expect(result.code).toBe('NoDistro');
   });
 
   it('configured 传非字符串（配置被写坏）不抛异常，按「未配置」回落', () => {
     const distros: WslDistro[] = [{ name: 'A', state: 'Running', version: 2, isDefault: true }];
     expect(resolveDistro(distros, 123 as unknown as string)).toEqual({
+      ok: true,
       name: 'A',
       source: 'wslDefault',
     });

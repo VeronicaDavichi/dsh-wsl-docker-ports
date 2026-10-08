@@ -44,10 +44,22 @@ export interface WslDistro {
   readonly isDefault: boolean;
 }
 
-/** 目标发行版的**来源**（REQ-1.7：解析结果必须能解释「为什么是它」） */
+/**
+ * 目标发行版的**来源**（REQ-1.7：解析结果必须能解释「为什么是它」）
+ */
 export type DistroSource = 'config' | 'wslDefault' | 'onlyOne' | 'first';
 
+/**
+ * 解析结果的成功态。
+ *
+ * ⚠️ **2026-10-08 Phase 4 自审补 `ok: true`**：`errors.ts` 声明的口径是「所有失败都是 `ok:false`
+ * 的返回值，与**成功态**构成判别联合」，而本类型原先**没有** `ok` 字段 ⇒ `isWslFailure()`
+ * （形参要求 `{ ok: boolean }`）**对这个联合用不了**，消费者只能写 `'code' in r`，与
+ * `ExecResult` / `DistroExecOutcome` / `Eth0Outcome` / `PathMapping` 四种成功态不一致。
+ * 003/005 代码尚未开工 ⇒ 现在补齐零迁移成本。
+ */
 export interface DistroResolution {
+  readonly ok: true;
   readonly name: string;
   readonly source: DistroSource;
 }
@@ -219,20 +231,20 @@ export function resolveDistro(
   const wanted = typeof configured === 'string' ? configured.trim() : '';
   if (wanted.length > 0) {
     const hit = distros.find((d) => d.name.toLowerCase() === wanted.toLowerCase());
-    if (hit !== undefined) return { name: hit.name, source: 'config' };
+    if (hit !== undefined) return { ok: true, name: hit.name, source: 'config' };
     return fail('DistroNotFound', `配置的发行版「${wanted}」不在已安装列表中`, {
       distros: distros.map((d) => d.name),
     });
   }
 
   const flagged = distros.find((d) => d.isDefault);
-  if (flagged !== undefined) return { name: flagged.name, source: 'wslDefault' };
+  if (flagged !== undefined) return { ok: true, name: flagged.name, source: 'wslDefault' };
 
   const first = distros[0];
   // 类型收窄用；逻辑上已被上面的空集判定拦下（`noUncheckedIndexedAccess` 不认 length 检查）
   if (first === undefined) return fail('NoDistro', '本机没有任何 WSL 发行版', { distros: [] });
-  if (distros.length === 1) return { name: first.name, source: 'onlyOne' };
-  return { name: first.name, source: 'first' };
+  if (distros.length === 1) return { ok: true, name: first.name, source: 'onlyOne' };
+  return { ok: true, name: first.name, source: 'first' };
 }
 
 /**
