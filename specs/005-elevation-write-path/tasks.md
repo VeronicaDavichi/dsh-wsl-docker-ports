@@ -140,3 +140,18 @@
 | 7 | Agent 触发 + `passby` | **不静默执行**：降级为 `ask`（先应用内确认，展示命令原文）| 日志 + 截图 |
 | 8 | 半成品防护 | 人为让防火墙步骤失败 → portproxy 被回滚、报告「未改」、无残留 | 人工 UAC + 快照 |
 | 9 | 卸载后再看规则 | 规则**零变化**；清理清单可复制；临时文件归零 | 快照 + `%TEMP%` |
+
+### ✅ 2026-10-09 真机核验（提权写路径 · 完整报告在 %TEMP%\uac-verify-20261009-125427\REPORT.md）
+
+**结论句（代理原文）**：本机提权链实测走的是 **native（不是 gsudo）**；`999` / `cancelled` 两条失败分支**本机不可复现**；**gsudo stdio 回传通道经注入验证为「成立」**；**全程无需任何人类交互**。
+
+- **适用范围**：写入传输未接线（`plugin.ts` 只注册只读快照路由；实测 `GET /…/snapshot` 200、`/…/` 404、`POST|PUT|DELETE /…/snapshot` 405、`/write`·`/apply`·`/plan`·`/elevation` 全 404）⇒ 本轮**不经插件/UI/HTTP**，直接 import 已构建 `lib/` 驱动。
+- **逐门**：`elevationPolicy=none` ⇒ `status=disabled`、六个 spy 全 0、文案可读（**零弹窗**）；未声明端口 5173 ⇒ `add/remove/fix` 均 `port-not-managed`、零步 ⇒ `no-actions`；区间 `60000-60002` 不展开但逐端口受管、各规划**恰好 1 步**、`60003` blocked；`scope=lan` **只读**计划 2 步（逐端口 `0.0.0.0` + `New-NetFirewallRule … -LocalPort 59999 -Profile Any -Group "dsh-wsl-docker-ports"`，**无通配/无全量放行**，`-Profile Any` 含 Public 记事实）**一个字节未写**。
+- **REQ-2.2 真机正向事实**：真实输入（`localhostForwarding=true`）⇒ `ok=true steps=0 notes=['无需 portproxy 规则（WSL 自带的 localhost 转发已开启，NAT 缺省）']` ⇒ **恒 0 步、恒不提权**（不是「未验」）。
+- **真写（native 生产链 + 伪造 `localhostForwarding:false`）**：`status:ok exitCode:0 backend:"native" steps:[{portproxy-add,ok:true}] cleanup:{scriptRemoved:true,outRemoved:true}`、3261 ms；`netsh` 新增**仅** `127.0.0.1 59999 → 172.20.201.152 59999`。
+- **gsudo 通道（注入 `probeBackend`，gsudo 本体/真 UAC/真 netsh 均为真）**：写 2058 ms、删 1828 ms，均 `status:ok exitCode:0 backend:"gsudo"`；stdout 原文含 `{"action":"remove",…,"steps":[{"ok":true,"stderr":"","name":"portproxy-delete"}],"port":59999}`、`stderr=""` ⇒ **stdio 回传成立**。
+- **红线（逐字节）**：`before` = 1109 B sha256 `B9D38664…D1056D` → 写入后 1160 B → **两轮（native + gsudo）真写真删后全部回到 `B9D38664…D1056D`**；`[IO.File]::ReadAllBytes` 全字节比对 True；**19 条内容+集合+顺序逐字节不变**。防火墙：`*dsh-wsl*` 规则 0 条、引用 59999 的 0 条 ⇒ 本路径**不写防火墙**；回滚用**插件自身能力** `action:remove` 完成。
+- **不可复现项（含条件）**：用户点「否」取消（native ⇒ `cancelled`）❌ 条件 = `ConsentPromptBehaviorAdmin != 0`；gsudo **999** ⇒ `elevation-failed` ❌ 条件 = 同上**且**先修 `backend.ts:68`；`looksLikeUacRejection` 本地化取消文案匹配 ❌ 同上；eth0 漂移 / `docker ps` 解析 ⚪ 未验（发行版 Stopped，快照如实 `distro-not-running`、**未自动启动**，符合设计）；`scope=lan` 真写 ⚪ **刻意未验**（已明令禁止）。
+- **同类判据审计**：🔴 有风险 = gsudo status 解析（§上面）；⚠️ 有风险但本机不可验 = `looksLikeUacRejection` 的本地化取消文案（不匹配会落到 `out-file-missing` 而非 `cancelled`）；✅ 无风险 = `where.exe` basename 判据（**确实按路径/产品名，不按命令名 `sudo`**）、`netsh` 表格解析、`wsl -l -v`；✅ 非缺陷 = `script.ts` 的 `beforeRules/afterRules` 恒 `[]`（契约保留字段，权威快照在主机侧）。
+- **收尾**：`--dump-config` BEFORE vs AFTER **47075/47075 字节逐字节相同、差异 0 行**；5 个 profile 文件还原、残留软链已删、`install --frozen-lockfile` exit 0；代理起的实例 PID 43176/44004 已停、43199 无监听；**主人 DSH 进程 17168/28228/31736/39088/39556 存活且 StartTime 未变**、`desktop` profile mtime 早于会话开始 ⇒ 未被触碰；`netsh` 终态 19 条 sha256 与开工前一致。
+- **三条待办**：① `elevationAvailable` 恒 false（`plugin.ts:251`）⇒ UI 置灰而机器其实能提权；② `backend.ts:68` 正则 ⇒ gsudo 分支在本机永远走不到、提权链静默退化为 native（建议改用 `gsudo status --json`，实测 `"CacheAvailable":false`）；③ **REQ-4.1 立论需重审**（本机 UAC 不构成人类闸门）。
