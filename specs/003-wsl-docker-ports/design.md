@@ -25,7 +25,7 @@
 **属 003 的层**：`read-path`（docker / netsh / `.wslconfig` 解析）· `diff-engine`（五态纯函数）· `ui`（容器表 / 端口表 / 外部规则清单 / 端口声明 / NAT 门 / UDP 提示）。
 **属 [005](../005-elevation-write-path/design.md) 的层**：上图里的 `ownership` 与 `elevation`（**2026-10-08 拆出**；同包，代码在 `src/write/` 与 `src/elevate/`）。**提权辅助留在本包**（只有本包消费，符合 001 的准入标准 REQ-6.1）；`netsh` 与 `docker` 的**解析**在 003，**写规则与提权**在 005。
 
-**客户端半（Phase 5，2026-10-09 定）**：右栏页 kind = **`wslDockerPorts`**（kind 是**开放字符串**，判据 = 不与官方已用 **9 个**重名 ✅；官方 `terminal` 页自用 `priority: "builtin"`）、`priority` **留空**（= 默认 `extension` 档）、tab id = 包名 `dsh-wsl-docker-ports`、两个 **keyed seat** = `sidebar.right.pane.tab` / `.title`（key = `definition.id`）；清单三件 = `dsh.client` + `exports['./client']` + `dsh.bundle.patch`（**同一个 patch 行**同时挂宿主半与浏览器半，行 id = 包名）；**无重依赖 ⇒ 单产物、不需要懒加载 chunk**；配置写回走 `remote.settings.update/describe`（**只改配置、零提权调用**）；external（`react` / `react-dom` / `@deepseek-ai/*`）**全部声明为 devDependencies**。完整契约与逐行证据 = [`client-contract.md`](../../client-contract.md)（§P 优先）。
+**客户端半（Phase 5，2026-10-09 定）**：右栏页 kind = **`wslDockerPorts`**（kind 是**开放字符串**，判据 = 不与官方已用 **9 个**重名 ✅；官方 `terminal` 页自用 `priority: "builtin"`）、`priority` **留空**（= 默认 `extension` 档）、tab id = 包名 `dsh-wsl-docker-ports`、两个 **keyed seat** = `sidebar.right.pane.tab` / `.title`（key = `definition.id`）；清单三件 = `dsh.client` + `exports['./client']`（→ `./lib/client.js`，**文件名必须恰好是 `client.js`**，宿主 `chunkUrl()` 会断言，不匹配直接 throw）+ `dsh.bundle.patch`（**同一个 patch 行**同时挂宿主半与浏览器半，行 id = 包名）；**无重依赖 ⇒ 单产物、不需要懒加载 chunk**；配置写回走 `remote.settings.update/describe`（**只改配置、零提权调用**）；external（`react` / `react-dom` / `@deepseek-ai/*`）**全部声明为 devDependencies**。完整契约与逐行证据 = [`client-contract.md`](../../client-contract.md)（§P 优先）。
 
 ---
 

@@ -195,6 +195,29 @@ register(definition: SidebarRightTabDefinition): () => void;   // 幂等 dispose
 - ⇒ **判据改口**：可证的只有「**0.1.7-rc.2 有 9 个，且 `managedTerminal` 未被任何官方包占用 ⇒ 仍安全**」；「官方恰好 6 个」**无实物支撑**，该数字从规格里撤下（真机 `sidebarRightTabs.entries()` 打印后再写死）。
 - ⚠️ 注意第 6 项：官方**已经有一个 `terminal` kind**（`dsh-client-ui-sidebar-terminal`）⇒ 我们选 `managedTerminal` 是对的（**不抢占**官方 kind），且应在设计里写明「与官方 `terminal` 区分」的理由。
 
+### P3 📌 chunk 的**命名与取用规则**（2026-10-09 二次取证，逐字）
+
+**证据源**：官方 `deepseek-ai-dsh-client-modules-0.1.7-rc.2.tgz`（宿主侧 `lib/index.js`、浏览器侧 `lib/client.js`）。
+
+宿主侧 `lib/index.js`：
+- `const CLIENT_CHUNK = /^client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js$/;` 注释逐字 *"Published package-local client chunk names **accepted by the on-demand route**."*
+- `clientExportOf(pkgName, exportsField)`：`exports["./client"]` 必须是**字符串**或**带字符串 `default` 的对象**，否则 `throw new Error('client-modules: … must be a string or an object with a string default')`。
+
+浏览器侧 `lib/client.js`：
+- `function chunkId(ownerId, fileName) { return `${ownerId}/${fileName}`; }`
+- `function chunkUrl(row, fileName, rev) { const url = atRevision(row.url, rev); const resourceStart = url.indexOf("/??"); const revisionStart = url.indexOf("&rev=", resourceStart + 3); if ((resourceStart < 0 || revisionStart < 0 ? void 0 : url.slice(resourceStart + 3, revisionStart)) !== `${row.id}/client.js`) throw new Error(`client-modules: cannot resolve chunk ${JSON.stringify(fileName)} from bundle URL ${url}`); return `${url.slice(0, resourceStart)}/${row.id}/${fileName}?${url.slice(revisionStart + 1)}`; }`
+
+**⇒ 推导出的硬要求（我们的构建必须满足，否则运行时才炸）**
+1. **主 bundle 的文件名必须恰好是 `client.js`** —— `chunkUrl` 会断言 URL 的资源段等于 `<rowId>/client.js`，不匹配**直接 throw** ⇒ 我们把 `exports["./client"]` 指向 `./lib/client.js` ✅ 正确。
+2. **chunk 必须与 `client.js` 同目录（兄弟文件）**，且文件名**必须匹配 `client.<name>.js`**（`<name>` 首字符须为字母/数字）⇒ `lib/client.terminal.js` ✅ 合规；叫 `terminal-chunk.js` ❌ 会被按需路由拒掉。
+3. 运行时 chunk URL = **`<base>/<rowId>/<fileName>?rev=<rev>`**（宿主**按需路由**）⇒ **chunk 不出现在 `exports` 里是正常的**，不是遗漏。
+4. `require.async("./client.terminal.js")` 的实参就是**兄弟文件名**（URL 由 loader 自己拼），**不要**写绝对/带目录的路径。
+5. `exports["./client"]` 形状错会**抛错**（不是静默）⇒ 我们的 `{ "types": …, "default": "./lib/client.js" }` ✅ 合规（字符串形式也合规）。
+
+**新增未验项**：**Z10** 0.2.0-rc.2 是否仍用同一套 `??` 单资源 URL + `&rev=` 结构（真机看一次实际请求即可）；**Z11** 浏览器侧注释提到 *"the runtime mirror of the **build-time bundle purity gate**"* ⇒ 宿主可能另有**构建期 bundle 纯净性门**（未找到实现），真机/构建时留意。
+
+---
+
 ### P2 🔴 **已撤回**：原判「独立懒加载 chunk 是逆契约」—— **错**（同日二次取证推翻）
 
 > **本节撤回原 §P2 的结论，并覆盖 §0-11 / §E14 / §Z5 的对应条目。** 下面的机制才是契约。
