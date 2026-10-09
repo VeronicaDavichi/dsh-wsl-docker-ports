@@ -11,8 +11,9 @@ tags:
 - ui
 depends_on:
 - 001-wsl-shared
+- 006-path-translation
 created_at: 2026-10-08T09:43:13.130539300Z
-updated_at: 2026-10-08T13:23:04.496516100Z
+updated_at: 2026-10-09T02:03:25.257242900Z
 transitions:
 - status: planned
   at: 2026-10-08T13:23:04.496516100Z
@@ -24,7 +25,7 @@ transitions:
 **优先级**: high
 **包名**: `dsh-terminal-profiles`（**插件包**）
 **位置**: `packages/terminal-profiles/`
-**依赖**: [001-wsl-shared](../001-wsl-shared/README.md)（`depends_on`）—— 用它的发行版发现生成 `cwdLinux`；**路径翻译自 2026-10-09 起属 [006-path-translation](../006-path-translation/README.md)**（该边**待补**：本机 `leanspec rel` / `link` 未迁移，MCP `update` 不含 `depends_on` ⇒ 见 `stack-decision.md` 变更记录的已知缺口）
+**依赖**: [001-wsl-shared](../001-wsl-shared/README.md) + [006-path-translation](../006-path-translation/README.md)（均为 `depends_on`）—— 用 001 的发行版发现生成 `cwdLinux`；**路径翻译自 2026-10-09 起属 006**（006 自身 `depends_on` 001 ⇒ 本包的路径翻译能力经 006 承接）。⚠️ **006 这条边是 2026-10-09 手工补的**：本机 CLI `rel` / `link` 未迁移、MCP `update` 不含 `depends_on` ⇒ **无任何工具路径**，经主人授权只在该列表加一行（其余字段一字未动），并经 MCP `get_dependencies` 复核生效；留痕见 `stack-decision.md` 变更记录
 
 ---
 

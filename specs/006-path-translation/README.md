@@ -9,7 +9,7 @@ tags:
 depends_on:
 - 001-wsl-shared
 created_at: 2026-10-09T00:36:59.345668800Z
-updated_at: 2026-10-09T00:40:42.678866600Z
+updated_at: 2026-10-09T02:03:20.776006100Z
 completed_at: 2026-10-09T00:40:42.678866600Z
 transitions:
 - status: complete
@@ -87,4 +87,4 @@ transitions:
 
 1. 主人复核本 Spec，重点：**REQ-3.4「不猜盘符」** 与 **REQ-3.5 的保守拒绝面**。
 2. **无阻塞项**：代码 + **87 条**单测已全绿（`pnpm -C packages/wsl-shared test`）⇒ 已转 `complete`（2026-10-09）。
-3. ⚠️ 唯一未闭环项：**`002 → 006` 的 `depends_on` 边待补**（本机 CLI 无工具路径，见 `AGENTS.md`「本机 CLI 现状」）。
+3. ✅ **无未闭环项**：`002 → 006` 的 `depends_on` 边**已于 2026-10-09 手工补上**（无工具路径，经主人授权，见 `AGENTS.md`「本机 CLI 现状」）。

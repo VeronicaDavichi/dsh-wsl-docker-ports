@@ -27,11 +27,17 @@
  * 故四道防呆全部会 `exit 1`：① 正控样本必须被命中 ② 注释里的词必须**不**被命中
  * ③ `keepLines` 必须保行号（否则报出的行号是错的）④ 源文件列表不得为空。
  *
- * 另有 REQ-6.2 / NFR-1 的三条**包形态**断言（非插件包 + 零运行时依赖），见文件末。
+ * ## 范围（2026-10-09 主人裁定后收窄）
+ *
+ * 本脚本**只做一件事**：REQ-6.1 的越界词汇扫描。初版曾顺手加「非插件包形态（REQ-6.2）」
+ * 与「零运行时依赖（NFR-1）」两条断言，主人 2026-10-09 指示**删除** —— 理由：脚本应严格
+ * 对齐 T6.2 的字面判据，多出来的检查会让「门的口径」与 Spec 任务口径悄悄分叉。
+ * 那两条需求改由人工复核（REQ-6.2 看有无 `cordis.patch.yml` / `dsh` 字段；NFR-1 看
+ * `dependencies` 是否为空），不再假装有自动门。
  *
  * 用途：`pnpm -C packages/wsl-shared check:scope`（根 `pnpm check:scope` 会递归）。
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stripComments } from './strip-comments.mjs';
@@ -138,20 +144,3 @@ if (violations.length > 0) {
   process.exit(1);
 }
 console.log('  越界命中 0 处 ✓');
-
-// ── REQ-6.2：非插件包形态（不得注册任何宿主能力）─────────────────────────
-if (existsSync(join(pkgDir, 'cordis.patch.yml'))) {
-  fail('本包是**非插件包**（REQ-6.2），不得带 cordis.patch.yml');
-}
-const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'));
-if (pkg.dsh !== undefined) {
-  fail('本包不得有 `dsh` 字段（那是插件包的清单约定，REQ-6.2）');
-}
-console.log('✓ check-scope: 非插件包形态 ✓（无 cordis.patch.yml、package.json 无 dsh 字段）');
-
-// ── NFR-1：零运行时依赖（离线可用）───────────────────────────────────────
-const runtimeDeps = Object.keys(pkg.dependencies ?? {});
-if (runtimeDeps.length > 0) {
-  fail(`NFR-1 零运行时依赖：dependencies 非空 → ${runtimeDeps.join(', ')}`);
-}
-console.log('✓ check-scope: 零运行时依赖 ✓（dependencies 为空）');

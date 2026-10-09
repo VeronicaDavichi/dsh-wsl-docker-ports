@@ -41,7 +41,7 @@
 | **No nested code blocks**           | Use indentation instead                                                                                               |
 | **导出预算只计运行时导出**          | 类型导出（`export type` / `interface`）编译后被完全擦除 ⇒ **不计入**「≤ 12 导出」的预算，由自检脚本单独统计并打印。类型总量的**软阈值 25**（**2026-10-08 主人同日二次拍板 20 → 25**：Phase 4 后实测运行时 7/12 ✅、类型 15 —— 而 15 个类型逐个都有消费方，故提阈值留痕而非砍类型/拆包）。**2026-10-08 主人拍板**；SSoT = [001 requirements.md](./specs/001-wsl-shared/requirements.md) 的 REQ-6.4（含两次订正留痕）|
 | **代码体积不算注释**                | 体积 = **去注释、去空行**后的 UTF-8 字节数（≤ **40KB** 是**软指标**，超限只告警，不静默放过；判定与告警**按字节**，不用四舍五入后的 KB）；单文件 ≤ 400 行是 SHALL、按**原始**行数算（可读性指标，与体积故意分开）。**2026-10-08 主人三次拍板：15KB → 25KB → 40KB**（末次原话：「**40KB，再超了就是你的代码有问题或者 spec 拆分有问题**」⇒ 40KB 是宽裕到没有借口的额度，**此后不许再抬阈值**：告警先自证不是代码膨胀、也不是 Spec 拆分不当）。复算 `pnpm check:size`，口径 SSoT = [001 tasks.md](./specs/001-wsl-shared/tasks.md) 的校验门行 |
-| **指标必须可复算**                  | 任何「软指标 / 预算 / 阈值」都要有脚本能当场算出数（现为 `pnpm check:exports` + `pnpm check:size` + `pnpm check:scope`；后者是 001 T6.2 的准入回归门 —— 剥注释后扫越界领域词汇 + 非插件包形态 + 零运行时依赖）；**不许各自解释口径**，改口径 = 改 Spec + 追加留痕 |
+| **指标必须可复算**                  | 任何「软指标 / 预算 / 阈值」都要有脚本能当场算出数（现为 `pnpm check:exports` + `pnpm check:size` + `pnpm check:scope`；后者是 001 T6.2 的准入回归门 —— 剥注释后扫越界领域词汇，**范围严格等于 T6.2 的字面判据**，不夹带额外检查）；**不许各自解释口径**，改口径 = 改 Spec + 追加留痕 |
 
 ### 🚫 Common Mistakes
 
@@ -169,7 +169,7 @@ Validation checks:
 **Spec 类型**：**六份** Spec 均为**需求驱动**（先 REQ-N + EARS，再由需求派生 `design.md`）。
 **004 于 2026-10-08 从 002 拆出**：Agent 工具面独立成篇（**同包不拆包** —— 两 Spec 的产物都在 `packages/terminal-profiles/`，共享 `session-manager` / `screen-model`）；002 的 **REQ-8/9 与 Phase 5 保留为空位**，以免全部既有引用错位。拆分原因：002 的 `requirements.md` / `design.md` 拆前各 **199 行**，贴着 warn 阈值 200。
 **005 于 2026-10-08 从 003 拆出**：提权写路径独立成篇（**同包不拆包** —— 两 Spec 的产物都在 `packages/wsl-docker-ports/`；003 拥有 `read/` `diff/` `ui/`，005 拥有 `write/` `elevate/`）。**003 的 REQ-4/5/7/8/13 与 NFR-1/3、Phase 4 保留为空位**；`depends_on` 只有 **005 → 003**（反向是同包内代码调用，不建边以免成环）。拆分原因：003 拆前 **199 / 195 / 191 / 165** 行，`requirements.md` 与 `design.md` 双双贴线；且写路径是唯一能改动用户系统状态的部分，需要独立的安全验收（红线断言 + 「他人规则条数不变」）。
-**006 于 2026-10-09 从 001 拆出**：路径翻译独立成篇（**同包不拆包** —— 代码仍在 `packages/wsl-shared/src/pathmap.ts`，`index.ts` 照旧导出 `winToWsl` / `wslToWin`，导出预算仍记在 001）。**001 的 REQ-3 与 Phase 4 保留为空位**；**编号一律保持**（REQ-3.1–3.7 / T4.1–T4.4）—— 与 004/005 的「重编号」不同，因为 `pathmap.ts` 与它的 87 条单测里已有 **20+ 处**按编号追溯。`depends_on`：**006 → 001**（复用 `errors.ts` 的错误模型）；002 → 006 的边**待补**（本机 CLI `rel` / `link` 未迁移，见文末「本机 CLI 现状」）。拆分原因：001 的 `tasks.md` 在 Phase 5 后 **198 行**（warn 200），Phase 6 收口还要写；且路径翻译是**零文件系统、零进程、零宿主**的纯字符串面，独立验收边界清晰。
+**006 于 2026-10-09 从 001 拆出**：路径翻译独立成篇（**同包不拆包** —— 代码仍在 `packages/wsl-shared/src/pathmap.ts`，`index.ts` 照旧导出 `winToWsl` / `wslToWin`，导出预算仍记在 001）。**001 的 REQ-3 与 Phase 4 保留为空位**；**编号一律保持**（REQ-3.1–3.7 / T4.1–T4.4）—— 与 004/005 的「重编号」不同，因为 `pathmap.ts` 与它的 87 条单测里已有 **20+ 处**按编号追溯。`depends_on`：**006 → 001**（复用 `errors.ts` 的错误模型）；002 → 006 的边**已于 2026-10-09 手工补上**（无工具路径，主人授权，见文末「本机 CLI 现状」）。拆分原因：001 的 `tasks.md` 在 Phase 5 后 **198 行**（warn 200），Phase 6 收口还要写；且路径翻译是**零文件系统、零进程、零宿主**的纯字符串面，独立验收边界清晰。
 
 ## 🚧 开工前置（阻塞项，未打掉不得进实现）
 
@@ -186,7 +186,10 @@ Validation checks:
 `lean-spec` 与 `leanspec` 两个 shim 都可用，但本机这一版有 **9 个子命令尚未迁移**，会报 *not yet migrated to the adapter API*（2026-10-08 实测；**2026-10-09 复测新增 `rel`**）：
 `analyze` / `check` / `children` / `deps` / `files` / `gantt` / `rel`（`link` / `unlink` 的替代命令） / `tokens` / `validate`。
 
-- 🔴 **依赖边只在「建 Spec 时」写得进去**：`leanspec create --depends-on` 可用，但**事后加边没有任何工具路径** —— `link` / `rel` 未迁移、MCP `update_spec` 的字段里没有 `depends_on`、`update` 也没有该选项 ⇒ 事后新增依赖边只能**手改 frontmatter（违反硬规则）**或等 CLI 升级。**2026-10-09 复测加证**：MCP `update_spec` 传 `depends_on` → `validation failed: unknown field 'depends_on' on schema 'leanspec:markdown'`（此时 MCP 的根目录**已修好**，见下条 ⇒ 不是 0-spec 假象）；显式给 `--specs-dir`（相对 + 绝对）、改用目录路径、去掉 `add` 子命令 —— 四种写法**全部**同一句错误 ⇒ 确认是**命令层未实现**，与 cwd / git / specsDir 都无关。**现存已知缺口：`002 → 006`**（2026-10-09 拆 006 时发现，已在 `stack-decision.md` 变更记录留痕）。
+- 🔴 **依赖边只在「建 Spec 时」写得进去**：`leanspec create --depends-on` 可用，但**事后加边没有任何工具路径** —— `link` / `rel` 未迁移、MCP `update_spec` 的字段里没有 `depends_on`、`update` 也没有该选项 ⇒ 事后新增依赖边只能**手改 frontmatter（违反硬规则）**或等 CLI 升级。**2026-10-09 复测加证**：MCP `update_spec` 传 `depends_on` → `validation failed: unknown field 'depends_on' on schema 'leanspec:markdown'`（此时 MCP 的根目录**已修好**，见下条 ⇒ 不是 0-spec 假象）；显式给 `--specs-dir`（相对 + 绝对）、改用目录路径、去掉 `add` 子命令 —— 四种写法**全部**同一句错误 ⇒ 确认是**命令层未实现**，与 cwd / git / specsDir 都无关。
+  - ✅ **处置（2026-10-09，主人授权「手工」）**：无工具路径这一条**确认成立**后，主人裁定**手工补边**。边界写死：**只允许改 `depends_on` 列表**（加/删一行），**绝不碰** `status` / `transitions` / 时间戳（那些是工具专属）。本次据此在 `specs/002-terminal-profiles/README.md` 加了一行 `- 006-path-translation`。
+  - ✅ **复核通过**：MCP `get_dependencies` → `["001-wsl-shared","006-path-translation"]`；CLI `view` → `Depends on: 001-wsl-shared, 006-path-translation` ⇒ **已知缺口 `002 → 006` 已关闭**。
+  - ✅ **「手改会不会被 CLI 吃掉」已实验证明不会**：对 002 与 006 各跑一次 CLI 写 → frontmatter **确实被整体重写**（文件 hash 变化），但 **`depends_on` 逐行幸存**；同名状态写入**不追加 transition**，只 bump `updated_at` ⇒ 将来 `--status in-progress` 不会静默吃掉这条边。**结论：`depends_on` 手改是「无工具路径」下的唯一例外，改完必须复核。**
 
 - 已实测可用的检查手段：`leanspec board` / `list` / `view <spec>` / `stats` / `capabilities` / `templates`；行数阈值见 [`.lean-spec/config.json`](./.lean-spec/config.json)（warn 200 / max 400），依赖与引用一致性用本地脚本核对。
 - 建 Spec：`leanspec create <name> -f <body.md>`（正文一次性写入，frontmatter 由 CLI 生成）；状态流转用 `leanspec update <spec> --status <status>`，**不手改 frontmatter**。
