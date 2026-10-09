@@ -18,6 +18,16 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@26.6.4)(vite@8.3.3(@types/node@26.6.4))
 
+  packages/terminal-profiles:
+    dependencies:
+      dsh-wsl-shared:
+        specifier: workspace:*
+        version: link:../wsl-shared
+    devDependencies:
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@types/node@26.6.4)(vite@8.3.3(@types/node@26.6.4))
+
   packages/wsl-docker-ports:
     dependencies:
       dsh-wsl-shared:

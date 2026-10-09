@@ -1,0 +1,20 @@
+{
+  "name": "dsh-terminal-profiles",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "可配置受管终端（插件包）：profile 驱动的真 PTY 右栏终端；Phase 1 只落地纯配置模型",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "dsh-wsl-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.3"
+  }
+}
