@@ -1,0 +1,17 @@
+# Bundle patch 层：「能被宿主加载的清单」四件套之二（Spec 003 / 宿主 0.2.0-rc.2）
+#
+# 依据（2026-10-09 集成方只读核对，两处实物）：
+#   ① 本机已装第三方插件 `@xxxyz/dsh-mcp-manager` v2.4.0 的 `cordis.patch.yml` —— 形状同构：
+#      顶层是数组 ⇒ 一行 `- insert:` ⇒ 行列表，每行 `id` + `name`。
+#   ② 官方开发文档「第一个插件 · 注册到 cordis.yml」：`- insert:` / `- id` / `- name`
+#      （https://deepseek-harness.github.io/deepseek-harness/develop/basic/）。
+#
+# 生效路径：`dsh plugin add <本包>` 读 package.json 的 `dsh.bundle.patch` ⇒ 并入 bundle 栈
+# ⇒ profile 启动时合并本文件 ⇒ 本行被 insert 进来。**不需要手改任何 profile 文件。**
+#
+# ⚠️ 残余（故意留白、不猜）：本行 `name` 最终要经 `exports["."]` 解析到**构建产物**，而当前
+# `exports["."]` 仍指向 `./src/index.ts`（纯函数 barrel，无 `apply`）；本包的插件入口属 003 的
+# 收口任务（Phase 5+）。**在此之前不要**用本包做 T0.5 的装载验证。
+- insert:
+    - id: dsh-wsl-docker-ports
+      name: dsh-wsl-docker-ports

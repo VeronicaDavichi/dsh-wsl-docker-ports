@@ -5,7 +5,13 @@
   "type": "module",
   "description": "WSL Docker 管理器 + 端口转发可视化（插件包）：只读事实层（docker / netsh）与（后续）写路径",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

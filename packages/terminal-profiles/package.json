@@ -5,7 +5,13 @@
   "type": "module",
   "description": "可配置受管终端（插件包）：profile 驱动的真 PTY 右栏终端；Phase 1 配置模型 + Phase 2 Host PTY 与屏幕模型",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
