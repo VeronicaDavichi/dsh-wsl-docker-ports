@@ -55,6 +55,9 @@
 ### REQ-4 来源约束（Agent）　← 003 的 REQ-8
 
 - **REQ-4.1** GIVEN 操作由 Agent 触发，THEN `passby` SHALL NOT 静默执行，SHALL **降级为 `ask`**（应用内确认 + 展示将执行的命令原文），确认后才发起 UAC。
+- **REQ-4.2** GIVEN 任何需要提权的写操作（无论触发者是 Agent 还是界面、无论 `elevationPolicy` 取何值），THEN 应用内确认 SHALL 展示**变更预览**：逐条列出将新增/删除的规则（作用域 · 监听地址 · 端口 · 连接地址 · 是否伴随防火墙规则）、预计命令条数与影响面；确认后才发起提权。该闸门 **SHALL NOT 依赖操作系统是否弹窗**。
+- **REQ-4.3** GIVEN 一次提权写操作（含被拒绝 / 超时 / 失败 / 回滚），THEN SHALL 落一条**审计记录**：时间 · 触发来源（agent / user）· `elevationPolicy` · 实际后端（gsudo / native / winsudo）· 端口与作用域 · 结果与退出码 · 耗时 · 是否回滚。记录 SHALL 位于 profile 日志且人类可读，且 SHALL NOT 包含任何凭据 / 口令。
+> 🔴 **2026-10-09 真机事实 + 主人拍板（A+B）**：本机 `ConsentPromptBehaviorAdmin = 0`（Elevate without prompting）⇒ **提权根本不弹 UAC**、`consent.exe` 零次出现；实测 Agent **零人工交互**即完成 `netsh` 写入与删除（3261 ms / 3028 ms）⇒ REQ-4.1 依赖的「UAC = 人类闸门」在本机**不成立**（仅在 `ConsentPromptBehaviorAdmin != 0` 的机器上成立）。故把闸门**收回产品内**：**A（强制）** = REQ-4.2 的显式确认 + 变更预览（与 OS 行为解耦）；**B（强制）** = REQ-4.3 的审计留痕；**C（附带）** = UI 与用户手册明说「本机提权可能不会请你确认」。`elevationPolicy` 语义与「Agent 触发降级 `ask`」**均不变**。
   > **✅ 已确认（A-1，迁自 003 的 A-5；2026-10-08 主人定案 = 方案 A「降级为 `ask`」）**：备选是「直接拒绝」（Agent 完全不能触发提权）。选 A 的理由：保住「Agent 帮你发起、你只需点一次确认」的可用性，同时保证**每次都有一次人类显式点击**；与「默认 `none`」「`passby` 不静默执行」的保守取向一致。
   > ⚠️ **与后端的耦合（重要）**：方案 A 的闸门是**应用内确认**，而 UAC 能否每次都弹取决于后端 —— 若用户开了 `gsudo` 凭据缓存，UAC 那道闸门消失，此时**唯一**的闸门就是本 REQ 的应用内确认（这正是 REQ-3.4 要求「缓存活跃即回落 native」的原因）。
 - **REQ-4.2** 本期本包 SHALL NOT 注册模型工具（不在 handover 的做清单内）；REQ-4.1 的落地形式为**服务层区分调用来源**。
