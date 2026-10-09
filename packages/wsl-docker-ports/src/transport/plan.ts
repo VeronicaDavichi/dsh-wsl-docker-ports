@@ -163,7 +163,7 @@ export interface PlanFacts {
   /** 已存在的防火墙规则名（REQ-2.6 同名冲突判定） */
   firewallNames?: (() => Promise<readonly string[]>) | undefined;
   /** `localhostForwarding`（REQ-2.2/2.5）；`null` = 取不到 */
-  localhostForwarding?: (() => boolean | null) | undefined;
+  localhostForwarding?: (() => boolean | null | Promise<boolean | null>) | undefined;
   /** 当前提权策略与后端（REQ-3.1：预览必须显示它） */
   elevation(): PlanElevation | Promise<PlanElevation>;
 }
@@ -275,7 +275,7 @@ export function createPlanChannel(facts: PlanFacts): (target: unknown, problem?:
       const managedPorts = facts.managedPorts(normalized.target.declaration);
       const eth0Ip = await facts.eth0Ip();
       const firewallNames = facts.firewallNames === undefined ? undefined : await facts.firewallNames();
-      const localhostForwarding = facts.localhostForwarding === undefined ? undefined : facts.localhostForwarding();
+      const localhostForwarding = facts.localhostForwarding === undefined ? undefined : await facts.localhostForwarding();
 
       const dtos: PlanPortDto[] = [];
       for (const port of ports) {

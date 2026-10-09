@@ -22,6 +22,7 @@
 import type { RoutePluginContextLike } from '../route.ts';
 import { createAuditLog } from './audit.ts';
 import type { AuditLog } from './audit.ts';
+import { readLocalhostForwarding } from '../read/localhost-forwarding.ts';
 import { probePortproxyRules } from '../read/netsh-probe.ts';
 import { createPlanFacts } from './real-facts.ts';
 import { createPlanChannel } from './plan.ts';
@@ -75,6 +76,8 @@ export interface PluginReadParts {
   readonly probeEth0: () => Promise<{ readonly ok: boolean; readonly ip?: string | undefined }>;
   /** 提权可用性（005 的单飞 + 一次缓存探测的 `peek()`）；没跑过 ⇒ `null` */
   readonly probeElevation: () => Promise<{ readonly available: boolean; readonly backend: string | null }>;
+  /** 现读 .wslconfig 的 localhostForwarding（可选）；取不到 ⇒ null（不猜 false） */
+  readonly probeLocalhostForwarding?: (() => Promise<boolean | null>) | undefined;
   readonly elevationPolicy?: string | undefined;
 }
 
@@ -84,6 +87,17 @@ export interface PluginReadParts {
  * 🔴 `rules` 读失败**必须抛**（`message` 原样带上去）⇒ `plan.ts` 回 `rules-unavailable` 503；
  * 只有「确实没有规则」才回空数组。按端口过滤用实测字段 `PortproxyRule.listenPort`（`read/netsh.ts:17`）。
  */
+/**
+ * 默认的 localhostForwarding 读取（.wslconfig，读一次）。ok:false ⇒ null：取不到就**不猜 false**，
+ * 交给 buildWritePlan 走它自己的保守降级（多一条可见可移除的规则，而不是「连不上且不报错」）。
+ */
+export function createDefaultLocalhostForwarding(): () => Promise<boolean | null> {
+  return async (): Promise<boolean | null> => {
+    const outcome = await readLocalhostForwarding({});
+    return outcome.ok ? outcome.enabled : null;
+  };
+}
+
 export function createPluginFacts(parts: PluginReadParts): PlanFacts {
   return createPlanFacts({
     rules: async (port: number) => {
@@ -96,6 +110,7 @@ export function createPluginFacts(parts: PluginReadParts): PlanFacts {
       return outcome.ok === true && typeof outcome.ip === 'string' ? outcome.ip : null;
     },
     elevation: () => parts.probeElevation(),
+    ...(parts.probeLocalhostForwarding === undefined ? {} : { localhostForwarding: parts.probeLocalhostForwarding }),
     ...(parts.elevationPolicy === undefined ? {} : { elevationPolicy: parts.elevationPolicy }),
   });
 }
