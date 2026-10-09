@@ -108,6 +108,7 @@ T4.1–T4.5 **已整体迁至 [005-elevation-write-path](../005-elevation-write-
 ## Phase 5：UI（只读展示与门禁）
 
 - [ ] T5.1 [REQ-2.1][REQ-2.2][REQ-3.2] 容器表 + 端口表（五态）
+  - 📌 **客户端半契约已实物定案（2026-10-09，与 002 Phase 4 共用同一套）**：见 [`client-contract.md`](../../client-contract.md) —— 清单三件（`dsh.client` + `exports['./client']` + `dsh.bundle.patch`）、产物 = **自注册 CJS 工厂** `window.__ModuleLoader__.load({ id, factory })`、页/面板/配置页**全走 `ctx.slots`**、写管道**优先 `ctx.get('remote.settings')`**、样式 = `<style data-plugin>` + 类名前缀 + `--dsw-alias-*`。⇒ 本任务开工时**照该文件实现**，不要再各自设计；未验项（懒加载/external/`immediately`/0.2.0 差异）在该文件 §Z 与 §P5。
   - 验证：`vitest` 渲染断言 —— 五态标签各自可渲染；刷新后时间戳更新；打开页面**零**写操作（NFR-2）
 
 - [ ] T5.2 [REQ-1.1][REQ-1.2][REQ-1.3][REQ-1.4] NAT 门与前置检查

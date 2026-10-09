@@ -73,11 +73,12 @@ PTY 输出 → `headless.write(data)` → serializer 产出快照。**快照与�
 
 ## 3. Client 侧设计
 
-- **tab-registration**：`ctx.inject(['sidebarRightTabs','sidebarRight'], …)` 作用域内注册定义 → 正文 seat → 标题 seat，收集 disposer；缺能力时静默降级 + 原因（REQ-4.1/4.4/4.5）。
-- **TerminalPane**：`useEffect` 内 `import('@xterm/xterm')` 动态加载（独立 chunk），`FitAddon` 在容器 resize 时 fit；`xterm.css` 以**局部作用域**方式注入（不写全局样式表，REQ-5.2）。
-- **transport**：WS 客户端，重连时带 `sinceSeq`；收到 `lost` 时用快照重建（`term.reset()` + `write(snapshot)`）。
-- **状态**：组件内 React state（`frontend.state` = 宿主 `dsh-client-store` 用在宿主集成处，终端画面状态**不复用**宿主 store —— 终端是高频流，走 ref 而非全局 store，避免整树重渲染）。
-- React 从宿主来（peer，REQ/NFR-1）。
+> 📌 **客户端半的完整装载契约已实物定案**（清单三件 / CJS 工厂自注册 / `ctx.slots` 注册 / 写管道 / 样式作用域），逐条带 `文件:行` 的证据在 **[`client-contract.md`](../../client-contract.md)**（§A–F + §P 增量覆盖段）。**本节只留本 Spec 的选择，不复制契约**（避免两处漂移）。
+
+- **装载**：`dsh.client = { platform:'web', inject:[客户端模块包名…] }` + `exports['./client'] → ./lib/client.js`；入口导出 `{ apply, inject: ['slots'], name? }`（**无默认导出**，与宿主半相反）；产物 = **自注册 CJS 工厂** `window.__ModuleLoader__.load({ id: 'dsh-terminal-profiles', factory })`。
+- **右栏页**：`sidebarRightTabs.register({ id: 'dsh-terminal-profiles', kind: 'managedTerminal', multiple: true, keepMounted: true, title })`（`priority` **留空** = `extension` 档）+ 两个 keyed seat（`sidebar.right.pane.tab` / `.title`，key = `id`）；**宿主半零改动**；缺能力 ⇒ 不注册 + 给原因（REQ-4.1/4.4/4.5）。
+- **终端视图**：xterm 的 `require` **推迟到首次挂载**（**单产物、无独立 chunk** —— REQ-5.1 已按实物订正）；`FitAddon` 在容器 resize 时 fit；样式 = CSS 字符串 → `<style data-plugin="dsh-terminal-profiles/styles">` + 类名前缀 + `--dsw-alias-*`（零硬编码 hex，REQ-5.2/NFR-4）。
+- **transport 与状态**：自建 WS（重连带 `sinceSeq`；`lost` ⇒ `term.reset()` + 快照重建）；**配置读写**走 `remote.settings.update/describe`（即 §4 的 settings 路径），自建 HTTP 路由只承载终端动作与大文件；终端画面走 ref（高频流，避免整树重渲染），宿主 `dsh-client-store` 只用在宿主集成处。
 
 ---
 

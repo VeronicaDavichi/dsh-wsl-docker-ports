@@ -78,7 +78,7 @@ transitions:
 |---|---|---|
 | 终端内核 | `ctx.subprocess.spawnTerminal(spec)`（真 PTY，接受 `argv`/`cwd`/`env`/`rows`/`cols`/`terminalType`）| `stack-decision.md` · `plugin.terminalEngine` |
 | Host 屏幕模型 | `@xterm/headless` + serializer（官方 terminal-controller 同款）| `plugin.hostScreenModel` |
-| 浏览器渲染 | `@xterm/xterm` + `@xterm/addon-fit`，独立**懒加载 chunk** | `plugin.renderer` |
+| 浏览器渲染 | `@xterm/xterm` + `@xterm/addon-fit`，**单产物 + 首屏不解析**（懒加载 chunk 经实物研究判定为逆契约）| `plugin.renderer` |
 | 通道 | 自建 `ctx.webServer` **具名路由 + WebSocket upgrade**（HTTP 用 prefix、**upgrade 只能 exact**）| `plugin.clientTransport` |
 | 页类型 | 新 kind `managedTerminal` + 宿主默认 **extension 档** | `plugin.tabKind` |
 | 配置页 | `plugins.row.config`（键 `<包名>#<行 id>`）+ `configure({ auto: false }, ctx.fiber)` 自绘 | `plugin.configStore` |
@@ -113,7 +113,7 @@ transitions:
 | Agent 权限（**004**）| 受 `ctx.sandboxPolicy` + 工具审批 | 避免 Agent 借终端绕过 `read-only`/`workspace-write` |
 | 配置存活 | `profiles` 整数组 `.volatile()` | 换「编辑配置不杀终端」；**B-1 五条已全定案（2026-10-08，含真机）** ⇒ 机制与行为**双双闭环**；落盘语义同日定案（A-6）|
 | 通道 | 自建路由 + WS upgrade，**独占前缀** `/dsh-managed-terminal/…`；**upgrade 必须 exact path** | 官方 `dsh-host-webserver` 支持第三方具名路由（`exact`/`prefix`）与 upgrade（**仅 exact**）注册，匹配顺序 exact → 最长 prefix → fallback；Typert Remote 方案实测可行但需改双 face TS 工程 + 换 tsdown + 受 Zod 子集限制 + 重启生效（已否决）|
-| 页类型 | 新 kind `managedTerminal` + extension 档 | 与官方 6 个 kind（`files`/`text`/`changes-review`/`scheduleTask`/`browser`/`terminal`）全部区分 |
+| 页类型 | 新 kind `managedTerminal` + extension 档 | 判据 = **不与官方已用 kind 重名**（0.1.7-rc.2 实测 **9 个**：`guide`/`files`/`browser`/`text`/`changes-review`/`terminal`/`scheduleTask`/`plan`/`subagentchat`；kind 是开放字符串，`managedTerminal` **未被占用** ✅）；官方 `terminal` 页自己用 `priority: "builtin"` ⇒ 第三方必须留空或 `extension` |
 | 样式 | `xterm.css` **只在自有容器作用域内**加载，不注入全局 | 官方终端另有一份 xterm chunk，两份共存会互相污染 |
 | React | `peerDependencies: ^18.2.0`，**不打进 bundle** | 宿主 slot 渲染 React 节点；Vue 需适配层 |
 | 构建 | esbuild → CJS client bundle | 符合宿主 ModuleLoader 的 CJS 契约；与同机三个插件一致 |

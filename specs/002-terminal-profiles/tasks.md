@@ -117,10 +117,13 @@
 ## Phase 4：客户端渲染与页类型
 
 - [ ] T4.1 [REQ-4.1][REQ-4.2][REQ-4.4][REQ-4.5] 页类型与 seat 注册
+  - 📌 **2026-10-09 实物契约（照抄，已不是设计口径）**：客户端入口 = `export const inject = ['slots']`（**只放稳定服务** —— 声明了却缺失会让**整个客户端插件 load 失败**）+ `{ apply, inject, name? }`、**没有默认导出**；注册 = `ctx.inject(['sidebarRightTabs','sidebarRight'], scope => scope.sidebarRightTabs.register({ id: 'dsh-terminal-profiles', kind: 'managedTerminal', multiple: true, title, keepMounted: true }))`，`priority` **留空**（= 默认 `extension` 档；官方 `terminal` 页自己用 `"builtin"`）；两个 **keyed seat** = `sidebar.right.pane.tab` / `sidebar.right.pane.tab.title`，**key = `definition.id`**；`register` 返回**幂等 disposer**；**同 band 重复注册、或 `id` 重复 ⇒ 抛错**（⇒ 判据含「重复注册必须报错、不是静默」）。官方 d.ts 签名与真实调用点见 [`client-contract.md`](../../client-contract.md) §C9/C10。**宿主半零改动**（页类型/页体/标题全在客户端注册）。
   - 内容：kind `managedTerminal` + 标题 seat，走 extension 档；作用域注入 + disposer 收集；缺能力降级
   - 验证：`vitest` + fake ctx —— 注册 2 个 seat、缺 `sidebarRight` 时不注册且给原因、卸载后归零；断言 kind 不是官方 6 个中的任何一个
 
-- [ ] T4.2 [REQ-5.1][REQ-5.2] 懒加载 chunk + 样式作用域
+- [ ] T4.2 [REQ-5.1][REQ-5.2] 打包形态 + 样式作用域
+  - 判据（**2026-10-09 订正**，原判据「xterm 独立懒加载 chunk」已被实物推翻）：客户端半 = **单产物**（官方客户端构建显式 `codeSplitting: false`）；`@xterm/xterm` 的 `require` **推迟到终端视图首次挂载**（未挂载前不触发 ⇒ 可断言）；`react` / `react-dom*` / `@deepseek-ai/*` **必须 external**（未声明的 `require` 会**静默崩** ⇒ 照 `dsh-community-market\scripts\verify-client-externals.mjs` 加自检）；样式 = CSS 字符串 → `<style data-plugin="dsh-terminal-profiles/styles">` → 返回移除器、由 `ctx.effect` 收编；**零硬编码 hex**（NFR-4）。证据见 [`client-contract.md`](../../client-contract.md) §A4/§E15/§P2。
+  - ⚠️ 未验证（真机项）：**宿主是否提供 `@xterm/xterm` 作 external**（提供则可走 external 省体积；否则必须进 bundle）⇒ 实现按「进 bundle」做，external 只作可选优化。
   - 内容：`import('@xterm/xterm')` 动态加载；`xterm.css` 局部作用域注入
   - 验证：`pnpm build` 产物中 xterm 落在**独立 chunk**（主 bundle 体积记账）；`grep` 断言无全局样式写入（无 `document.head` 全局注入路径）
 
@@ -146,6 +149,7 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 ## Phase 6：配置页
 
 - [ ] T6.1 [REQ-10.1][REQ-10.2] 自绘配置页 + 写入管道
+  - 📌 **2026-10-09 实物契约**：配置页注册 = `ctx.slots.inject('plugins.row.config', () => ctx.slots.register({ name: 'plugins.row.config', key: '<包名>#<行 id>' }, (ownerProps) => ownerProps?.view === 'summary' ? 一行摘要 : 页面))`（**槽驱动**：宿主不声明该槽就只是**不注册、不炸 boot**）；**写管道首选宿主服务** `ctx.get('remote.settings').update(ns, patch, expectedRevision)`、读走 `describe()`（自建 HTTP 路由留给终端动作/大文件，**不再是配置写入的唯一管道**）；`ctx.slots.register` 是 **`(options, Component)` 两个位置参数**（`name` 在 options 内，写成 `(name, id, …)` 会编译不过）。见 [`client-contract.md`](../../client-contract.md) §C10/§D12/§D13。
   - 内容：`plugins.row.config`（键 `<包名>#<行 id>`）+ `configure({ auto: false })`；写入只经 **settings 三写操作**（live 字段），**不用** `ctx.configEditor.edit()`（完整配置路径会重挂载）
   - 验证：`vitest` + fake ctx —— 注册键正确、`auto: false` 生效；`grep` 断言本包**无** YAML 手写（无 `writeFile` 到 `cordis.patch.yml`）
 

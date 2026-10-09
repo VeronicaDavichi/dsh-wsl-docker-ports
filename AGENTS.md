@@ -129,13 +129,13 @@ Validation checks:
 | 宿主基线 | DeepSeek Harness **0.2.0-rc.2**（`cordis-4` 插件 API）；rc.1 本机不可验证，已放弃 |
 | 语言 / 构建 | **TypeScript** + **esbuild → CJS client bundle**（符合宿主 ModuleLoader 契约） |
 | 前端 | **React 18**（`peerDependencies: ^18.2.0`，**不打进 bundle**）+ 宿主 `ui-primitives` + 宿主 `dsh-client-store` |
-| 终端渲染 | 浏览器 `@xterm/xterm` + `@xterm/addon-fit`（**独立懒加载 chunk**）；Host `@xterm/headless` + serializer |
+| 终端渲染 | 浏览器 `@xterm/xterm` + `@xterm/addon-fit`（**单产物 + 首屏不解析**：官方客户端构建显式 `codeSplitting: false`，独立懒加载 chunk 是**逆契约** —— 见 [`client-contract.md`](./client-contract.md) §P2）；Host `@xterm/headless` + serializer |
 | 终端内核 | `ctx.subprocess.spawnTerminal`（真 PTY：`argv` + `cwd` + `env` + `rows/cols/terminalType`）—— 不复用官方 `terminal`，不 require 私有 `node-pty` |
 | 配置字段（profile） | `name` + `command` + `args` + `env`；路径**两个字段**：`cwd`（Windows 路径）+ `cwdLinux`（WSL 路径）—— `E:\x` 与 `/mnt/e/x` 语义不同，两字段无歧义 |
 | Agent 工具面 | 完整族 `new` / `list` / `read` / `write` / `resize` / `kill`，经 `dsh-tools` 的 `defineTool` 注册 |
 | Agent 读模型 | 屏幕快照 **+** 增量流**两者都给** → 派生「Host 侧必须持有屏幕模型」 |
 | 前后端通道 | 自建 `ctx.webServer` 具名路由（**HTTP 用 `prefix`**）+ WebSocket upgrade（**仅支持 `exact` path**，多终端靠协议层会话 id 复用单一端点），**独占前缀**（不用官方 Typert Remote）；重复 `(kind, path)` 注册会抛错 → 必须登记 effect-scoped disposer |
-| 右栏页类型 | 新 kind `managedTerminal` + 宿主默认 extension 档（与官方 6 个 kind 全部区分） |
+| 右栏页类型 | 新 kind `managedTerminal`，`priority` **留空**（= 宿主默认 extension 档）。**2026-10-09 订正**：kind 是**开放字符串**（无枚举类型），0.1.7-rc.2 实测 **9 个**（`guide`/`files`/`browser`/`text`/`changes-review`/`terminal`/`scheduleTask`/`plan`/`subagentchat`）⇒ 判据 = **不与官方已用 kind 重名**（`managedTerminal` 未被占用 ✅）；官方 `terminal` 页自己用 `priority: "builtin"`，第三方**必须**留空或写 `extension` |
 | 配置存储 | profile 层 `cordis.patch.yml`；**声明 = 模块静态 `Config` 导出 + patch 条目 id 作命名空间**；**live 字段经 `ctx.settings.{update,replace,mutate}`**（**不重挂载**），完整配置才用 `ctx.configEditor.edit()`（**会重挂载**）—— **两服务互补非管道**；🔴 `ctx.settings.register` 在 0.2.0-rc.2 **已移除**（**不手写 YAML**）。层序（真机 profile 根注释）：bundle 层 → `cordis.patch.yml` → `--patch` 覆盖层（**本机无 home 层**）；patch 是顶层 YAML 数组，元素为 `- id` + `config:` / `- id` + `disabled` / `- insert:`；存活开关在**清单**里 —— `profiles/<name>/package.json` 的 `dsh.profile.patchReload = "live"`（不在 yml 里）|
 | 配置存活 | 整个 `profiles` 数组 `.volatile()`（**只在固定对象路径生效**；标进数组元素内 **parse 时**抛 `ValidationError`，不是构造时）；解析结果为**带 `.get()` 的深冻结对象**（**读配置必须走 `.get()`**，下标取值是 `undefined`）；🔴 **schema 必须 Schemastery** —— `isSchemastery()` 判的是 `schema['~standard'].vendor === 'schemastery'`，用 Zod 会让 volatile **静默失效**。**2026-10-08 真机**：live 写入 152ms 生效且**不重挂载**（值经 `.get()` 真传播）、ordinary 字段**真 remount** ⇒ 判定非恒真；**落盘已闭环** —— `settings.documentPath` 读出 settings 文档**就是** profile 的 `cordis.patch.yml`（`writable=true`），`update` 后 3s 文件已更新（**立即落盘**）、重启后值正常加载 ⇒ 「不重挂载」+「改完不丢」双证。⚠️ **同一文件既是 patch 层又是 settings 落盘处**，手写它会与 settings 写入互相覆盖 |
 | 提权 | `none` / `ask` / `passby`，**默认 `none`**；后端链 = **用户自装 `gsudo`（stdio 回传，提权失败 exit code **999**；缓存活跃则回落）→ `Start-Process -Verb RunAs`（临时文件回传）**；Windows 自带 `sudo`（**24H2+**，默认模式拿不到输出）仅显式配置时用；**Agent 触发一律降级为 `ask`**；**不装工具、不改 PATH、不动用户 gsudo 配置** |
