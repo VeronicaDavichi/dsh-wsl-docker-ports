@@ -92,3 +92,29 @@
 > `portState` 亦未接（少过一道门 ⇒ 偏保守，宁可说「需要修」）。两项都待 Phase 2 后续补。
 > ⚠️ 尚未接进 `plugin.ts`（`degradedPlanFacts()` 仍是现役缺省）；`plugin.ts` 只剩 1 行余量 ⇒ 接线时
 > 需先外移 2 行注释腾额度。
+
+## 真机验收记录（2026-10-09，探针 profile `volatile-probe`，端口 43311）
+
+**方法**：临时装 `dsh-wsl-docker-ports@link:` + 临时禁用自退插件（`- id: volatile-probe / disabled: true`）⇒
+用完**逐字节还原**（快照哈希对比差异 0，共 4 轮）。全程未碰 `desktop` / `web`。
+
+**通过项**（真机实测）：
+- `POST /write/plan`：`declaration` 合法 ⇒ 真 `planId`（SHA-256，64 位）；同入参重放**一致**；`scope` 实质变更**必换**。
+- **命令原文可见**（REQ-3.2）：`scope:'lan'` + 端口 5900 ⇒ `ready:true`、`steps` **2 条**、`commandText` 精确为
+  `netsh interface portproxy add v4tov4 listenport=5900 listenaddress=0.0.0.0 connectport=5900 connectaddress=172.20.201.152`
+  + `New-NetFirewallRule -DisplayName "dsh-wsl-docker-ports-5900" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5900 -Profile Any -Group "dsh-wsl-docker-ports"`
+  ⇒ 局域网**只放行该端口**（对比原脚本「全量放行」的真实攻击面）。
+- `scope:'loopback'` + 本机 `localhostForwarding=true` ⇒ `steps:[]` + 说明「无需 portproxy 规则（WSL 自带的 localhost 转发已开启）」⇒ **合法 no-op**（不是缺陷）。
+  ⇒ 闸门口径修正为：**有步骤** 或 **有明确的「无需规则」理由**（原拟「steps>0」硬闸**已作废**）。
+- 所有权与语义：未声明 ⇒ `port-not-managed`；集合外端口 ⇒ `port-not-managed`；非法 `declaration` ⇒ 可读原因、不抛；多余字段被忽略；同入参三次响应逐字节相同。
+- HTTP 语义：`GET /write/plan` → 405；`POST /write/audit` → 405；`GET /write/nope` → 404；路径先于方法。
+- `GET /write/audit` ⇒ `{ok:true,records:[],size:0,dropped:0}`。
+- 提权：真探测返回 `{policy:'unknown', backend:'gsudo', available:true}`（**005 正确，一行未改**）。
+- 零动作红线：上述所有只读调用后 `netsh` 恒 **19** 条、防火墙规则总数恒 **811**。
+
+**未通过 / 未实现（如实记录，不得写成通过）**：
+- 🔴 **真写未发生**：`POST /write/apply`（`planId` + `confirmed:true`）⇒
+  `{"ok":false,"error":{"code":"rules-unavailable","message":"写执行尚未接线：本请求零提权、零写入。"}}`
+  ⇒ **零提权、零写入**（如实拒绝，不谎报成功）。写后 `netsh` 19→**19**、防火墙 811→**811**。
+  ⇒ 结论：**008 Phase 2 的执行层（T2.x：确认票据 + 真执行 + 回滚）尚未实现**，写路径**未验收**。
+- ⚠️ 待定：**被拒绝的 apply 应否写审计**？本次审计环仍为 0 ⇒ 若「拒绝也要可追溯」，则 T2.x 需补一条拒绝记录（设计待拍）。
