@@ -238,3 +238,19 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 
 ⇒ **根因**：该 profile 里官方侧栏 **client 插件根本没被加载** ⇒ 宿主服务 `sidebarRightTabs` / `sidebarRight` **永远不会到达** ⇒ 我们的插件**按设计降级**（响一声、说清原因、零报错）✓ —— **这不是缺陷** ✓。
 ⇒ **结论**：「guide 入口可点」与「007 配置页」两项**必须在官方侧栏 client 插件真被加载的 profile 里验**（即主人的真实桌面环境）；在纯探针 profile 里**物理上不可验** ✗，**不记为通过**。
+
+### 📋 交给主人在真实环境验证（2026-10-09 主人选择：自己验，代理不动任何 profile）
+
+**安装（主人自己跑，代理不碰 profile）**：
+
+    dsh plugin --profile desktop add "dsh-terminal-profiles@link:E:\NodeProjects\dsh-wsl-toolkit\packages\terminal-profiles"
+    dsh plugin --profile desktop add "dsh-wsl-docker-ports@link:E:\NodeProjects\dsh-wsl-toolkit\packages\wsl-docker-ports"
+
+| # | 判据（可二值判定） | 通过 | 回归信号 |
+| --- | --- | --- | --- |
+| V1 | 右栏**空态**里出现「端口转发」胶囊（003 的 `guide` 条目：id `ports`、order 40），**点得进去**，右栏切到「WSL Docker 端口」页且页内有端口列表 / 转发状态 | 胶囊出现 + 点开有页 | 无胶囊、点了没反应、控制台出现 `sidebar-right-unavailable` |
+| V2 | F12 Console：**正常启动零 warn**（宽限窗口 2s 之后才允许响我们的等待提示） | `[dsh-terminal-profiles]` / `[dsh-wsl-docker-ports]` 的「尚未注册」警告 **0 条** | 一进页面就响、或服务到了还响 |
+| V3 | 设置 → 插件行 `dsh-terminal-profiles` 有**配置页入口**（slot `plugins.row.config`），点开能看到 profile 列表（只读态 / 冲突态按设计显示） | 入口存在且可开 | 入口不存在（= `config-slot` 软取回归） |
+
+⚠️ 注意：在**没有**官方侧栏 client 插件的 profile 里，V1/V3 **必然**失败且**不是缺陷**（本文件上一节已用 client bundle 列表证明）；V2 在这种情况下**预期有 1 条**我们自己的降级提示（文案含「不是失败」）。
+⇒ 本三项**当前状态：未通过（未验）**，不得记为完成。
