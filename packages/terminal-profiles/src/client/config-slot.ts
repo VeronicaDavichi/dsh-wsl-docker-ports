@@ -19,6 +19,7 @@
  */
 
 import { CONFIG_ROW_KEY, CONFIG_SLOT_NAME } from './config-pipe.ts';
+import { softGet } from './tab.ts';
 import type { ClientContextLike, SlotRegistryLike } from './tab.ts';
 
 /** 自动表单关闭动作的 effect label（宿主诊断可读） */
@@ -159,10 +160,14 @@ function degrade(reason: string, autoForm: ConfigureResult): ConfigSlotResult {
 export function registerConfigSlot(ctx: ClientContextLike, components: ConfigSlotComponents): ConfigSlotResult {
   const autoForm = configureAutoForm(ctx);
 
-  if (!isSlots(ctx.slots)) {
-    return degrade(`宿主未提供 slots.{inject,register}：${CONFIG_SLOT_NAME} 不注册（自绘配置页不可用，其余照常）`, autoForm);
+  // 与 `tab.ts` 同一口径的**两读**：属性 或 `ctx.get('slots')`（官方两种调用点都出现过）
+  const slots = softGet(ctx, 'slots');
+  if (!isSlots(slots)) {
+    return degrade(
+      `宿主未提供 slots.{inject,register}：${CONFIG_SLOT_NAME} 不注册（自绘配置页不可用，其余照常）`,
+      autoForm,
+    );
   }
-  const slots = ctx.slots;
   const component = buildConfigComponent(components);
   const options = { name: CONFIG_SLOT_NAME, key: CONFIG_ROW_KEY };
   let live = 0;

@@ -35,6 +35,11 @@
  * （004 的 `dispose`）+ 服务面（订阅/定时器/全部实例终止）都挂在下面这一个幂等 `dispose()` 上，
  * 并被 `ctx.effect` 收编。判据（`tests/unit/plugin-entry.test.ts`）：卸载后 WS 连接数 / 路由数 /
  * 页类型数 / 工具数 / 监听数 / 定时器数**全部归零**，且 `terminate` 调用数 = 实例数。
+ *
+ * ## 文件行数（SHALL ≤ 400 原始行）
+ *
+ * 2026-10-09 缺陷 A 修复后本文件到过 **426 行** ⇒ 把边界最干净的一块（`sandboxGuard`，无内部状态）
+ * 拆到 `./sandbox-guard.ts`，这里只留一行再导出（调用方 import 路径不变）。
  */
 
 import { parseProfiles } from './config/profiles.ts';
@@ -43,13 +48,13 @@ import { createProfilesSchema } from './config/schema.ts';
 import type { SchemaLike } from './config/schema.ts';
 import { createSessionManager } from './session/manager.ts';
 import type { SubprocessSurface } from './session/types.ts';
-import { createTerminalTools, ToolFailureError } from './tools/index.ts';
+import { createTerminalTools } from './tools/index.ts';
 import type { HostContextLike, ToolRegisterSurface } from './tools/index.ts';
-import { assertWriteAllowed, type WriteTool } from './tools/policy.ts';
 import { createTokenStore } from './ws/auth.ts';
 import type { TokenStore } from './ws/auth.ts';
 import { registerTerminalChannel } from './ws/routes.ts';
 import type { ChannelRegistration } from './ws/routes.ts';
+import { TERM_WS_LIST_PATH, TERM_WS_UPGRADE_PATH } from './ws/constants.ts';
 import type { ChannelPluginContext } from './ws/types.ts';
 import { defaultHostModulePort, resolveDefineTool, resolveSchemaFactory } from './service-export/host-modules.ts';
 import type { HostModulePort } from './service-export/host-modules.ts';
@@ -57,6 +62,9 @@ import { createManagedTerminalService, createUnavailableSubprocess } from './ser
 import type { GuardAction, ManagedTerminalHost, SchedulePort } from './service-export/service.ts';
 import { MANAGED_TERMINAL_SERVICE } from './service-export/types.ts';
 import type { ManagedTerminalService, ServiceFailure } from './service-export/types.ts';
+
+/** 沙箱门禁适配器（003 消费；实现与口径见 `./sandbox-guard.ts` —— 拆出去是为了守住 ≤400 行） */
+export { sandboxGuard } from './sandbox-guard.ts';
 
 /** 插件名（供 profile 清单的 `id` 引用；**与包名逐字一致**） */
 export const name = 'dsh-terminal-profiles';
@@ -245,15 +253,38 @@ export function applyTerminalProfiles(
     });
   }
   let channel: ChannelRegistration | undefined;
+  let channelError: string | undefined;
   try {
     channel = registerTerminalChannel(ctx, { manager, tokens, allowedOrigins });
-    if (!channel.registered) {
-      gaps.push({ what: 'webServer', reason: channel.reason ?? '宿主未提供 webServer（原因未给出）' });
-    }
   } catch (error) {
     // 唯一可能的抛错点是「重复 (kind, path) 注册」（设计 §11 的实证）：降级但不静默
-    gaps.push({ what: 'webServer', reason: `WS 路由注册失败：${describeError(error)}` });
+    channelError = describeError(error);
   }
+
+  /**
+   * webServer 缺口：**每次读都按 `channel` 的当前状态现算**（2026-10-09 真机缺陷 A 的第二半）。
+   *
+   * 惰性注入的回调可能在 `applyTerminalProfiles` 返回**之后**才跑（真机 `+755ms`）⇒ 缺口不能是
+   * 「装载那一刻拍下的一张照片」，否则路由都注册好了、`gaps` 里还挂着一句「未注册」的过期谎话。
+   * `pending`（还在等宿主服务，**不是失败**）与 `missing`（确证缺 / 注册抛错）必须分开说。
+   */
+  const webServerGap = (): PluginGap | null => {
+    if (channelError !== undefined) {
+      return { what: 'webServer', reason: `WS 路由注册失败：${channelError}` };
+    }
+    if (channel === undefined) {
+      return { what: 'webServer', reason: 'WS 通道未装配（registerTerminalChannel 未返回句柄）。' };
+    }
+    if (channel.registered) return null;
+    const why = channel.reason ?? '宿主未提供 webServer（原因未给出）';
+    if (channel.state === 'pending') {
+      return {
+        what: 'webServer',
+        reason: `${why} ⇒ 实例枚举端点 ${TERM_WS_LIST_PATH} 与 upgrade 端点 ${TERM_WS_UPGRADE_PATH} 尚未注册；注册到位后本条自动消失。`,
+      };
+    }
+    return { what: 'webServer', reason: why };
+  };
 
   // ⑥ 服务导出：**唯一窄缝**（依据见文件头；残余真机项 = 003 按字符串键能否注入到）
   const provided = provideService(ctx, MANAGED_TERMINAL_SERVICE, serviceHost.service);
@@ -295,7 +326,14 @@ export function applyTerminalProfiles(
     serviceHost,
     channel,
     toolNames: toolHandle?.names ?? [],
-    gaps,
+    /**
+     * 🔴 **getter，不是快照**：静态 gap（`gaps` 数组）+ 按当前状态现算的 `webServer` 缺口。
+     * 惰性注入的服务后到时，这条会**自己消失**（真机缺陷 A 的可观测性要求）。
+     */
+    get gaps(): readonly PluginGap[] {
+      const live = webServerGap();
+      return live === null ? [...gaps] : [...gaps, live];
+    },
     effectCount: () => effectCount,
     routeCount: () => channel?.registrationCount() ?? 0,
     dispose,
@@ -348,48 +386,4 @@ function provideService(ctx: PluginContextLike, serviceName: string, value: unkn
   if (typeof ctx.provide !== 'function') return false;
   ctx.provide(serviceName, value);
   return true;
-}
-
-/**
- * 可选的沙箱门禁（**默认不接线** —— 口径写在下面，2026-10-09 集成方裁决）。
- *
- * ## 🔴 口径：沙箱是 **Agent 写入**的门禁，**不是**用户/宿主能力的门禁
- *
- * 依据（都是本仓既有事实，不是偏好）：
- * ① design §11：`ctx.sandboxPolicy` 是**策略解析器**，**不是逐次门禁** —— 门禁在
- *    `tools/pre-execute` + `ctx.tools.guard()`；
- * ② 004 的真机验收项 #7：`read-only` 下 **Agent** 的 `managed_terminal_write` 被拒 + **页面键盘输入仍可用**
- *    ⇒ 沙箱约束的是 **Agent 动作**，不是用户/宿主侧能力；
- * ③ 本服务面的消费方 003 是**页面级**的（用户点按钮才 `open`）⇒ 在这一层再拦一次会让
- *    `read-only` 下「用户自己的按钮」失效，与 #7 直接矛盾；而 Agent 路径在 004 的工具层
- *    **已经**在调用前拦过，服务面再拦没有增量收益。
- *
- * ⇒ 缺省 `guard === undefined`（不过门）。这个函数**保留**是为了「零成本可切换」：想复用
- * 004 的同一份策略时，`PluginDeps.guard = (action) => sandboxGuard(policyCtx, action)` 即可
- * （`managed_terminal_read` / `managed_terminal_list` 永不过门，REQ-3.2）。缺策略服务时它是 fail-closed（`read-only` ⇒ 拒绝）。
- *
- * 审批**不在**这一层：审批是「Agent 触发」的语义（004 的 `gate()` 需要 agent 才能问）。
- */
-export function sandboxGuard(ctx: HostContextLike, action: GuardAction): ServiceFailure | undefined {
-  // `GuardAction` 是 003 消费的服务面词汇（`open` 不是工具名）⇒ 在这里显式映射到 Agent 工具名
-  const tool: WriteTool = action === 'open' ? 'managed_terminal_new' : `managed_terminal_${action}`;
-  try {
-    assertWriteAllowed(ctx, undefined, tool);
-    return undefined;
-  } catch (error) {
-    if (error instanceof ToolFailureError) {
-      return {
-        ok: false,
-        code: 'sandbox-denied',
-        message: error.message,
-        ...(error.hint === undefined ? {} : { hint: error.hint }),
-      };
-    }
-    return {
-      ok: false,
-      code: 'sandbox-denied',
-      message: `沙箱门禁抛出未预期错误，按最保守口径拒绝：${describeError(error)}`,
-      hint: '这是防御性分支：确认 ctx.sandboxPolicy 的形状没有被改动。',
-    };
-  }
 }

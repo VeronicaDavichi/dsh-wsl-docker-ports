@@ -12,6 +12,8 @@
  *      本包一致（编译期钉住）；而 `slots` 等宿主服务**不在** cordis 的 `Context` 上（由宿主包 declaration
  *      merge 提供，本机是悬空 junction 读不到）⇒ 用 `@ts-expect-error` 把这个「类型缺口」也钉住，
  *      不伪造一个假的一致性断言。
+ *   ⑦ 缺陷 C（2026-10-09）：注入回调**没跑**时必须 warn「已登记、服务到位即注册（不是失败）」，
+ *      与「确证缺失」的文案可区分；服务只经 `ctx.get` 可读时也必须照常注册。
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -115,6 +117,46 @@ describe('T4.1 apply（记账替身）', () => {
     expect(typeof document).toBe('undefined');
     entry.apply(harness.ctx);
     expect(harness.calls.tabDefinitions).toHaveLength(1);
+  });
+
+  /**
+   * 缺陷 C（2026-10-09 审计）：**等待期必须有信号**。
+   * 真机旧症状是「bundle 已加载、CSS 已注入、右栏无页、控制台 0 error 0 warning」——
+   * 0 warning 让「还在等服务」与「确证缺失」在真机上**无法区分**。这里把两条路径的可观测性钉住。
+   */
+  it('注入回调还没跑 ⇒ warn「已登记、服务到位即注册（不是失败）」，且此刻确实不注册（不谎报）', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const harness = createClientCtx({ inject: 'deferred' }); // 真机时序：服务后到
+      entry.apply(harness.ctx);
+      expect(harness.injectPending()).toBe(1);
+      expect(harness.calls.tabDefinitions).toHaveLength(0);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const line = String(warn.mock.calls[0]?.[0] ?? '');
+      expect(line).toContain('dsh-terminal-profiles');
+      expect(line).toContain('尚未注册');
+      expect(line).toContain('sidebarRightTabs');
+      expect(line).toContain('不是失败'); // 与 report() 的「确证缺失」文案可区分
+
+      // 服务到位 ⇒ 注册真的发生（旧写法若在同步判空处早退，就永远到不了这一步）
+      harness.fireInject();
+      expect(harness.calls.tabDefinitions).toHaveLength(1);
+      expect(harness.calls.seats).toHaveLength(3);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  /**
+   * 缺陷 C 的第二条（本包审计挖出的真因）：官方调用点里 `scope.<名字>` 与 `scope.get('<名字>')`
+   * **两种写法都出现过** ⇒ 只认属性会让「服务其实在、页面却不出现」。
+   */
+  it('宿主服务只经 ctx.get 可读（作用域上没有同名属性）⇒ 仍然注册页类型 + 2 seat + 配置页', () => {
+    const harness = createClientCtx({ servicesViaGet: true });
+    entry.apply(harness.ctx);
+    expect(harness.calls.tabDefinitions).toHaveLength(1);
+    expect(harness.calls.seats.filter((seat) => seat.name !== 'plugins.row.config')).toHaveLength(2);
+    expect(harness.calls.seats.filter((seat) => seat.name === 'plugins.row.config')).toHaveLength(1);
   });
 });
 

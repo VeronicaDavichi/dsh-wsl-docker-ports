@@ -2,18 +2,28 @@
  * 路由与 upgrade 注册（002 T3.1 / REQ-7.1 / REQ-7.5 / REQ-7.6）
  *
  * 注册**两条**（REQ-7.1 的两半）：
- * ① `register({ kind: 'prefix', path: '/dsh-managed-terminal/' })` —— 独占领前缀的具名 HTTP 路由，
+ * ① `register({ kind: 'prefix', path: TERM_WS_HTTP_PREFIX })` —— 独占领前缀的具名 HTTP 路由，
  *    本层只答 `/dsh-managed-terminal/instances`（实例枚举），前缀内其它路径答 404，
  *    前缀外一律不碰（官方的匹配顺序是 exact → 最长 prefix → fallback，本前缀独占 ⇒ 不抢 SPA fallback）；
- * ② `registerUpgrade({ path: '/dsh-managed-terminal/ws' })` —— **exact**，多终端靠协议层 `instanceId`
- *    复用这一个端点（宿主 upgrade 不支持前缀）。
+ *    🔴 前缀**不带尾斜杠**（缺陷 B，逐字证据见 `./constants.ts`）。
+ * ② `registerUpgrade({ path: TERM_WS_UPGRADE_PATH })` —— **exact**，多终端靠协议层 `instanceId`
+ *    复用这一个端点（宿主 upgrade 不支持前缀；`registerUpgrade` 只有 exact 表）。
  *
- * 🔴 **disposer 必须登记到 `ctx.effect`**：宿主不会自动收集注册返回的 disposer，漏登记就是
- *    「插件卸载了、路由还在，且再次挂载会因重复 `(kind, path)` 直接抛错」。T3.1 的判据
- *    （注册/卸载计数归零）就是钉这一条。
+ * ## 时机（2026-10-09 真机缺陷 A）：注册必须发生在**宿主可用时机**
  *
- * 🔴 服务获取用**非严格** `ctx.get('webServer')`：缺服务时「不注册任何路由并给出原因」，
- *    **不是**让整个插件启动失败（宿主里 webServer 是可选的）。
+ * 真机时间线：`+68ms` 时 `ctx.get('webServer')` 是 `undefined`，本包的 `ctx.inject(['webServer'])`
+ * 到 `+755ms` 才 FIRED ⇒ **同步取一次就定生死 = 永不注册**，而插件面板照旧显示「运行中」、零报错。
+ * 故：有 `ctx.inject` 就走惰性注入（回调在服务可用时才跑），状态是**活的**（`registered` / `state` /
+ * `reason` 全是 getter）；没有 `inject` 的老宿主/测试替身才退回同步 `ctx.get`，且两条路径都保留
+ * 「服务确实缺失 ⇒ 不注册 + 给原因」的语义 —— `pending`（还在等）与 `missing`（确证缺）**必须分开说**。
+ *
+ * ## 三条硬约束（每条都有回归用例）
+ *
+ * 1. **`attach` 幂等**：重复 `(kind, path)` 宿主**直接抛错** ⇒ 注入回调多跑一次不能二次注册
+ *    （`disposed` / `live > 0` 两道闸）。
+ * 2. **已 dispose 后到达的回调要被挡住**：卸载先置 `disposed`，后到的注入回调只记账、不注册。
+ * 3. **disposer 无条件进 `ctx.effect`**：宿主**不会**自动回收 `register()` 的返回值。这里**恰好一条**
+ *    effect 收编整条生命周期（HTTP + upgrade + 挡住后到回调），无论当时是否已经注册成功。
  */
 
 import { TERM_WS_HTTP_PREFIX, TERM_WS_LIST_PATH, TERM_WS_UPGRADE_PATH } from './constants.ts';
@@ -23,6 +33,12 @@ import { createUpgradeHandler, writeRejection } from './upgrade-socket.ts';
 import type { ChannelPluginContext, HttpRequestLike, HttpResponseLike, UpgradeSocketLike, WebServerSurface } from './types.ts';
 
 const encoder = new TextEncoder();
+
+/** 注入/取用的宿主服务名（一处字面量，注册与判定不漂移） */
+const WEB_SERVER_SERVICE = 'webServer';
+
+/** 生命周期 effect 的 label（宿主诊断可读） */
+const ROUTE_EFFECT_LABEL = 'dsh-terminal-profiles: ws routes';
 
 /** 结构面判定：宿主注入的对象是否**够用**（duck typing，不 import 宿主类型） */
 export function isWebServerSurface(value: unknown): value is WebServerSurface {
@@ -49,13 +65,33 @@ function sendJson(res: HttpResponseLike, status: number, payload: unknown): void
   res.end(body);
 }
 
+/**
+ * 注册状态（**活的**：惰性注入的回调可能在 `registerTerminalChannel` 返回之后才跑）
+ */
+export type ChannelRouteState =
+  /** 两条路由都已进宿主路由表 */
+  | 'registered'
+  /** 已登记 `ctx.inject(['webServer'])`，等宿主把服务放进来（**不是失败**） */
+  | 'pending'
+  /** 同步路径下取不到服务，或注入到的东西形状不对 / 注册抛错 ⇒ 不注册 */
+  | 'missing';
+
+/** 惰性注入登记时、以及确证缺失时的人话（测试与 gap 都引用它，避免两处漂移） */
+export const PENDING_WEB_SERVER_REASON =
+  "宿主此刻尚未提供 webServer：已登记 ctx.inject(['webServer'])，服务到位后自动注册（惰性注入的常态，不是失败）。";
+export const MISSING_WEB_SERVER_REASON =
+  '宿主未提供 webServer 服务（非严格 ctx.get 且无可用注入时机）：WS 通道不注册任何路由，HTTP/upgrade 均不可用。';
+
 export interface ChannelRegistration {
-  /** 宿主提供了 webServer 并成功登记 ⇒ true；否则 false（`reason` 说明原因） */
+  /** 宿主提供了 webServer 并成功登记 ⇒ true（**getter**：惰性注入后回调一跑就翻） */
   readonly registered: boolean;
+  /** 见 `ChannelRouteState`（**getter**） */
+  readonly state: ChannelRouteState;
+  /** 未注册的原因（**getter**：注册成功后必须变回 `undefined`，不许留一句过期的谎） */
   readonly reason?: string | undefined;
   readonly channel: TerminalChannel;
   readonly paths: { readonly http: string; readonly upgrade: string };
-  /** 当前仍生效的注册数（卸载后必须归零；T3.1 的判据） */
+  /** 当前仍生效的注册数（0 或 2；卸载后必须归零；T3.1 的判据） */
   registrationCount(): number;
   /** 幂等卸载（宿主卸载时由 `ctx.effect` 自动调用；测试里手动调） */
   dispose(): void;
@@ -64,46 +100,17 @@ export interface ChannelRegistration {
 export function registerTerminalChannel(ctx: ChannelPluginContext, deps: ChannelDeps): ChannelRegistration {
   const channel = createTerminalChannel(deps);
   const paths = { http: TERM_WS_HTTP_PREFIX, upgrade: TERM_WS_UPGRADE_PATH } as const;
-  const disposers: (() => void)[] = [];
-  let count = 0;
+  /** 宿主给的撤回器（`register()` 的返回值；宿主不会自动回收 ⇒ 由下面那条 effect 统一持有） */
+  const hostDisposers: Array<() => void> = [];
+  let live = 0;
+  let state: ChannelRouteState = 'pending';
+  let reason: string | undefined = PENDING_WEB_SERVER_REASON;
+  let disposed = false;
 
-  /**
-   * 登记一个宿主注册动作。`ctx.effect` 会在插件卸载时调用我们返回的 disposer；
-   * 老宿主/测试替身若没有 `effect`，退到「手动 dispose」并把 disposer 收进 `disposers`。
-   */
-  const track = (register: () => () => void): void => {
-    const install = (): (() => void) => {
-      const hostDispose = register();
-      count += 1;
-      let done = false;
-      const disposeOnce = (): void => {
-        if (done) return;
-        done = true;
-        count -= 1;
-        hostDispose();
-      };
-      disposers.push(disposeOnce);
-      return disposeOnce;
-    };
-    if (typeof ctx.effect === 'function') ctx.effect(install);
-    else install();
+  const fail = (why: string): void => {
+    state = 'missing';
+    reason = why;
   };
-
-  const dispose = (): void => {
-    for (const item of disposers.splice(0, disposers.length)) item();
-  };
-
-  const webServer = ctx.get('webServer');
-  if (!isWebServerSurface(webServer)) {
-    return {
-      registered: false,
-      reason: '宿主未提供 webServer 服务（非严格 ctx.get）：WS 通道不注册任何路由，HTTP/upgrade 均不可用。',
-      channel,
-      paths,
-      registrationCount: () => 0,
-      dispose: () => undefined,
-    };
-  }
 
   const listHandler = async (request: HttpRequestLike, response: HttpResponseLike): Promise<void> => {
     try {
@@ -140,14 +147,71 @@ export function registerTerminalChannel(ctx: ChannelPluginContext, deps: Channel
     }
   };
 
-  track(() => webServer.register({ kind: 'prefix', path: TERM_WS_HTTP_PREFIX, handler: listHandler }));
-  track(() => webServer.registerUpgrade({ path: TERM_WS_UPGRADE_PATH, handler: upgradeRoute }));
+  /**
+   * 真正登记两条路由。**幂等**：已卸载 / 已注册 / 形状不对 ⇒ 直接返回（重复 `(kind, path)` 会抛错）。
+   * 若第二条（upgrade）抛错，把第一条撤回后再记 `missing` —— 不留半注册。
+   */
+  const attach = (surface: WebServerSurface): void => {
+    if (disposed || live > 0) return;
+    try {
+      hostDisposers.push(surface.register({ kind: 'prefix', path: TERM_WS_HTTP_PREFIX, handler: listHandler }));
+      hostDisposers.push(surface.registerUpgrade({ path: TERM_WS_UPGRADE_PATH, handler: upgradeRoute }));
+    } catch (error) {
+      for (const undo of hostDisposers.splice(0, hostDisposers.length)) undo();
+      fail(`WS 路由注册失败（已回滚半注册）：${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    live = hostDisposers.length;
+    state = 'registered';
+    reason = undefined;
+  };
+
+  /** 卸载（幂等）：置 `disposed` 挡住后到的注入回调，再摘掉路由。 */
+  const disposeOnce = (): void => {
+    disposed = true;
+    for (const undo of hostDisposers.splice(0, hostDisposers.length)) undo();
+    live = 0;
+    if (state === 'registered') {
+      state = 'missing';
+      reason = '已卸载（dispose）⇒ 路由已摘除；后到的注入回调不会再注册。';
+    }
+  };
+
+  // ① 宿主可用时机：有 inject 就等（服务已在 ⇒ 同步跑；后到 ⇒ 后到就跑）
+  if (typeof ctx.inject === 'function') {
+    try {
+      ctx.inject([WEB_SERVER_SERVICE], (scope) => {
+        if (disposed) return;
+        const injected = scope.get(WEB_SERVER_SERVICE);
+        if (isWebServerSurface(injected)) attach(injected);
+        else fail(MISSING_WEB_SERVER_REASON);
+      });
+    } catch (error) {
+      fail(`inject([${WEB_SERVER_SERVICE}]) 登记失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  } else {
+    // ② 兼容路径（老宿主 / 测试替身）：同步取一次。**不是**判据，只是没有等待机制时的兜底
+    const sync = ctx.get(WEB_SERVER_SERVICE);
+    if (isWebServerSurface(sync)) attach(sync);
+    else fail(MISSING_WEB_SERVER_REASON);
+  }
+
+  // 🔴 无条件收编：宿主不自动回收 `register()` 的返回值；且后到的注入回调也要能被这条闸挡住
+  if (typeof ctx.effect === 'function') ctx.effect(() => disposeOnce, ROUTE_EFFECT_LABEL);
 
   return {
-    registered: true,
+    get registered(): boolean {
+      return live > 0;
+    },
+    get state(): ChannelRouteState {
+      return state;
+    },
+    get reason(): string | undefined {
+      return reason;
+    },
     channel,
     paths,
-    registrationCount: () => count,
-    dispose,
+    registrationCount: () => live,
+    dispose: disposeOnce,
   };
 }

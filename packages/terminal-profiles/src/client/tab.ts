@@ -141,6 +141,21 @@ function isSidebarRight(value: unknown): value is SidebarRightLike {
   return isFunction((value as Partial<SidebarRightLike> | null | undefined)?.openTab);
 }
 
+/**
+ * 读一个宿主服务：**两种写法都认** —— 注入作用域上的同名属性（官方 `ui-chat` 的
+ * `ctx.inject([...], scope => { const tabs = scope.sidebarRightTabs; })`）**与** `scope.get('名字')`
+ * （官方另一处调用点；contract §D13 的 `remote.settings` 就是这一种）。
+ *
+ * 🔴 为什么必须两读（2026-10-09 缺陷 C 的审计结论）：只认一种写法会让「服务其实在、只是没走那条路」
+ * 变成**又一次「页面静默不出现」** —— 这一点姊妹包 003 已按真机症状踩过。缺服务时返回 `undefined`，
+ * 由调用方降级（非严格取用，绝不抛）。
+ */
+export function softGet(scope: ClientContextLike, name: string): unknown {
+  const own = (scope as unknown as Record<string, unknown>)[name];
+  if (own !== undefined && own !== null) return own;
+  return typeof scope.get === 'function' ? scope.get(name) : undefined;
+}
+
 /** 纯函数：构造页类型定义（刻意不写 `priority` ⇒ 落宿主默认的 `extension` 档） */
 export function buildTabDefinition(): SidebarRightTabDefinitionLike {
   return {
@@ -173,18 +188,24 @@ export function registerTerminalTab(
   scope: ClientContextLike,
   components: TerminalTabComponents,
 ): TabRegistrationResult {
-  if (!isSidebarRightTabs(scope.sidebarRightTabs)) {
-    return degrade('宿主未提供 sidebarRightTabs.register：右栏页类型不注册（REQ-4.5），客户端其余部分照常工作。');
+  const tabs = softGet(scope, 'sidebarRightTabs');
+  if (!isSidebarRightTabs(tabs)) {
+    return degrade(
+      '宿主未提供 sidebarRightTabs.register：右栏页类型不注册（REQ-4.5），客户端其余部分照常工作。',
+    );
   }
-  if (!isSidebarRight(scope.sidebarRight)) {
-    return degrade('宿主未提供 sidebarRight.openTab：右栏容器能力缺失，页类型不注册（REQ-4.5）。');
+  if (!isSidebarRight(softGet(scope, 'sidebarRight'))) {
+    return degrade(
+      '宿主未提供 sidebarRight.openTab：右栏容器能力缺失，页类型不注册（REQ-4.5）。',
+    );
   }
-  if (!isSlots(scope.slots)) {
-    return degrade('宿主未提供 slots.{inject,register}：页体/标题 seat 无法挂载，页类型不注册（REQ-4.5）。');
+  const slots = softGet(scope, 'slots');
+  if (!isSlots(slots)) {
+    return degrade(
+      '宿主未提供 slots.{inject,register}：页体/标题 seat 无法挂载，页类型不注册（REQ-4.5）。',
+    );
   }
 
-  const tabs = scope.sidebarRightTabs;
-  const slots = scope.slots;
   const disposers: Array<() => void> = [];
   let live = 0;
 

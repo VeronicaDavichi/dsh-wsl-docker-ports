@@ -80,10 +80,18 @@ export interface WebServerSurface {
  *
  * 🔴 服务获取走**非严格** `get('webServer')`（返回 `undefined` 由我们自判），
  * 不用 `static inject` —— 缺服务时应当「不注册任何路由」而不是整插件启动失败。
+ *
+ * 🔴 **2026-10-09 真机缺陷 A**：`webServer` 是**后到**的服务（真机 `+68ms` 时 `ctx.get('webServer')`
+ * 是 `undefined`，`ctx.inject(['webServer'])` 到 `+755ms` 才 FIRED）⇒ 同步取一次就下结论必然是
+ * 「不注册 + 记 gap」且**零报错**。故本面加上可选的 `inject`：有它就等宿主可用时机
+ * （服务已在 ⇒ 同步跑；后到 ⇒ 后到就跑），没有它的老宿主/测试替身才退回同步 `ctx.get`。
  */
 export interface ChannelPluginContext {
-  effect(callback: () => void | (() => void)): unknown;
+  effect(callback: () => void | (() => void), label?: string): unknown;
   get(name: string): unknown;
+  readonly inject?:
+    | ((services: readonly string[], callback: (scope: ChannelPluginContext) => void) => unknown)
+    | undefined;
 }
 
 /** 通道核心的出口：一帧文本 + 一个背压位（`write` 返回 false = 消费者已暂停） */

@@ -33,8 +33,22 @@ export interface FakePluginCtx {
   readonly ctx: PluginContextLike;
   readonly provideCalls: Array<{ name: string; value: unknown }>;
   readonly footerRegistrations: () => number;
+  /** 每次 `ctx.inject([...])` 请求的服务名（真机时序的判据） */
+  readonly injectCalls: string[][];
+  /** 「宿主服务后到」：装载之后再把它放进 ctx（真机 `webServer` 在 `+755ms` 才可用） */
+  installService(name: 'webServer' | 'subprocess' | 'tools' | 'sandboxPolicy', value: unknown): void;
+  /** 触发已登记的注入回调（配合 `installService` 用；`inject: 'none'` 时是空操作） */
+  fireInject(): void;
   effectCount(): number;
   unload(): void;
+}
+
+export interface FakePluginCtxOptions {
+  /**
+   * `'none'`（缺省）= ctx 上**没有** `inject`（走同步 `ctx.get` 兼容路径）；
+   * `'deferred'` = 有 `inject` 且**不**同步触发（真机缺陷 A 的时序）。
+   */
+  readonly inject?: 'none' | 'deferred';
 }
 
 /** 宿主服务的**可选**面（缺谁就走谁自己的降级路径） */
@@ -46,38 +60,66 @@ export type FakeServices = Partial<Record<'webServer' | 'subprocess' | 'tools' |
  * 🔴 `sidebarRightTabs` 是**计数版**：本任务不许实现 Phase 4 的右栏页类型 ⇒ 只要有人注册，
  * `footerRegistrations()` 就非 0、断言当场红（比「不写断言」强）。
  * `unload()` 按 cordis 的**逆序**跑 effect 清理（最后注册的最先清理）。
+ * `inject: 'deferred'` 复刻真机缺陷 A 的时序：`get('webServer')` 先是 `undefined`，
+ * 直到 `installService` + `fireInject` 才到位。
  */
-export function createFakePluginCtx(services: FakeServices): FakePluginCtx {
+export function createFakePluginCtx(
+  services: FakeServices,
+  options: FakePluginCtxOptions = {},
+): FakePluginCtx {
   const disposers: Array<() => void> = [];
   const provideCalls: Array<{ name: string; value: unknown }> = [];
+  const injectCalls: string[][] = [];
+  const pending: Array<() => void> = [];
+  const installed: Record<string, unknown> = { ...services };
   let effects = 0;
   let pageTypes = 0;
-  return {
-    ctx: {
-      provide(serviceName: string, value: unknown) {
-        provideCalls.push({ name: serviceName, value });
-        return value;
-      },
-      effect(callback) {
-        effects += 1;
-        const dispose = callback();
-        if (typeof dispose === 'function') disposers.push(dispose);
-        return dispose;
-      },
-      get(serviceName) {
-        if (serviceName === 'sidebarRightTabs') {
-          return {
-            register() {
-              pageTypes += 1;
-              return () => undefined;
-            },
-          };
-        }
-        return (services as Record<string, unknown>)[serviceName];
-      },
+  let self: PluginContextLike;
+  const ctx: PluginContextLike = {
+    provide(serviceName: string, value: unknown) {
+      provideCalls.push({ name: serviceName, value });
+      return value;
     },
+    effect(callback) {
+      effects += 1;
+      const dispose = callback();
+      if (typeof dispose === 'function') disposers.push(dispose);
+      return dispose;
+    },
+    get(serviceName) {
+      if (serviceName === 'sidebarRightTabs') {
+        return {
+          register() {
+            pageTypes += 1;
+            return () => undefined;
+          },
+        };
+      }
+      return installed[serviceName];
+    },
+    ...(options.inject === 'deferred'
+      ? {
+          inject(names: readonly string[], callback: (scope: PluginContextLike) => void) {
+            injectCalls.push([...names]);
+            pending.push(() => callback(self));
+            return undefined;
+          },
+        }
+      : {}),
+  };
+  self = ctx;
+  return {
+    ctx,
     provideCalls,
+    injectCalls,
     footerRegistrations: () => pageTypes,
+    installService(name, value) {
+      installed[name] = value;
+    },
+    fireInject() {
+      // **可重复触发**：真机的注入通知可能不止一次 ⇒ 「attach 必须幂等」这条判据要靠它才验得出来
+      for (const fire of pending) fire();
+    },
     effectCount: () => effects,
     unload() {
       for (const dispose of disposers.splice(0, disposers.length).reverse()) dispose();

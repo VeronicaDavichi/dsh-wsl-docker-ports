@@ -13,8 +13,29 @@
 
 import { TERM_BUFFER_MAX_BLOCKS, TERM_BUFFER_MAX_BYTES } from '../limits.ts';
 
-/** 具名 HTTP 路由的**独占前缀**（REQ-7.1；HTTP 侧用 `kind: 'prefix'`） */
-export const TERM_WS_HTTP_PREFIX = '/dsh-managed-terminal/';
+/**
+ * 具名 HTTP 路由的**独占前缀**（REQ-7.1；HTTP 侧用 `kind: 'prefix'`）。
+ *
+ * 🔴 **绝不能带尾斜杠**（2026-10-09 真机缺陷 B）。宿主 `dsh-host-webserver` 的分派判据是
+ * **逐字**下面这段（本机 `app.asar` 内 `dsh-host-webserver/lib/index.js` 的 `match(pathname)` 原文）：
+ *
+ *   const exact = this.exact.get(pathname);
+ *   if (exact !== void 0) return exact;
+ *   let best;
+ *   for (const [prefix, route] of this.prefixes) {
+ *     if (pathname !== prefix && !pathname.startsWith(`${prefix}/`)) continue;
+ *     if (best === void 0 || prefix.length > best.path.length) best = route;
+ *   }
+ *   return best;
+ *
+ * 前缀写成 `'/dsh-managed-terminal/'` 时，宿主要求的其实是 `pathname === '/dsh-managed-terminal/'`
+ * 或 `pathname.startsWith('/dsh-managed-terminal//')` —— 而真实端点 `/dsh-managed-terminal/instances`
+ * **两条都不满足** ⇒ 前缀路由永不命中、请求被宿主兜底吃掉（官方 README 原文：*"while no fallback is
+ * registered the server answers 404"*）⇒ 端点静默不可达、零报错。姊妹包 003 的真机症状与此逐字相同。
+ *
+ * 故常量取**不带尾斜杠**的形态（`instances` 仍是 `.../instances`，见 `TERM_WS_LIST_PATH`）。
+ */
+export const TERM_WS_HTTP_PREFIX = '/dsh-managed-terminal';
 
 /**
  * upgrade 的**单一 exact 端点**（REQ-7.1）。

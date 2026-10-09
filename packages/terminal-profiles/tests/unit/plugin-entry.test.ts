@@ -22,11 +22,6 @@ import {
 import { defaultHostModulePort, resolveSchemaFactory } from '../../src/service-export/host-modules.ts';
 import { MANAGED_TERMINAL_SERVICE } from '../../src/service-export/types.ts';
 import type { HostContextLike, ToolRegisterSurface } from '../../src/tools/index.ts';
-import {
-  TERM_WS_HTTP_PREFIX,
-  TERM_WS_LIST_PATH,
-  TERM_WS_UPGRADE_PATH,
-} from '../../src/ws/constants.ts';
 import { createFakeSubprocess } from '../helpers/fake-pty.ts';
 import {
   CONFIG,
@@ -138,7 +133,9 @@ describe('T7.1 ② 无消费方时不报错、不注册多余内容（装载面�
     expect(() => apply(fakeCtx.ctx, CONFIG)).not.toThrow();
     expect(fakeCtx.provideCalls.map((call) => call.name)).toEqual(['managedTerminal']);
     expect(fakeCtx.footerRegistrations()).toBe(0); // 页类型（Phase 4）不注册
-    expect(fakeCtx.effectCount()).toBe(1); // 只有我们自己的 teardown 收编（没有路由 ⇒ 没有那两条）
+    // 2 条 effect = 本插件自己的 teardown + **WS 通道那条无条件登记的生命周期闸**（缺陷 A 修复后
+    // 「一条都没注册」时它也必须存在：后到的注入回调要靠它挡住，见 `ws-route-timing.test.ts`）
+    expect(fakeCtx.effectCount()).toBe(2);
   });
 
   it('连 config 都没有也不崩（Config 缺 Schema 时宿主可能什么都不传）', () => {
@@ -194,15 +191,16 @@ describe('T7.2 卸载清理：全部计数归零 + 全部实例被终止', () =>
     if (!first.ok || !second.ok) return;
 
     const token = handle.tokens.issue();
-    webServer.invokeUpgrade(TERM_WS_UPGRADE_PATH, {
+    webServer.invokeUpgrade('/dsh-managed-terminal/ws', {
       headers: handshakeHeaders(token, ORIGIN, { 'sec-websocket-key': WS_KEY }),
     });
 
     handle.service.subscribe(first.value.id, () => undefined);
     expect(webServer.liveCount()).toBe(2);
     expect(handle.routeCount()).toBe(2);
-    expect(webServer.registerCalls).toEqual([{ kind: 'prefix', path: TERM_WS_HTTP_PREFIX }]);
-    expect(webServer.upgradeCalls).toEqual([{ path: TERM_WS_UPGRADE_PATH }]);
+    // 契约字面量（不从 src 取：常量改名必须让本文件红）
+    expect(webServer.registerCalls).toEqual([{ kind: 'prefix', path: '/dsh-managed-terminal' }]);
+    expect(webServer.upgradeCalls).toEqual([{ path: '/dsh-managed-terminal/ws' }]);
     expect(tools.names).toEqual([...TOOL_NAMES]);
     expect(handle.toolNames).toEqual([...TOOL_NAMES]);
     expect(handle.channel?.channel.activeCount).toBe(1);
@@ -217,7 +215,7 @@ describe('T7.2 卸载清理：全部计数归零 + 全部实例被终止', () =>
     const second = await handle.service.open({ profile: 'wsl' });
     if (!first.ok || !second.ok) throw new Error('装配失败：open 没成功');
     handle.service.subscribe(first.value.id, () => undefined);
-    webServer.invokeUpgrade(TERM_WS_UPGRADE_PATH, {
+    webServer.invokeUpgrade('/dsh-managed-terminal/ws', {
       headers: handshakeHeaders(handle.tokens.issue(), ORIGIN, { 'sec-websocket-key': WS_KEY }),
     });
     expect(handle.channel?.channel.activeCount).toBe(1);
@@ -236,7 +234,7 @@ describe('T7.2 卸载清理：全部计数归零 + 全部实例被终止', () =>
     expect(subprocess.handles.map((h) => h.terminateCount)).toEqual([1, 1]); // kill 调用数 = 实例数
     expect(subprocess.handles.every((h) => h.terminated)).toBe(true);
     // 路由真的没了：原来的枚举路径回落到官方行为（不是「注册了但答得动」）
-    expect((await webServer.invokeHttp(TERM_WS_LIST_PATH)).status).toBe('fallback');
+    expect((await webServer.invokeHttp('/dsh-managed-terminal/instances')).status).toBe('fallback');
   });
 
   it('卸载后可**重新装载**：同一份 webServer 不撞「重复 (kind, path) 抛错」（REQ-7.6）', async () => {
