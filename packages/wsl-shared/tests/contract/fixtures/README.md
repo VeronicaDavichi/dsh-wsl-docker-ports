@@ -10,7 +10,7 @@
 | `wsl-list-verbose.raw` | `wsl.exe -l -v` | **UTF-16LE**（前 12 字节 `20 00 20 00 4E 00 41 00 4D 00 45 00` = `"  NAME"`；NUL 占比 50%），行尾 **LF（无 CRLF）** |
 | `wsl-version.raw` | `wsl.exe --version` | **UTF-16LE**，表头是**中文**「WSL 版本」 |
 | `wsl-eth0-ip.raw` | `wsl.exe -d Ubuntu2204 -- ip -4 -o addr show dev eth0` | UTF-8；`172.20.201.152/20`（与 19 条 portproxy 的 connectaddress 一致 = 尚未漂移） |
-| `wslconfig.raw` | `%USERPROFILE%\.wslconfig` | UTF-8；只有 `[wsl2]` + `localhostForwarding=true` ⇒ **NAT 缺省**（组件②的硬前提成立） |
+| `wslconfig.raw` | `%USERPROFILE%\.wslconfig` | UTF-8（**无 BOM**、无 NUL）；**32 字节**、行尾 **CRLF**、**无尾换行**；只有 `[wsl2]` + `localhostForwarding=true` ⇒ **NAT 缺省**（组件②的硬前提成立） |
 
 ## T0.1 要定案的三条假设 → 结论
 

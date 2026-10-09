@@ -158,7 +158,7 @@ Validation checks:
 | --- | --- |
 | Windows / WSL | Windows 11 23H2（10.0.22631.5335）/ WSL **2.7.3.0** |
 | 发行版 | **`Ubuntu2204`**（用户示例里的 `-d Ubuntu` 本机不存在）|
-| `.wslconfig` | 仅 `[wsl2] localhostForwarding=true` → **NAT 缺省**，符合硬前提 ✅ |
+| `.wslconfig` | **32 字节、无 BOM、行尾 CRLF、无尾换行**，仅 `[wsl2] localhostForwarding=true` → **NAT 缺省**，符合硬前提 ✅。⚠️ 路径解析陷阱（实测）：`USERPROFILE=''` 时 `??` **不回落**到 `os.homedir()`，而 `path.join('', '.wslconfig')` 是**相对路径**（会读工作目录下的同名文件）；且该情形下 `os.homedir()` **自己会抛** `ERR_SYSTEM_ERROR` ⇒ 必须 `?.trim() ||` + try/catch + **绝对路径校验** |
 | WSL 内 docker | `/usr/bin/docker`，server **29.5.3**（引擎装在 WSL 内，**非** Docker Desktop）|
 | WSL eth0 | `172.20.201.152`（2026-10-08 实测；与 19 条规则 connectaddress 一致 = **尚未漂移**）。**漂移（同日 T0.2 实测反证）**：单发行版 `--terminate` 与整台 `--shutdown` **两种重建都不换 IP**（前者 `PID1` 变而 `btime` 不变，后者 `btime`/`boot_id` 都变，eth0 两次都不变）⇒ 本机**不可复现**；REQ-6 保留为**安全网**，但**不做**心跳/守护/storage —— 「激活 + 刷新各查一次」+ **写入前强制现读** 即足够。⚠️ 网关 `172.20.192.1` 是 **Windows 自己的地址**，ping 它**连 WSL 全停都通**（实测）⇒ 不可当存活信号；重建信号用 `vmmemWSL` 的 CIM `CreationDate`（真名**无 `.exe`**，写成 `'vmmemWSL.exe'` 会 0 命中）|
 | 现有 portproxy | **19 条** `0.0.0.0:<port> → 172.20.201.152`，**就是原脚本的产物**（已手工跑过一次）|

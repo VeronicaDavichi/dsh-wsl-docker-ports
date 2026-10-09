@@ -24,7 +24,7 @@
 | 类型 | 形状 | 说明 |
 |---|---|---|
 | `WslDistro` | `{ name: string; state: 'Running'｜'Stopped'｜'Installing'｜'Unknown'; version: 1｜2｜'unknown'; isDefault: boolean }` | `state` 无法识别 → `Unknown`（不抛错）|
-| `NetworkingMode` | `{ path: string; mode: 'nat'｜'mirrored'｜'default'｜'other'; rawValue?: string; resolved: 'nat'｜'non-nat' }` | `resolved` 只有两态，消费方只需判一个布尔（REQ-4.4）|
+| `NetworkingMode` | `{ ok: true; path: string; mode: 'nat'｜'mirrored'｜'default'｜'other'; resolved: 'nat'｜'non-nat'; rawValue?: string }` | `resolved` 只有两态，消费方只需判一个布尔（REQ-4.4）；成功态带 `ok: true` 以便 `isWslFailure()` 收窄联合；**缺键时 `rawValue` 字段不出现**（不伪造 `undefined`）|
 | `ExecResult` | `{ ok: true; exitCode: 0; stdout: string; stderr: string }` | 成功态（`stderr` 非空也算成功，REQ-5.4）|
 | `WslSharedError` | `{ ok: false; code: ErrorCode; message: string; argv?: string[]; exitCode?: number; stderr?: string; path?: string; distros?: string[] }` | 所有失败的唯一出口（REQ-5.6）|
 | `ExecOptions` | `{ cwd?: string; env?: Record<string,string>; timeoutMs: number; encoding: 'utf16le'｜'utf8'｜string }` | `timeoutMs` **必填**，不设隐式默认（REQ-5.3）|
@@ -117,11 +117,12 @@ Linux → Windows 方向**额外**拒**反斜杠**（Linux 合法，到 Windows 
 
 ### 3.4 `.wslconfig`（`wslconfig.ts`）
 
-- 路径：`path.join(process.env.USERPROFILE ?? os.homedir(), '.wslconfig')`。
-- 读取：`fs.readFile` → 失败 → `ConfigUnreadable`（**不是**缺省 NAT，REQ-4.6）；`ENOENT` → `{ mode:'default', resolved:'nat' }`（REQ-4.2）。
-- 手写 INI 子集解析（只为读一个键，不引依赖）：剥 BOM、按行、`#`/`;` 起注释、`[section]` 记当前节、`key = value` 去两侧空白并剥离行内注释；只认 `wsl2` 节的 `networkingMode`（节名与键名均大小写不敏感）。
-- 判定：`nat` → nat；`mirrored` → mirrored；缺失 → default；其余（含 `bridged`、拼写错误、未来值）→ **other**，`resolved` 一律非 nat（REQ-4.4）。
-- **只读**：本包 SHALL NOT 写 `.wslconfig`（修复指引由 003 展示文本）。
+- **真机字节**（fixture `wslconfig.raw`）：**32 字节、无 BOM、行尾 CRLF、无尾换行**，原文 `[wsl2]` + `localhostForwarding=true` ⇒ 没有该键 = **NAT 缺省**（硬前提成立）。
+- 路径：`path.join(process.env.USERPROFILE?.trim() || os.homedir(), '.wslconfig')` —— 🔴 **不能用 `??`**：`USERPROFILE=''` 时 `??` 不回落到主目录，而 `path.join('', '.wslconfig')` 是**相对路径** ⇒ 会去读**当前工作目录**下的同名文件（静默错答）；且实测 `USERPROFILE=''` 时 `os.homedir()` **自己会抛** `ERR_SYSTEM_ERROR` ⇒ 再补一道「默认路径必须是绝对路径」的校验，两道都拦成 `ConfigUnreadable`。
+- 读取：`fs.readFile` 失败**只按「是不是 `ENOENT`」分叉**（实测 errno：目录 `EISDIR`、缺文件/缺盘符 `ENOENT`、路径含 NUL `ERR_INVALID_ARG_VALUE`，**本机见不到 `EACCES`** ⇒ 不枚举 errno）：`ENOENT` → `{ mode:'default', resolved:'nat' }`（REQ-4.2）；其余 → `ConfigUnreadable` 带完整路径（REQ-4.6，**不是**缺省 NAT）。errno 文案**只出现一次**（Node 的 `message` 自带前缀，实测踩过 `EISDIR: EISDIR: …`）。
+- 手写 INI 子集解析（只为读一个键，不引依赖）：剥 BOM、按 `\r\n`/`\n`/`\r` 切行、`#`/`;` 起注释（含行内）、`[section]` 记当前节、`key = value` 去两侧空白；只认 `wsl2` 节的 `networkingMode`（节名/键名大小写不敏感，**值**大小写敏感）；重复键**最后一个**胜出。
+- 判定：`nat` → nat；`mirrored` → mirrored；缺失 → default；其余（含 `bridged`、`NAT`、拼写错误、未来新值、空值）→ **other**，`resolved` 非 nat（REQ-4.4 保守）。`rawValue` 保留原值（去空白、**不归一化大小写**）供 UI 显示「你写的是 X，我判定为 Y」；缺键时该字段**不出现**。
+- **只读**：本包 SHALL NOT 写 `.wslconfig`（修复指引由 003 展示文本）；测试里有静态断言（剥注释源码零写文件调用）。
 
 ---
 
@@ -190,3 +191,4 @@ Linux → Windows 方向**额外**拒**反斜杠**（Linux 合法，到 Windows 
 13. **路径翻译的 whitespace/前缀/长度取舍**：入参**首尾空白会被 trim**（表单场景常见；段内空格与中文原样保留，REQ-3.6）；`\\?\E:\x` 这类**扩展长度前缀被拒**（`?` 命中保留字符）—— 本包不猜"这是不是长路径前缀"。尾随空格/句点的路径**段**（`E:\x.`）照原样翻译，Windows 自己会在多数 API 里吃掉它们。**不检查 MAX_PATH，也不自动加 `\\?\` 长路径前缀**（实测 401 字符输入照译，输出 796 字符；是否可用取决于目标进程的长路径支持）。
 14. **盘符相对形态按盘根解析**：`E:x` / `E:..\x` → `/mnt/e/x`（REQ-3.1 的字面要求）；严格说"E 盘的当前目录"必须读 FS 才知道，但 Windows 每盘当前目录**默认即根** ⇒ 常见情形正确，读不出真实值时也不猜。
 15. **`/mnt/<盘>` 的存在性不校验**（纯函数不读 FS）：automount 关闭或自定义挂载点时，归属判断由调用方用 `wsl -l -v` / `.wslconfig` 的事实承担 —— 本包只做字符串变换。
+16. **`networkingMode` 写在旧节 `[experimental]`（WSL 2.0 之前的位置）时本包看不到**：REQ-4.5 明确要求「忽略其他节」⇒ 判为 `default/nat`；而 WSL 2.7.3 是否仍读旧节，本机**无法在不改用户配置、不重启 WSL 的前提下验证** ⇒ 记为已知风险（若真读，我们会**误报"可用"**）。缓解：003 不据此自动写规则，且 `mode==='default'` 时仍走「写入前强制现读 + 转发自检」兜底。

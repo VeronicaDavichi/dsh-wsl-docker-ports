@@ -11,8 +11,8 @@
  *
  * 已完成：Phase 0（T0.1/T0.2）发行版表解析 · Phase 1（T1.1–T1.5）错误模型与执行器 ·
  * Phase 2（T2.1–T2.4）发行版发现与目标解析 · Phase 3（T3.1–T3.4）eth0 探测 + 通用发行版执行件 ·
- * Phase 4（T4.1–T4.4）路径翻译。
- * 未完成：NAT 判定（T5.x）。
+ * Phase 4（T4.1–T4.4）路径翻译 · Phase 5（T5.1–T5.3）`.wslconfig` 与 networkingMode 判定。
+ * 未完成：Phase 6 收口（校验脚本 + 探针 + 复盘）。
  */
 
 export { createExecutor } from './exec.ts';
@@ -35,5 +35,14 @@ export type { Eth0Outcome } from './net.ts';
 
 export { winToWsl, wslToWin } from './pathmap.ts';
 export type { PathMapping, PathMappingOutcome } from './pathmap.ts';
+
+export { readNetworkingMode } from './wslconfig.ts';
+/**
+ * 只再导出这 **2 个**类型（`NetworkingModeKind` / `NetworkingModeResolution` 两个别名**留在模块内**）：
+ * 消费者要判模式时写 `mode.mode === 'mirrored'` 或 `NetworkingMode['mode']` 就够了，别名不是必需品。
+ * 这样「运行时 8 + 类型 17 = 25」**刚好**不触发类型软阈值告警 —— 靠收紧公开面守阈值，
+ * 而不是去第三次抬阈值（2026-10-08 主人对体积阈值已定调「再超就是代码或 Spec 拆分有问题」）。
+ */
+export type { NetworkingMode, NetworkingModeOutcome } from './wslconfig.ts';
 
 export type { ErrorCode, WslSharedError } from './errors.ts';

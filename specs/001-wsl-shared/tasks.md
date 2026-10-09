@@ -64,9 +64,9 @@
 
 ---
 
-### ✅ Phase 1–4 完成记录（2026-10-08）— 共 **198 条**测试全绿（单测 187 + 契约 11）
+### ✅ Phase 1–4 完成记录（2026-10-08）— 共 **198 条**测试全绿（单测 187 + 契约 11；**Phase 5 后为 236 条 = 220 + 16**）
 
-> 门禁（**Phase 4 自审修复后复算**）：`typecheck` **exit 0** · `vitest` **187/187**（6 文件）· `node --test` 契约 **11/11** · `check:exports` **运行时 7/12**（类型 15 ⇒ 合计 22 ≤ 软阈值 **25**）· `check:size` **去注释 21,615 / 40,960 字节**（余 **19,345**；原始 48.2 KB，注释+空行占 56%）。
+> 门禁（**Phase 5 落地后复算**）：`typecheck` **exit 0** · `vitest` **220/220**（7 文件）· `node --test` 契约 **16/16** · `check:exports` **运行时 8/12**（类型 17 ⇒ 合计 **25 = 软阈值**，不告警）· `check:size` **去注释 25,859 / 40,960 字节**（余 **15,101**；原始 58.7 KB，注释+空行占 57%）。
 
 - 🐛 **T1.4 顺带修掉一个真缺陷（本阶段最有价值的发现）**：定时器原在挂事件处理器**之后**赋值 ⇒ 子进程若在注册阶段**同步** close，`finish()` 里的 `timer` 仍是 `undefined`，定时器永不清除、把事件循环拖到超时才退出（症状：契约层总耗时 **20,958ms**）。修法 = 定时器**先建**再挂事件 + `unref()` ⇒ 契约层 **129ms**（**160×**），并补了回归用例（design §8-7）。
 - ✅ **T1.4 结案（A/B 对照）**：A 臂只 `child.kill()`、B 臂默认（kill + `taskkill /PID /T /F`），两臂超时后发行版内 `sleep` **都被回收**（每臂先 control 确认它在跑、事后清理残留）⇒ `taskkill /T` 是**保险**而非必需，**降级方案不需要启用**；局限：只测了单层直接子进程（design §8-12）。
@@ -148,15 +148,24 @@
 
 ## Phase 5：`.wslconfig` 与 networkingMode
 
-- [ ] T5.1 [REQ-4.2][REQ-4.3][REQ-4.5] INI 子集解析 + 缺省
-  - 验证：`node --test` 用**本机真实 `.wslconfig`**（仅 `[wsl2] localhostForwarding=true`）断言 `{ mode:'default', resolved:'nat' }`；另测 BOM、`#`/`;` 注释、行内注释、键值空白、CRLF、`[WSL2]` 大写节、无关节忽略
+- [x] T5.1 [REQ-4.2][REQ-4.3][REQ-4.5] INI 子集解析 + 缺省
+  - ✅ 契约 **5 条**（`node --test`）：**真机 fixture 字节指纹**（32 字节 / 无 BOM / 无 NUL / 单处 CRLF / **无尾换行**）+ 缺键 ⇒ `default/nat` 且 `rawValue` 键**不出现**；负例两条（改成 `mirrored` ⇒ `non-nat`；`NAT` 大写 ⇒ `other` 且 `rawValue='NAT'`）
+  - ✅ 单测 **11 条**：BOM、`#`/`;` 整行与行内注释、键值空白、CRLF 与**单 `\r`**、`[WSL2]` 大写、无关节忽略（**关键负例**：`[experimental] networkingMode=mirrored` 不得影响判定）、全局区键忽略、重复键最后一个胜出、`[wsl2] x` 不算节、未闭合 `[wsl2`、空值 ⇒ `other`、`"nat"` ⇒ `other`
+  - 📌 **口径差异（留痕）**：原文写「`node --test` 用**本机真实** `.wslconfig`」—— 真读用户文件会让测试**随用户改配置而红/绿**，故契约层只吃 **fixture 字节**（就是当日真机原文），真机读取改由**探针实测**（结论见下）
 
-- [ ] T5.2 [REQ-4.1][REQ-4.4] 判定表全表
-  - 验证：`vitest` 表格驱动 —— 文件不存在 / 缺键 / `nat` / `mirrored` / `bridged` / 拼写错误 / 未来新值，逐条断言 `mode` 与 `resolved`；断言未知值**不**被判为 nat
+- [x] T5.2 [REQ-4.1][REQ-4.4] 判定表全表
+  - ✅ 单测 **9 条**（8 行表驱动 + 1 条保守性总断言）：文件不存在（`ENOENT`）/ 缺键 / `nat` / `mirrored` / `bridged` / `natx` / `NAT` / `virtioproxy` 逐条断言 `mode` + `resolved` + `rawValue`；总断言钉死「除 nat/default 外**任何**值都不得 `resolved:'nat'`」
 
-- [ ] T5.3 [REQ-4.6][REQ-4.7] 读不到 ≠ 缺省 NAT
-  - 验证：`vitest` —— `EACCES`/`EISDIR` fake → `ConfigUnreadable` 且带完整路径与 `rawValue`（缺省时 `rawValue` 为 `undefined` 且不得伪造）；断言错误**未**被转成 `default`
-  - 验证（只读性）：断言本包对 `.wslconfig` **无写调用**（grep `writeFile` / `appendFile` 命中 0）
+- [x] T5.3 [REQ-4.6][REQ-4.7] 读不到 ≠ 缺省 NAT
+  - ✅ 单测 **7 条**：`EACCES`/`EISDIR`/`EPERM`/未知 errno fake → `ConfigUnreadable` 带完整路径，失败态**不伪造** `mode`/`resolved`/`rawValue`；裸字符串抛掷也兜住；**errno 文案只出现一次**（真机实测抓到的缺陷）；只读性静态断言 + 依赖面枚举（`node:fs/promises`/`node:os`/`node:path`/`./errors.ts`）
+  - 📌 **`rawValue` 口径澄清**：它在**成功态**且**只在真有该键时**出现（缺键/`ENOENT` ⇒ 字段不存在）；失败态本就没有 `rawValue` —— 原文「错误带 `rawValue`」按此落地
+
+### ✅ Phase 5 完成记录（2026-10-08）— 真机实证 + 1 个真缺陷
+
+- 🐛 **真机抓到真缺陷**：错误文案里 errno **出现两次**（`EISDIR: EISDIR: illegal operation on a directory, read`）—— Node 的 `error.message` **自带**前缀，我又加了一遍；这段文案会被 003 **原样显示** ⇒ 改为先判重再加（回归用例 + 真机复验：出现次数 = 1）。
+- 🔴 **「先测再写」又救一次**：`USERPROFILE=''` 时 `??` **不回落**、`path.join('', '.wslconfig')` 是**相对路径** ⇒ 会读**工作目录**下的同名文件（静默错答）；且实测该情形下 `os.homedir()` **自己抛** `ERR_SYSTEM_ERROR` ⇒ 改 `?.trim() ||` + try/catch + **绝对路径校验**三道防线，各配一条用例。
+- ✅ **真机实证（只读）**：`readNetworkingMode()` → `{ ok:true, path:'C:\\Users\\EDY\\.wslconfig', mode:'default', resolved:'nat' }`；真 `EISDIR` → `ConfigUnreadable` 带完整路径；真 `ENOENT` → `default/nat`（**不是**错误）；`USERPROFILE=''` → `ConfigUnreadable` 且**无 path**（未回落相对路径）。探针在 `%TEMP%`、**不入库**。
+- 📌 **守阈值的取舍（留痕）**：类型 15 → 19 ⇒ 合计 27 **超类型软阈值 25**。**没有第三次抬阈值**（主人对体积已定调「再超就是代码或 Spec 拆分有问题」），而是把 `NetworkingModeKind`/`NetworkingModeResolution` 两个**别名留在模块内**（消费者写 `mode.mode === 'mirrored'` 或 `NetworkingMode['mode']` 即可）⇒ 运行时 8 + 类型 17 = **25，刚好不告警**。
 
 ---
 
@@ -164,7 +173,7 @@
 
 - [ ] T6.1 [REQ-6.4] 公开面收缩
   - 内容：`src/index.ts` 只导出消费方真正需要的符号与类型
-  - 验证：自检脚本断言**运行时**导出数 ≤ 12（类型导出单独打印，超软阈值 **25** 需说明，见 REQ-6.4 的两次订正留痕）；`grep -n "export" src/index.ts` 人工复核一遍。✅ **Phase 4 实测：运行时 7/12 ✅、类型 15（合计 22 ≤ 25 ✅）** —— 曾报 ⚠️「合计 22 > 20」，**未静默放过**，由主人拍板把类型软阈值提到 **25**（理由：包从 3 个模块长到 7 个，15 个类型逐个都有消费方；运行时 SHALL 与判定逻辑不变）。
+  - 验证：自检脚本断言**运行时**导出数 ≤ 12（类型导出单独打印，超软阈值 **25** 需说明，见 REQ-6.4 的两次订正留痕）；`grep -n "export" src/index.ts` 人工复核一遍。✅ **Phase 4 实测：运行时 7/12 ✅、类型 15（合计 22 ≤ 25 ✅）** —— 曾报 ⚠️「合计 22 > 20」，**未静默放过**，由主人拍板把类型软阈值提到 **25**（理由：包从 3 个模块长到 7 个，15 个类型逐个都有消费方；运行时 SHALL 与判定逻辑不变）。✅ **Phase 5 实测：运行时 8/12、类型 17（合计 25 = 阈值，不告警）** —— 本轮**没抬阈值**，而是把 `NetworkingModeKind`/`NetworkingModeResolution` 两个别名留在模块内（消费方用 `NetworkingMode['mode']` 即可）。
 
 - [ ] T6.2 [REQ-6.1] 准入标准回归（防杂物袋）
   - 验证（**判据已订正，原判据是坏门**）：原写法「命中只允许出现在 `exec.ts` 注释里」—— 2026-10-08 预检出 **7 处命中全在注释**（`index.ts` 的 `dsh-wsl-docker-ports` 是**包名**、`net.ts`/`distro-exec.ts` 的 `portproxy`/`dockerd`/`docker ps` 是**领域词汇**），按原判据**无论如何都过不去**。改判据：**剥注释后**源码里 `netsh|portproxy|docker|RunAs|taskkill /PID` 命中 **0**（= 001 不含这些解析/提权逻辑，应留 003/005）；建议做成 `scripts/check-scope.mjs`（复用 check-size 的剥注释逻辑，**待 Phase 6 落**）。
@@ -185,5 +194,5 @@
 | vitest 单元 | ✅ | 纯函数与执行器（fake）|
 | `node:test` 离线契约 | ✅ | 真机 fixture 驱动 |
 | chrome-devtools MCP 真机 | ❌ **不适用** | 本包**无 UI**；真机层由 002（终端页）与 003（docker/端口页）承担 |
-| 人工目视 | ✅（轻量）| `scripts/probe.mjs` 在真机打印 5 项事实，与 `.wslconfig` / `wsl -l -v` 人工输出的肉眼比对 —— ⏳ **尚未创建**（5 项事实跨 Phase 3–5，与 T3.x/T5.x 一起落） |
+| 人工目视 | ✅（轻量）| `scripts/probe.mjs` 在真机打印 5 项事实，与 `.wslconfig` / `wsl -l -v` 人工输出的肉眼比对 —— ⏳ **仍未创建**，顺延到 Phase 6（Phase 5 的真机事实已由 `%TEMP%` 一次性探针实测，见「Phase 5 完成记录」） |
 | 真机探测（只读 + 写入） | ✅ **Phase 2/3 已做** | 2026-10-08：真 `wsl.exe` → `listDistros` **115ms**、`Ubuntu2204 / Stopped / 2 / isDefault`、`resolveDistro` 四条路径全对且**未唤醒**；`wsl -d Ubuntu2204 -- ip …` 冷启动 **12,637ms** / 热 **192–237ms**、输出 **UTF-8**（NUL 0%）；`taskkill /T` A/B 对照（结论见 design §8 第 12 条）。探针在 `%TEMP%`，**不入库**（fixture 除外） |
