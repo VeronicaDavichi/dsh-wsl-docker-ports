@@ -155,3 +155,19 @@
 - **同类判据审计**：🔴 有风险 = gsudo status 解析（§上面）；⚠️ 有风险但本机不可验 = `looksLikeUacRejection` 的本地化取消文案（不匹配会落到 `out-file-missing` 而非 `cancelled`）；✅ 无风险 = `where.exe` basename 判据（**确实按路径/产品名，不按命令名 `sudo`**）、`netsh` 表格解析、`wsl -l -v`；✅ 非缺陷 = `script.ts` 的 `beforeRules/afterRules` 恒 `[]`（契约保留字段，权威快照在主机侧）。
 - **收尾**：`--dump-config` BEFORE vs AFTER **47075/47075 字节逐字节相同、差异 0 行**；5 个 profile 文件还原、残留软链已删、`install --frozen-lockfile` exit 0；代理起的实例 PID 43176/44004 已停、43199 无监听；**主人 DSH 进程 17168/28228/31736/39088/39556 存活且 StartTime 未变**、`desktop` profile mtime 早于会话开始 ⇒ 未被触碰；`netsh` 终态 19 条 sha256 与开工前一致。
 - **三条待办**：① `elevationAvailable` 恒 false（`plugin.ts:251`）⇒ UI 置灰而机器其实能提权；② `backend.ts:68` 正则 ⇒ gsudo 分支在本机永远走不到、提权链静默退化为 native（建议改用 `gsudo status --json`，实测 `"CacheAvailable":false`）；③ **REQ-4.1 立论需重审**（本机 UAC 不构成人类闸门）。
+
+### ✅ 2026-10-09 真机复验（我亲自跑 · 只读 · 零写入）
+
+**复验配方（无需重启 DSH、无需提权）**：写一个 `.cjs` 探针，`require` 已构建的 `lib/elevate/backend.js` + **`packages/wsl-shared/src/index.ts`**（Node v24 默认剥类型；⚠️ `dsh-wsl-shared` **没有 build**，`require('dsh-wsl-shared')` 解析到的就是 `.ts` ⇒ 直接 require 会失败，必须给源码路径），然后：
+`detectBackend({ executor: createExecutor() })` 与 `probeElevationAvailability({ executor })`。
+
+**修前 → 修后（同一台机、同一调用）**
+
+| 调用 | 修前（真机实测） | 修后（本轮实测） |
+| --- | --- | --- |
+| `detectBackend` | `{"backend":"native","gsudoPath":"…gsudo.exe","cacheActive":false,"note":"gsudo status 输出里没有可识别的 Available 行；保守回落 native（同上）"}` | ✅ `{"backend":"gsudo","gsudoPath":"D:\\Program Files\\gsudo\\Current\\gsudo.exe","cacheActive":false,"note":"gsudo 已装且凭据缓存未激活（Mode=Explicit；判据=gsudo status --json）…"}` |
+| `probeElevationAvailability` | 硬编码 `false`（`plugin.ts:251` 无调用方） | ✅ `{"available":true,"backend":"gsudo","reason":"提权后端探测成功：backend=gsudo；…（判据=gsudo status --json）…"}` |
+
+⇒ **两处未接线在真机上确认修好**：提权链不再静默退化 native（走 gsudo 的 stdio 回传 + exit code），`elevationAvailable` 不再把能提权的机器报成不可用；**结构化出口 `--json` 那一路在真机确实可用**。
+核对：探针全程零写入（`netsh` 始终 **19 条**）、临时目录已删、无提权、无弹窗。
+**仍然不可复现**：`999` / `cancelled`（本机 `ConsentPromptBehaviorAdmin=0` ⇒ 无「用户取消」事件）—— 本次改动未触及这两条分支。
