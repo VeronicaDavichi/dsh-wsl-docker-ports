@@ -1,0 +1,83 @@
+# 008 写入通道 —— 设计
+
+> 需求见 [requirements.md](./requirements.md)。本设计只覆盖**通道**：路由、动作计划、确认、执行、审计。写算法（005 `src/write/`）、提权后端（005 `src/elevate/`）、读模型与 diff（003）**一行不改**，只被调用。
+
+## 1. 分层与文件
+
+| 层 | 位置 | 职责 | 归属 |
+| --- | --- | --- | --- |
+| 路由 | `packages/wsl-docker-ports/src/transport/routes.ts` | 前缀注册 / 方法判据 / 错误码 / disposer | 本 Spec |
+| 计划 | `src/transport/plan.ts` | 声明式目标 → 动作清单（只读） | 本 Spec |
+| 确认 | `src/transport/confirm.ts` | 计划指纹 + 一次性票据（A 闸门） | 本 Spec |
+| 执行 | `src/transport/apply.ts` | 调 005 提权链、逐步结果、幂等、回滚上报 | 本 Spec |
+| 审计 | `src/transport/audit.ts` | 内存环形 + 单行日志（B 留痕） | 本 Spec |
+| 复用 | `src/write/*` · `src/elevate/*` · `src/diff/*` · `src/read/*` | 算法与后端 | 005 / 003 |
+
+## 2. 路由
+
+- **前缀**：`/dsh-wsl-docker-ports/write`（**不带尾斜杠**）。
+  - 为什么嵌在 003 的前缀之下：宿主分派顺序是 **exact → 最长 prefix → fallback**，故更长的前缀优先命中本通道，003 的 `/snapshot` 处理器**不会**看到本通道的路径（零改动 003 代码）。
+  - **反例即回归用例**：前缀一旦带上尾斜杠 ⇒ 注册成功但**永不被分派**（真机实证：宿主兜底 404、零报错）。单测必须钉住这条。
+- **端点**（全部在 `ctx.inject(['webServer'], …)` 之后注册，幂等，disposer 进 `ctx.effect`）：
+
+| 方法 | 路径 | 语义 | 可否写系统状态 |
+| --- | --- | --- | --- |
+| `POST` | `…/write/plan` | 由声明式目标算动作计划（REQ-2） | **否**（零副作用） |
+| `POST` | `…/write/apply` | 执行（需 `planId` + `confirmed:true`，REQ-3/4） | 是（经提权链） |
+| `GET` | `…/write/audit` | 审计尾部（REQ-5） | 否 |
+
+- **错误码**：404 `not-found` / 405 `method-not-allowed` / 503 `rules-unavailable`（读模型或提权链不可用）/ 500 `internal`；**先判路径、后判方法**。`Content-Length` 按 UTF-8 字节算，`Cache-Control: no-store`。
+
+## 3. 动作计划（只读）
+
+输入（声明式目标）：`{ ports: number[], scope: 'local'|'lan', action: 'add'|'remove'|'fix' }`。
+
+输出：`{ planId, steps: [{ port, scope, listenAddress, connectAddress, firewall, commandText }], commandCount, notes[] }`。
+
+- 端口先经**所有权集合**过滤（REQ-2.4）：集合外 ⇒ `port-not-managed`，零动作。
+- 非法输入（越界 / 未知作用域 / 非法动作）⇒ `steps: []` + `notes[]` 说明（REQ-2.3），**不返回 400**（与 003 读侧口径一致：非法值回落最保守默认，但写侧额外要求**拒绝执行**）。
+- `planId` = 规范化计划的 SHA-256（前 16 hex）。规范化 = 端口升序、键序固定、剔除 `notes`。
+
+## 4. 确认闸门（A）
+
+1. `plan` 返回 `planId` + 逐条 `commandText`（用户要看到**将执行的命令原文**）。
+2. `apply` 的请求体只允许携带 `{ target（同 plan 的声明式目标）, planId, confirmed: true }`。
+   - 🔴 **绝不接受客户端传来的命令 / 规则文本** —— 服务端用 `target` **重新推导**计划，再比对 `planId`；不一致 ⇒ `409 plan-stale`（或 `plan-mismatch`），零执行。这是本通道唯一的安全命门。
+   - `confirmed !== true` ⇒ `403`/`confirm-required`，零提权零写入（REQ-3.2）。
+3. 确认票据：一次性 + TTL（默认 **120 s**） + 绑定 `planId`；重复使用 ⇒ 拒绝。票据只存在内存，不落盘、不进日志（REQ-4.4）。
+4. Agent 触发一律降级 `ask`（REQ-3.4）：来源由调用方标注（`origin: 'agent'|'user'`），`agent` 时**不允许**跳过确认，且审计里如实记录来源。
+5. **与 OS 弹窗解耦**（REQ-3.3）：闸门完全在应用内；后端是 `gsudo` 缓存命中、`native` 还是 UAC 不弹窗，都走同一条确认路径。
+
+## 5. 执行（调 005）
+
+- 顺序：`读现态（003）→ 算差量（003 diff）→ 逐条执行（005 提权链）→ 逐步回传`。
+- **幂等**（REQ-4.2）：执行前现读，已满足的规则标 `skipped` 而不是重写；重复 `apply` 不增条数、不报错。
+- **失败**（REQ-4.3）：按 005 REQ-3.5 的清理语义回滚本轮已建规则，回传 `{ executed, rolledBack, skipped, failed }`。
+- **响应不含凭据**（REQ-4.4）：命令原文里只允许出现端口/地址/组名；出现 `password|token|secret|key` 形态的串即测试失败。
+
+## 6. 审计（B）
+
+- 结构（每条）：`{ at, origin, elevationPolicy, backend, ports, scope, action, result, exitCode, durationMs, rolledBack }`。
+- 落点：**内存环形（最近 N=100）+ 单行人类可读日志**（`ctx.logger`）。🔴 **不写台账文件** —— 端口所有权是**声明式**的（AGENTS.md 冻结决策：不建台账文件、不用 `reset`），审计不是例外。
+- 敏感词扫描：`password|passwd|token|secret|credential` 命中即测试失败（REQ-5.2）。
+
+## 7. 安全与红线
+
+- 只读入口（`plan`）**零副作用**：不调提权、不写盘、不动 `netsh`。
+- 所有权集合外**一律不碰**（REQ-6.1）；真机验收断言「他人 19 条**逐字节不变**」。
+- 无 `portproxy reset`（REQ-6.2）；防火墙规则 `-LocalPort` 必须具体端口，**禁通配符**。
+- 卸载不清理（REQ-6.3，迁自 005）。
+
+## 8. 测试策略
+
+| 层 | 手段 | 覆盖 |
+| --- | --- | --- |
+| 单测 | `vitest`（假 `webServer` + 假提权后端） | 路由匹配/方法/错误码、前缀尾斜杠反例、计划零副作用、未确认零调用（spy 全 0）、planId 不匹配拒绝、幂等、审计字段与敏感词 |
+| 契约 | `node --test`（离线 fixture） | 响应形状、`Content-Length` 字节精确、`no-store` |
+| 真机 | 探针 profile（**白名单：不得用 `desktop` / `web`**，用完逐字节还原） | `plan` 前后 `netsh` 逐字节相同（G1）；真写入一轮后「他人 19 条不变」+ 幂等（G5）；审计落一行（G6）；路由真被分派（G4，须见我们的 JSON 而非宿主兜底 404） |
+
+## 9. 分期
+
+1. **P1 只读**：路由骨架 + `plan` + `audit`（零写入）—— 先把 G1/G3/G4 拿到手。
+2. **P2 执行**：`apply` + 确认票据 + 幂等 + 回滚上报（G2/G5）。
+3. **P3 界面**：客户端接线（确认对话框展示命令原文 + 结果逐步反馈）—— UI 验收按主人环境自验清单。
