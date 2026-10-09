@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-10-08
 priority: high
 tags:
@@ -9,12 +9,15 @@ tags:
 depends_on:
 - 002-terminal-profiles
 created_at: 2026-10-08T10:27:50.382553300Z
-updated_at: 2026-10-09T02:36:44.318787Z
+updated_at: 2026-10-09T03:09:53.248739300Z
+completed_at: 2026-10-09T03:09:53.248739300Z
 transitions:
 - status: planned
   at: 2026-10-08T13:23:04.726640Z
 - status: in-progress
   at: 2026-10-09T02:36:44.318787Z
+- status: complete
+  at: 2026-10-09T03:09:53.248739300Z
 ---
 # Agent 工具面：终端受管工具族与沙箱权限
 
