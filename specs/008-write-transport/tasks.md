@@ -13,7 +13,7 @@
 
 ## Phase 1（P1）：**只读通道**（零写入，先拿 G1/G3/G4）
 
-- [ ] T1.1 [REQ-1.1–1.2] 新增 `src/transport/routes.ts`：常量 `WRITE_HTTP_PREFIX = '/dsh-wsl-docker-ports/write'`（**无尾斜杠**）、懒 `ctx.inject(['webServer'], …)`、幂等 `attach`、disposer 无条件进 `ctx.effect`。
+- [x] T1.1 [REQ-1.1–1.2] 新增 `src/transport/routes.ts`：常量 `WRITE_HTTP_PREFIX = '/dsh-wsl-docker-ports/write'`（**无尾斜杠**）、懒 `ctx.inject(['webServer'], …)`、幂等 `attach`、disposer 无条件进 `ctx.effect`。
   - 判据：重复 `attach` 只注册一次；disposer 调用两次不抛；**单测含反例**：常量改成带尾斜杠 ⇒ 至少 1 条红（REQ-1.1 的实证）。
 - [ ] T1.2 [REQ-1.3–1.4] 方法判据与错误码：`POST …/write/plan`、`GET …/write/audit`；其余路径 404、方法不符 405；`Content-Length` 按 UTF-8 字节、`Cache-Control: no-store`。
   - 判据：构造含中文与 emoji 的响应体，断言 `Content-Length` == `Buffer.byteLength(body)`；**先判路径后判方法**（错路径 + 错方法 ⇒ 404 而非 405）。
