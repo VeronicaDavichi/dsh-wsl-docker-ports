@@ -64,3 +64,11 @@
   - 判据：README 链接可达；本文件所有 REQ-N 都在 requirements 里存在。
 - [ ] **T4.3 [NFR-1]** 依赖未增：`package.json` 依赖项数与写前一致；未引 E2E/HTTP 框架。
   - 判据：`git diff` 里 `package.json` 的 dependencies/devDependencies 无新增；`pnpm install --frozen-lockfile` exit 0。
+
+> **T1.7 施工口径（2026-10-09 实测后定）**：`plugin.ts` 已达 **389 行**，直接内联接线会涨到 **418 行 ⇒ 违反
+> 「单文件 ≤ 400 行」SHALL**（`tests/unit/client-structure.test.ts` 当场判红 ✓ 该门**绝不放宽**）。
+> ⇒ 接线一律走**独立文件** `src/transport/wire-plugin.ts`（导出 `attachWriteChannel(ctx, facts)` ⇒
+> `{ writeRoute, audit }`），`plugin.ts` 只加 3 行左右（import + 调用 + 句柄两行，需挪别处腾行数）。
+> 另一并如实同步 003 的**计数型**断言（`tests/unit/plugin-entry.test.ts`）：本插件现在拥有 **2 条路由**
+> ⇒ `ctx.inject(['webServer'])` **2 次**、`effectCount` **3 条**（2 路由 + 1 卸载钩）、路由表 2 条 prefix。
+> 这些是**如实更新**（断言的是数量，行为由各自用例守着），不是放宽阈值。
