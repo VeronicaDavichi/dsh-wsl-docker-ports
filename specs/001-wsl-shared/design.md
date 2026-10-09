@@ -15,9 +15,7 @@
       ├─ src/errors.ts           typed error 联合类型
       └─ src/index.ts            公开面（**运行时** ≤ 12 导出，REQ-6.4；类型导出另计）
 
-依赖方向**单向**：`002 → 001`、`003 → 001`；`001 → node:` 内置。A **不**依赖任何 DSH 宿主服务，因此可以在没有宿主、没有网络的 Node 进程里跑全量测试（REQ-6.3）。
-
-依据：`stack-decision.md` · `plugin.packageSplit`（三包，官方建议「需在其他行关闭时仍保留页面的子插件应独立成包」）。
+依赖方向**单向**：`002 → 001`、`003 → 001`；`001 → node:` 内置。A **不**依赖任何 DSH 宿主服务，因此可以在没有宿主、没有网络的 Node 进程里跑全量测试（REQ-6.3）。依据：`stack-decision.md` · `plugin.packageSplit`（三包，官方建议「需在其他行关闭时仍保留页面的子插件应独立成包」）。
 
 ---
 
@@ -129,12 +127,10 @@ Linux → Windows 方向**额外**拒**反斜杠**（Linux 合法，到 Windows 
 
 ## 4. 执行器（`exec.ts`）
 
-- `spawn(file, argv, { cwd, env, windowsHide: true })`，`stdio: 'pipe'`；**无 shell**（REQ-5.2）。
-- `env` 是**整份替换**（`spawn` 语义），不是追加：调用方要合并必须自己展开 `process.env`（否则连 `PATH` 一起丢，症状是莫名其妙的 `CommandNotFound`）。
+- `spawn(file, argv, { cwd, env, windowsHide: true })`，`stdio: 'pipe'`；**无 shell**（REQ-5.2）。`env` 是**整份替换**（`spawn` 语义），不是追加：调用方要合并必须自己展开 `process.env`（否则连 `PATH` 一起丢，症状是莫名其妙的 `CommandNotFound`）。
 - 收集 `stdout`/`stderr` 为 `Buffer`，结束后按 `options.encoding` 解码（REQ-5.5）；**先拼 Buffer 再一次性解码** —— 逐 chunk 解码会把多字节字符从边界切开成乱码。
 - `timeoutMs` **入口校验** `0 < t ≤ 2147483647`，越界在**启动前**判 `Unexpected`：`setTimeout` 对超上限延时只警告并**按 1ms** 处理（`Infinity` / `NaN` / 0 / 负数同理）⇒ 否则会给出「命令在 …ms 内未结束」这种**误导性假超时**。
-- 超时：`setTimeout(timeoutMs)` → 先 `child.kill()`，再兜底 `taskkill /PID <pid> /T /F`（Windows 无 POSIX 进程组信号，`wsl.exe` 会派生 `wslhost`/发行版进程）；**定时器必须先建立再挂事件处理器**。
-  > **待验证（T1.4）**：`taskkill` 是否真能回收 `wsl.exe` 拉起的发行版侧进程；若不能，降级为「杀 `wsl.exe` + 在 UI 明示可能有残留」。
+- 超时：`setTimeout(timeoutMs)` → 先 `child.kill()`，再兜底 `taskkill /PID <pid> /T /F`（Windows 无 POSIX 进程组信号，`wsl.exe` 会派生 `wslhost`/发行版进程）；**定时器必须先建立再挂事件处理器**。✅ **回收能力已实测**（T1.4 A/B 结案，见 §8-12）：只杀 `wsl.exe` 也能让发行版侧进程消失 ⇒ `taskkill /T` 是**保险**，降级方案**不启用**。
 - 事件：`error` → `CommandNotFound`（`ENOENT`）或 `Unexpected`；**设了 `cwd` 时 ENOENT 文案必须同时点出「命令或工作目录」**（Windows 上两者同名，只说命令会把人引向错误的排查方向）。`close` → 组装结果；`code === null`（被外部终止）用单独文案，`exitCode` 记 `-1`。
 - 可注入：`createExecutor(spawnImpl, treeKillImpl)` 供测试传 fake（REQ-6.3）；**注入实现的 rejection 必须显式吞掉**（`void … .catch()`），否则 unhandled rejection 在 Node 默认直接崩宿主。
 
@@ -159,8 +155,7 @@ Linux → Windows 方向**额外**拒**反斜杠**（Linux 合法，到 Windows 
 | 纯函数单测 | `vitest` | `parseDistroTable` / `parseWslConfig` / `pathmap` 全分支（含非法输入）；错误码判别 |
 | 离线契约测试 | `node --test` + `tests/contract/fixtures/*.raw`（**真机原始字节**，不是转写文本） | 真机捕获的输出原文（`wsl -l -v` 原始字节、`ip -a`、`.wslconfig`）逐条断言；**断言对象是 fixture，不是我复述的常量** |
 | 执行器测试 | `vitest` + fake spawn | 超时杀进程、`stderr` 非空 + 退出码 0、`ENOENT`、编码解码 |
-| 真机探测 | 手动脚本 `scripts/probe.mjs` | 在真机上打印 5 项事实；**不**进 CI，作为 002/003 真机验收的输入 |
-| 真机 UI 验收 | chrome-devtools MCP | **本包 N/A（无 UI）** —— 由 002 / 003 的页面承担 |
+| 真机探测 / UI 验收 | `scripts/probe.mjs` + chrome-devtools MCP | 探针在真机打印 5 项事实，**不**进 CI，作为 002/003 真机验收的输入；**本包无 UI** ⇒ UI 验收归 002/003 |
 
 ---
 
@@ -180,8 +175,8 @@ Linux → Windows 方向**额外**拒**反斜杠**（Linux 合法，到 Windows 
 
 ## 8. 已知限制
 
-1. **UTF-16LE 与表头本地化仍是假设**（A-1 / A-2），T0.1 fixture 到手前不写死；若假设错，改断言而非改结构。
-2. **`taskkill /T` 的回收能力未验证**（**T1.4** —— 原文误写 T2.3）；不能保证发行版侧无残留进程。⏳ 需**唤醒发行版**才能验（约 10–12s 且会拉起用户的容器）⇒ 与 Phase 3 一起做，不在解析阶段制造副作用。
+1. ~~**UTF-16LE 与表头本地化仍是假设**（A-1 / A-2）~~ → ✅ **T0.1 实测定案**：`wsl -l -v` = UTF-16LE + LF + **英文**表头，而 `wsl --version` 表头是**中文** ⇒ 解析器**不依赖任何表头字面量**；`wsl -d X -- ip …` 的输出是 **UTF-8**（同一 exe 两种编码）。
+2. ~~**`taskkill /T` 的回收能力未验证**（T1.4）~~ → ✅ **已结案（A/B 实测）**：结论与局限见第 12 条；降级方案**不启用**。
 3. **WSL 缺省网络模式是版本相关的经验值**（A-6）；`resolved` 是判定而非探测，真正的「通不通」由 003 的转发自检兜底。
 4. **不支持非 `/mnt/<盘>` 的自动反查**：Linux 路径 → Windows 路径需要发行版名（REQ-3.4），这是刻意的（不猜）。
 5. **不做 IPv6**：portproxy 的 v4tov4 是本项目目标；`netsh` 解析（003）也只覆盖 v4tov4。
