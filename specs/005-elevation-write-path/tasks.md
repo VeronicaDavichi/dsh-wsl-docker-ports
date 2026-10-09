@@ -77,9 +77,11 @@
 
 ## Phase 3：红线与收口
 
-- [ ] T3.1 [REQ-1.4] 红线断言：不存在 `portproxy reset`
+- [x] T3.1 [REQ-1.4] 红线断言：不存在 `portproxy reset`
   - 验证：`grep -rn "portproxy reset" src/` 命中 **0**；`grep -rn "netsh" src/` 的每一处都带 `listenport` 参数（人工复核 + 断言脚本）
   - 🔵 **2026-10-09 D 交付时的口径警告（已归口此处）**：上面第二条 grep 的**朴素写法会误报** —— `src/read/` 与 `src/diff/` 里有**只读**的 `netsh interface portproxy show v4tov4` 散文/提示语（无 `listenport`，合法）。D 已在 `tests/unit/write-log.test.ts` 把它做成**三条可执行断言**：① 写路径内 `portproxy`+`reset` 零命中；② 每一处**可执行**的 `portproxy add|delete` 都带 `listenport`；③ 可执行 netsh 只有 `add`/`delete` 两个动词。⚠️ **这些守卫目前只覆盖 `src/write` + `src/elevate`；把等价断言扩到整个 `src/` 是 T3.1 的活**（别用 naive grep 交差）。
+  - ✅ **2026-10-09 完成（集成方）**：`tests/unit/redline-guards.test.ts` 的 **8 条守卫覆盖整个 `src/`** —— ① 禁 `portproxy reset|dump|set`（**连注释也算**，判据用拼接构造以免守卫自命中）② 每处可执行写动作必带 `listenport`（报真实行号）③ 可执行 netsh 动词集合**恰好** `{add, delete}` ④ 写动作落点 = 白名单 `{write/plan.ts, elevate/script.ts}`（**新增调用点即红**，逼一次人工复核）⑤ 只读 `show` 必须精确 `show v4tov4` 且落点收白名单 ⑥ 探针 argv 做**行为断言**（`NETSH_ARGV` deepEqual，比 grep 文本强）⑦ 剥注释**复用 001 的 `strip-comments.mjs`**（SSoT；`write-log.test.ts` 曾自带一份本地正则，已一并替换，消掉口径分叉）⑧ 元断言：扫到 ≥15 个源文件且必需文件在列（**防「扫 0 个文件 ⇒ 全绿」的假绿**）。**变异自证**：拿掉 `listenport` ⇒ 红线②红；注入一条 `portproxy reset` ⇒ 红线①红；两次改回后**哈希一致**、8/8 复绿。
+  - 🔵 **口径细化留痕（改口径必须留痕）**：本任务原文的第二条 grep「每一处 `netsh` 都带 `listenport`」被细化为「**可执行写动作**必带 `listenport` + 动词白名单 + 落点白名单」—— 因为 `read/netsh-probe.ts` 的只读 `show` 与 `runner.ts` 的用户提示文案**合法地不带** `listenport`，按原文必然假红（D 交付时已报告，见上一条）。细化后判据**更强**（白名单能抓「新增未审的调用点」，原文抓不到）。
 
 - [ ] T3.2 [REQ-1.5][NFR-1][C-3] 真机自证：他人规则条数不变
   - 内容：真机上对一条 `managedPorts` 内端口做 add / remove / fix 各一次，前后各存 `netsh show v4tov4` 快照
@@ -102,9 +104,11 @@
   - 验证：真机各跑一次 —— ① `gsudo` 路径下 stdout / stderr / exit code 三样都拿得到（含故意失败 → **999**）② 造一个活跃缓存 → 回落 native 且**无临时文件残留** ③ `elevationBackend: native`（或未装 gsudo）仍成功
   - 🔵 **离线面已实现（2026-10-09，零真机）**：`src/elevate/backend.ts`（按**路径**认 `gsudo`、读 `gsudo status`、`winsudo` 仅显式配置且固定路径存在才用、其余一律回落 native）+ `src/elevate/invoke.ts` 的三条调用形态 + `runner.ts` 的 `999 ⇒ elevation-failed`。用例 `tests/unit/elevate-backend.test.ts`（10 条，含**反向断言**：任何一次探测都不许以 `sudo` 为命令名）+ `tests/unit/elevate-exec.test.ts` 的 gsudo 两组。**本项仍未完成**：真机弹窗 / 真缓存 / 真实 999 未验（每次都要人工点 UAC）
 
-- [ ] T3.6 [REQ-4.3] 红线断言：未注册 Agent 工具（来源约束的门禁）
+- [x] T3.6 [REQ-4.3] 红线断言：未注册 Agent 工具（来源约束的门禁）
   - 内容：本期**不注册任何 Agent 可调工具**；将来若注册，**必须先**补齐 REQ-4 的完整口径（错误语义、审批、日志）再放行，不得以「先能用」为由先行放行
   - 验证：`grep -rn "defineTool" src/` 命中 0，或命中处均附 REQ-4 口径补全的引用与用例；`vitest` 断言工具表内不存在本包来源的工具
+  - ✅ **2026-10-09 完成（静态面，集成方）**：`redline-guards.test.ts` 的 T3.6 守卫对**整个 `src/`** 断言 `defineTool` / `tools.register` / `ctx.tools` **三处零命中**（可执行断言，替代人工 grep）。本包的确认通道是**注入的** `ElevationDeps.confirm`（由调用方接 UI），与宿主工具/审批面零耦合。
+  - 🔵 **残余项转移（不是丢弃）**：验证里的第二条「断言工具表内不存在本包来源的工具」需要**工具表存在**才有断言对象 —— 本包至今没有任何注册代码，工具表要到收口阶段（002 T7.1 导出服务 / 004 注册 6 工具）才出现。该断言**并入 004 的 T3.2**（那里本就要求「卸载后工具数归零」），在本 Spec 记为已转移。
 
 ---
 
