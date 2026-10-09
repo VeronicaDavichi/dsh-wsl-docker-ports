@@ -17,7 +17,7 @@
 8. **新增页类型只需客户端半**（宿主半零改动）⇒ 002 Phase 4 不必碰 `src/index.ts`。
 9. **配置写管道首选** `ctx.get('remote.settings').update(ns, patch, expectedRevision)`（读 = `describe()`）；**自建 exact HTTP 路由是并存补充**（给大动作 / 非配置读，不是唯一管道）。
 10. **样式** = CSS 字符串 → 注入 `<style data-plugin="<pkg>/styles">` → 返回移除器，由 `ctx.effect` 收编；作用域靠**类名前缀 + 宿主主题变量** `var(--dsw-alias-*)`。
-11. 🔴 **两条未验证且直接改我们方案**：① **xterm 独立懒加载 chunk 的做法**（检出中**零**动态 `import()`，第三方产物全是单文件，无 code-splitting 配置）；② **「官方恰好 6 个 kind」无实物支撑**（`kind` 是开放字符串、`MainPanelId` 是 Branded 类型）。
+11. 🔴 **两条未验证且直接改我们方案**：① ~~**xterm 独立懒加载 chunk 的做法**~~ ⇒ ✅ **已定案（见 §P2）：官方终端页就是这么做**（主 bundle 19,887 B + `require.async("./client.terminal.js")` 取 685,949 B chunk）；② **「官方恰好 6 个 kind」无实物支撑** ⇒ ✅ **已定案：0.1.7-rc.2 实测 9 个，且 kind 是开放字符串**（见 §P1）。
 
 ## A. 清单面
 
@@ -131,8 +131,9 @@ register(definition: SidebarRightTabDefinition): () => void;   // 幂等 dispose
 
 ## E. 懒加载与样式
 
-### E14 懒加载 chunk —— **未验证**（见 §Z Z5）
-- 检出的两个打包实例**产物都是单文件**，配置里**无** `manualChunks` / `splitVendorChunk`，且全仓 grep 动态 `import(` **零命中**。
+### E14 懒加载 chunk —— ✅ **已定案（§P2 取代本节结论）**
+- **官方终端页做法的逐字证据**：主 bundle `lib/client.js`（**19,887 B**）内 `const LoadedTerminalBody = (0, react.lazy)(async () => ({ default: (await require.async("./client.terminal.js")).TerminalBody }))`，注释逐字 *"Load xterm only after a terminal body is mounted."*；chunk `lib/client.terminal.js`（**685,949 B**）头部 `window.__ModuleLoader__.load({ id: "@deepseek-ai/dsh-client-ui-sidebar-terminal", chunk: "client.terminal.js", factory: (require) => { … } })` ⇒ **宿主 ModuleLoader 支持 chunk**。
+- ~~检出的两个打包实例**产物都是单文件**，配置里**无** `manualChunks` / `splitVendorChunk`，且全仓 grep 动态 `import(` **零命中**。~~ ⇒ 该观察**只对那两个第三方插件成立**，**不能**推广成宿主契约（这正是 §P2 记录的方法错误：否定性结论必须取自「做这件事的那个官方包」）。
 - 唯一带「加载时机」语义的实物是 `[0.1.7]` 的 `dsh.client.immediately`（`dsh-client-modules` / `-ui-renderer` 均 `true`），**语义未验证**。
 ⇒ 002 T4.2 的「xterm 独立 chunk」**暂无实物支撑** ⇒ 先按「**单文件 + xterm 进主 bundle 亦可接受**」的降级路径准备，真机验证后再决定（避免为无法验证的优化卡住 Phase 4）。
 
@@ -162,7 +163,7 @@ register(definition: SidebarRightTabDefinition): () => void;   // 幂等 dispose
 | Z2 | `dsh.client.inject` 的宿主消费语义（强制预加载 vs 仅声明） | 装载器在 `app.asar` 内，禁读 | 临时插件里 `require` 一个**未列 inject** 的模块，看是否解析失败 |
 | Z3 | `immediately` 布尔语义 | 仅官方 2 包出现，无文档 | 读同 tarball 内 `dsh-client-modules` 的 `lib/client.js` |
 | Z4 | 官方 kind 是否恰好 6 个 | kind 是开放字符串；唯一封闭列表在 `app.asar` | 真机 `ctx.sidebarRightTabs.entries()` 打印 kind 列表 |
-| Z5 | 大依赖独立懒加载 chunk | 检出零动态 `import()`、产物单文件 | esbuild `splitting:true` 试验 + 真机看 `__ModuleLoader__` 是否支持 chunk |
+| ~~Z5~~ | ~~大依赖独立懒加载 chunk~~ | ✅ **已关闭（改判，见 §P2）** | 宿主 ModuleLoader **支持 chunk**：`chunk:` 字段自注册 + `require.async("./x.js")` 取块，官方终端页即此做法（主 19,887 B / chunk 685,949 B）。**残留真机项**：0.2.0-rc.2 的 `require.async` 语义是否与 0.1.7-rc.2 一致（Z6 一并核）|
 | Z6 | **0.1.7-rc.2 → 0.2.0-rc.2 的全部差异** | 本机只有 0.1.7-rc.2 tarball | 取 0.2.0-rc.2 同包 tarball 重跑同一探针 |
 | Z7 | 「同 band 重复注册 / 重复 id 抛错」在 0.2.0 是否仍成立 | 只有 0.1.7 的 d.ts 注释 | 真机故意重复注册一次看报错 |
 | Z8 | 宿主半 `export default` 是否必需（我们在默认导出之外**同时**给了命名导出） | 装载器不可读 | 真机装载即验；两种形态都给我方，风险已对冲 |
@@ -194,12 +195,25 @@ register(definition: SidebarRightTabDefinition): () => void;   // 幂等 dispose
 - ⇒ **判据改口**：可证的只有「**0.1.7-rc.2 有 9 个，且 `managedTerminal` 未被任何官方包占用 ⇒ 仍安全**」；「官方恰好 6 个」**无实物支撑**，该数字从规格里撤下（真机 `sidebarRightTabs.entries()` 打印后再写死）。
 - ⚠️ 注意第 6 项：官方**已经有一个 `terminal` kind**（`dsh-client-ui-sidebar-terminal`）⇒ 我们选 `managedTerminal` 是对的（**不抢占**官方 kind），且应在设计里写明「与官方 `terminal` 区分」的理由。
 
-### P2 官方客户端构建**显式关闭分包** ⇒ T4.2 的「独立懒加载 chunk」是**逆契约**
+### P2 🔴 **已撤回**：原判「独立懒加载 chunk 是逆契约」—— **错**（同日二次取证推翻）
 
-- `dsh-desktop\dsh-plugin-desktop\vite.client.config.ts:41` `codeSplitting: false,`；`:39` `external: id => /^(react(?:-dom)?(?:\/|$)|@deepseek-ai\/)/u.test(id)`
-- 全 5 仓 grep：`React.lazy` **0**、`manualChunks` **0**、`splitVendorChunk` **0**；`codeSplitting` 仅这两处 `false`。动态 `import()` **只出现在宿主/Node 侧**（如 `dsh-community-market\src\index.ts:60`），**客户端工厂里没有**。
-- ⇒ **T4.2 判据改为**：「**单产物 + 首屏不解析 xterm**」= 把 `require('@xterm/xterm')` 推迟到 pane **首次挂载**时调用（外部行为可断言：未挂载前不触发该 require），**不再**要求独立 chunk。`import()` 方案降为**未验证备选**。
-- xterm 只有两条路：**(a)** 作为 external 由宿主 `require`（**需验证宿主是否提供** `@xterm/xterm`）**(b)** 打进单文件 bundle（官方桌面插件即如此，代价 = 首屏体积）。**决策留到真机验证 Z5' 之后**，规格按 (b) 准备（(b) 一定可行）。
+> **本节撤回原 §P2 的结论，并覆盖 §0-11 / §E14 / §Z5 的对应条目。** 下面的机制才是契约。
+
+**为什么错（方法教训，写给未来的自己）**：我只看了 `dsh-plugin-desktop` —— 那是**一个外壳插件自己的选择**（`vite.client.config.ts:41` `codeSplitting: false`），却把它当成**宿主契约**推广；**没有去查「真正做终端页的那个官方包」**。⇒ **否定性结论必须取自「做这件事的那个官方包」，不能从别的插件反推。**
+
+**实证（官方 `deepseek-ai-dsh-client-ui-sidebar-terminal-0.1.7-rc.2.tgz`，逐字）**
+
+- **主 bundle** `package/lib/client.js` = **19,887 B**，其中一行：
+  `const LoadedTerminalBody = (0, react.lazy)(async () => ({ default: (await require.async("./client.terminal.js")).TerminalBody }))`
+  其注释原文：`/** Load xterm only after a terminal body is mounted. */`
+- **懒加载 chunk** `package/lib/client.terminal.js` = **685,949 B**，文件头逐字：
+  `window.__ModuleLoader__.load({ id: "@deepseek-ai/dsh-client-ui-sidebar-terminal", chunk: "client.terminal.js", factory: (require) => { var module = { exports: {} }; … } })`
+- 该 chunk 内 `@xterm/xterm` / `@xterm/addon-fit` **各命中 1 次**（`FitAddon` ×5）⇒ **xterm 内联进 chunk**，**不是**宿主 external。
+- **chunk 文件不在 `exports` 里**（exports 只有 `.` / `./client` / `./src/*` / `./package.json`）⇒ 宿主按**包内相对路径**取它。
+
+⇒ **官方契约 = 小主 bundle + `chunk:` 文件，经 `require.async("./<file>.js")` 取**。`codeSplitting: false` 只是某个插件自己的选择，**不是契约**。**我们原栈「独立懒加载 chunk」正确**，判据恢复，并具体化为上述 API。
+
+**顺带（Phase 4 直接可用）**：官方终端页的 `devDependencies` 同时含 `@xterm/xterm`、`@xterm/addon-fit`、`react`、`react-dom`、`@types/react`、`@types/react-dom`、`@testing-library/react`、`clsx`，以及它 `require` 的**每一个** `@deepseek-ai/dsh-client-*` 包；`peerDependencies` 只有 `@deepseek-ai/cordis: ~4.0.4` ⇒ **external 的声明方式 = 全部进 devDependencies**（宿主在运行时供给），组件测试用 `@testing-library/react`（需 jsdom 环境）。
 
 ### P3 第三条客户端→宿主通道：`ctx.remote.<service>.<method>()` + `ctx.remote.$on(event, fn)`
 

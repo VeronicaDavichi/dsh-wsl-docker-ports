@@ -129,7 +129,7 @@ Validation checks:
 | 宿主基线 | DeepSeek Harness **0.2.0-rc.2**（`cordis-4` 插件 API）；rc.1 本机不可验证，已放弃 |
 | 语言 / 构建 | **TypeScript** + **esbuild → CJS client bundle**（符合宿主 ModuleLoader 契约） |
 | 前端 | **React 18**（`peerDependencies: ^18.2.0`，**不打进 bundle**）+ 宿主 `ui-primitives` + 宿主 `dsh-client-store` |
-| 终端渲染 | 浏览器 `@xterm/xterm` + `@xterm/addon-fit`（**单产物 + 首屏不解析**：官方客户端构建显式 `codeSplitting: false`，独立懒加载 chunk 是**逆契约** —— 见 [`client-contract.md`](./client-contract.md) §P2）；Host `@xterm/headless` + serializer |
+| 终端渲染 | 浏览器 `@xterm/xterm` + `@xterm/addon-fit`（**独立懒加载 chunk**：官方终端页实证 —— 主 bundle **19,887 B** + `require.async("./client.terminal.js")` 取 **685,949 B** 的 chunk，xterm **内联在 chunk 里**、chunk 不在 `exports` 里；见 [`client-contract.md`](./client-contract.md) §P2）；Host `@xterm/headless` + serializer |
 | 终端内核 | `ctx.subprocess.spawnTerminal`（真 PTY：`argv` + `cwd` + `env` + `rows/cols/terminalType`）—— 不复用官方 `terminal`，不 require 私有 `node-pty` |
 | 配置字段（profile） | `name` + `command` + `args` + `env`；路径**两个字段**：`cwd`（Windows 路径）+ `cwdLinux`（WSL 路径）—— `E:\x` 与 `/mnt/e/x` 语义不同，两字段无歧义 |
 | Agent 工具面 | 完整族 `new` / `list` / `read` / `write` / `resize` / `kill`，经 `dsh-tools` 的 `defineTool` 注册 |

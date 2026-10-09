@@ -122,8 +122,8 @@
   - 验证：`vitest` + fake ctx —— 注册 2 个 seat、缺 `sidebarRight` 时不注册且给原因、卸载后归零；断言 kind 不是官方 6 个中的任何一个
 
 - [ ] T4.2 [REQ-5.1][REQ-5.2] 打包形态 + 样式作用域
-  - 判据（**2026-10-09 订正**，原判据「xterm 独立懒加载 chunk」已被实物推翻）：客户端半 = **单产物**（官方客户端构建显式 `codeSplitting: false`）；`@xterm/xterm` 的 `require` **推迟到终端视图首次挂载**（未挂载前不触发 ⇒ 可断言）；`react` / `react-dom*` / `@deepseek-ai/*` **必须 external**（未声明的 `require` 会**静默崩** ⇒ 照 `dsh-community-market\scripts\verify-client-externals.mjs` 加自检）；样式 = CSS 字符串 → `<style data-plugin="dsh-terminal-profiles/styles">` → 返回移除器、由 `ctx.effect` 收编；**零硬编码 hex**（NFR-4）。证据见 [`client-contract.md`](../../client-contract.md) §A4/§E15/§P2。
-  - ⚠️ 未验证（真机项）：**宿主是否提供 `@xterm/xterm` 作 external**（提供则可走 external 省体积；否则必须进 bundle）⇒ 实现按「进 bundle」做，external 只作可选优化。
+  - 判据（**2026-10-09 二次订正，末次为准**）：客户端半 = **小主 bundle + 独立懒加载 chunk**。主 bundle 用 `await require.async("./client.terminal.js")` 在**终端视图首次挂载时**取 chunk；chunk 自身以 `window.__ModuleLoader__.load({ id: 'dsh-terminal-profiles', chunk: 'client.terminal.js', factory })` 自注册；**xterm 内联在 chunk 里**（不进主 bundle、也不作宿主 external）；chunk 文件**不进 `exports`**（按包内相对路径取）。`react` / `react-dom*` / `@deepseek-ai/*` **必须 external**（未声明的 `require` 会**静默崩** ⇒ 照 `dsh-community-market\scripts\verify-client-externals.mjs` 加自检），并按官方终端页的做法**全部声明为 `devDependencies`**。可断言判据：① 主 bundle **不含** xterm 代码且产物 << chunk；② 未挂载终端视图前 `require.async` **零调用**；③ chunk 头部含 `chunk:` 字段。证据（官方 `dsh-client-ui-sidebar-terminal`：主 19,887 B + chunk 685,949 B，逐字）见 [`client-contract.md`](../../client-contract.md) §P2。
+  - ⚠️ **本条曾在同日被我误订正为「单产物」**（依据 = 另一个插件 `dsh-plugin-desktop` 的 `codeSplitting: false`），**随即被官方终端页实物推翻并撤回**。方法教训：否定性结论必须取自「做这件事的那个官方包」，不能从别的插件反推。
   - 内容：`import('@xterm/xterm')` 动态加载；`xterm.css` 局部作用域注入
   - 验证：`pnpm build` 产物中 xterm 落在**独立 chunk**（主 bundle 体积记账）；`grep` 断言无全局样式写入（无 `document.head` 全局注入路径）
 

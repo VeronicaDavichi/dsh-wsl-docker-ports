@@ -77,7 +77,7 @@ PTY 输出 → `headless.write(data)` → serializer 产出快照。**快照与�
 
 - **装载**：`dsh.client = { platform:'web', inject:[客户端模块包名…] }` + `exports['./client'] → ./lib/client.js`；入口导出 `{ apply, inject: ['slots'], name? }`（**无默认导出**，与宿主半相反）；产物 = **自注册 CJS 工厂** `window.__ModuleLoader__.load({ id: 'dsh-terminal-profiles', factory })`。
 - **右栏页**：`sidebarRightTabs.register({ id: 'dsh-terminal-profiles', kind: 'managedTerminal', multiple: true, keepMounted: true, title })`（`priority` **留空** = `extension` 档）+ 两个 keyed seat（`sidebar.right.pane.tab` / `.title`，key = `id`）；**宿主半零改动**；缺能力 ⇒ 不注册 + 给原因（REQ-4.1/4.4/4.5）。
-- **终端视图**：xterm 的 `require` **推迟到首次挂载**（**单产物、无独立 chunk** —— REQ-5.1 已按实物订正）；`FitAddon` 在容器 resize 时 fit；样式 = CSS 字符串 → `<style data-plugin="dsh-terminal-profiles/styles">` + 类名前缀 + `--dsw-alias-*`（零硬编码 hex，REQ-5.2/NFR-4）。
+- **终端视图**：xterm 落在**独立懒加载 chunk**，由主 bundle 在**终端视图首次挂载时** `await require.async("./client.terminal.js")` 取（**REQ-5.1 原判据正确**；2026-10-09 我一度误订正为「单产物」，同日已撤回，见 `client-contract.md` §P2）；`FitAddon` 在容器 resize 时 fit；样式 = CSS 字符串 → `<style data-plugin="dsh-terminal-profiles/styles">` + 类名前缀 + `--dsw-alias-*`（零硬编码 hex，REQ-5.2/NFR-4）。
 - **transport 与状态**：自建 WS（重连带 `sinceSeq`；`lost` ⇒ `term.reset()` + 快照重建）；**配置读写**走 `remote.settings.update/describe`（即 §4 的 settings 路径），自建 HTTP 路由只承载终端动作与大文件；终端画面走 ref（高频流，避免整树重渲染），宿主 `dsh-client-store` 只用在宿主集成处。
 
 ---

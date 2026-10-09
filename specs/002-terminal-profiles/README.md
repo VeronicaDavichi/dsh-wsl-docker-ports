@@ -78,7 +78,7 @@ transitions:
 |---|---|---|
 | 终端内核 | `ctx.subprocess.spawnTerminal(spec)`（真 PTY，接受 `argv`/`cwd`/`env`/`rows`/`cols`/`terminalType`）| `stack-decision.md` · `plugin.terminalEngine` |
 | Host 屏幕模型 | `@xterm/headless` + serializer（官方 terminal-controller 同款）| `plugin.hostScreenModel` |
-| 浏览器渲染 | `@xterm/xterm` + `@xterm/addon-fit`，**单产物 + 首屏不解析**（懒加载 chunk 经实物研究判定为逆契约）| `plugin.renderer` |
+| 浏览器渲染 | `@xterm/xterm` + `@xterm/addon-fit`，**独立懒加载 chunk**（官方终端页实证：主 bundle 19,887 B + `require.async("./client.terminal.js")` 取 685,949 B 的 chunk，xterm 内联其中）| `plugin.renderer` |
 | 通道 | 自建 `ctx.webServer` **具名路由 + WebSocket upgrade**（HTTP 用 prefix、**upgrade 只能 exact**）| `plugin.clientTransport` |
 | 页类型 | 新 kind `managedTerminal` + 宿主默认 **extension 档** | `plugin.tabKind` |
 | 配置页 | `plugins.row.config`（键 `<包名>#<行 id>`）+ `configure({ auto: false }, ctx.fiber)` 自绘 | `plugin.configStore` |

@@ -24,7 +24,7 @@
 | `plugin.terminalEngine` | `spawnTerminal` 接受 `argv`+`cwd`+`env`+`rows/cols/terminalType`；标签布局/重连/滚动缓冲/主题自建 | REQ-3 / REQ-5 |
 | `plugin.agentSurface` · `plugin.agentReadModel` | 完整工具族；屏幕快照 + 增量流两者都给 | **004**（屏幕模型本体 = REQ-6）|
 | `plugin.agentPermission` | 受 `ctx.sandboxPolicy` + 审批；官方对 bash/fs/终端同策略 | **004** |
-| `plugin.hostScreenModel` · `plugin.renderer` | `@xterm/headless` + serializer；`@xterm/xterm` + fit **打进单产物、首屏不解析**（2026-10-09 订正，见 REQ-5.1）| REQ-6 / REQ-5 |
+| `plugin.hostScreenModel` · `plugin.renderer` | `@xterm/headless` + serializer；`@xterm/xterm` + fit 落在**独立懒加载 chunk**（2026-10-09 订正留痕，见 REQ-5.1）| REQ-6 / REQ-5 |
 | `plugin.clientTransport` | 自建 `ctx.webServer` 具名路由 + WS upgrade；认证与重连自建；**HTTP 用 prefix、upgrade 用单一 exact 端点** | REQ-7 |
 | `plugin.tabKind` | 新 kind `managedTerminal` + extension 档 | REQ-4 |
 | `plugin.configSchema` · `plugin.wslCwd` | `name/cwd/command/args/env`；后加 `cwdLinux` 双字段 | REQ-1 / REQ-3.2 |
@@ -103,7 +103,7 @@
 
 ### REQ-5 渲染与尺寸同步
 
-- **REQ-5.1** `@xterm/xterm` + `@xterm/addon-fit` SHALL 随客户端半**打进单产物**，但 SHALL 把对它的 `require` **推迟到终端视图首次挂载时**（首屏不解析它）。**2026-10-09 订正（实物契约研究）**：原文写「SHALL 以独立懒加载 chunk 加载，主 bundle SHALL NOT 因它增长」—— 官方客户端构建**显式 `codeSplitting: false`**（`dsh-plugin-desktop\vite.client.config.ts:41`），5 仓 `React.lazy` / `manualChunks` / `splitVendorChunk` **全 0 命中** ⇒ 独立 chunk 是**逆契约**。可二值判定的替代判据 = 「未挂载终端视图前不触发 xterm 的 `require`」。证据见 [`client-contract.md`](../../client-contract.md) §P2。
+- **REQ-5.1** `@xterm/xterm` + `@xterm/addon-fit` SHALL 落在**独立懒加载 chunk**（主 bundle SHALL NOT 因它增长）：主 bundle 用 `await require.async("./client.terminal.js")`（宿主 ModuleLoader 的**异步块 API**）在**终端视图首次挂载时**取它；chunk 自身以 `window.__ModuleLoader__.load({ id, chunk: 'client.terminal.js', factory })` 自注册。**2026-10-09 订正留痕（一日内二次）**：本条原判据即此、**正确**；同日曾据另一个插件（`dsh-plugin-desktop` 的 `codeSplitting: false`）改成「单产物」，**随即被官方终端页实物推翻并撤回** —— 官方 `dsh-client-ui-sidebar-terminal` 主 bundle **19,887 B**、懒加载 chunk **685,949 B**（xterm 内联其中），`require.async` 调用点、`chunk:` 字段、chunk 不在 `exports` 里均有逐字证据，见 [`client-contract.md`](../../client-contract.md) §P2。**方法教训：否定性结论必须取自「做这件事的那个官方包」，不能从别的插件反推。**
 - **REQ-5.2** `xterm.css` SHALL 只在自有容器作用域内生效，SHALL NOT 注入全局样式（官方终端另有同源 chunk，两份共存会互相污染）。
 - **REQ-5.3** GIVEN 容器尺寸变化，THEN 系统 SHALL 先 fit 再计算 `rows/cols`，并把新尺寸同步到 PTY。
 - **REQ-5.4** Agent 的 `read` SHALL NOT 改变用户所见画面（读是纯只读）。
@@ -163,7 +163,7 @@ Agent 工具族与沙箱权限**已整体迁至 [004-terminal-agent-surface](../
 ## 4. 非功能需求
 
 - **NFR-1** `react` 走 `peerDependencies: ^18.2.0`，SHALL NOT 打进 bundle。
-- **NFR-2** xterm 两个包 SHALL 落在客户端半的**单产物**里，且 SHALL 记录产物体积基线并在实现后对比（不设硬阈值，但须记账）。**2026-10-09 订正**：原写「SHALL 落在懒加载 chunk」与 REQ-5.1 同因作废（官方客户端构建显式关分包）⇒ 改为「单产物 + 首屏不解析」。`react` / `@deepseek-ai/*` SHALL 保持 external（`require` 由宿主供给）。
+- **NFR-2** xterm 两个包 SHALL 落在**独立的客户端 chunk** 里（`require.async("./client.<name>.js")` + `chunk:` 字段自注册），主 bundle 体积 SHALL 记录基线并在实现后对比（不设硬阈值，但须记账）；**`react` / `react-dom*` / `@deepseek-ai/*` SHALL 保持 external**（`require` 由宿主供给，按官方终端页的做法全部声明为 `devDependencies`）。**2026-10-09 订正留痕**：原文即「落在懒加载 chunk」（**正确**）；同日一度改为「单产物」并**被实物推翻撤回**，理由与证据见 REQ-5.1 与 [`client-contract.md`](../../client-contract.md) §P2。
 - **NFR-3** 内网/离线可用：SHALL NOT 依赖 CDN、SHALL NOT 运行 `npx`；依赖安装后打进 bundle（handover 硬约束）。
 - **NFR-4** 零全局 CSS、零硬编码 hex（只用 `--dsw-*` token）。
 - **NFR-5** `typecheck` + `vitest` + `build` 三项 SHALL 全绿。
