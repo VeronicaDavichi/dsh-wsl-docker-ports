@@ -88,9 +88,14 @@
 
 > **原 T3.1–T3.4（所有权匹配算法 / 防火墙参数生成 / scope 切换序列 / 前后快照与任务日志）已迁至 [005-elevation-write-path](../005-elevation-write-path/tasks.md)** 的 Phase 1（2026-10-08 拆分；内容逐条保留）。本 Spec 只保留**声明侧**：区间与期望集。
 
-- [ ] T3.5 [REQ-16.1][REQ-16.2][REQ-16.3] 区间声明与接管转移（D-2）
+- [x] T3.5 [REQ-16.1][REQ-16.2][REQ-16.3] 区间声明与接管转移（D-2）— ✅ **2026-10-09 完成（Phase 3）**
   - 内容：`managedPorts` 解析单端口 + 闭区间混写；期望集 = 映射 ∩（区间展开）
   - 验证：`vitest` —— 区间正例/倒置/非法各一例被拒并给出项；区间∩映射求交（**不**枚举全体）；重叠端口从外部清单**移入**五态且**不**双现
+  - ✅ 落地：`src/diff/managed-ports-parse.ts`（文本 → 区间解析 + 非法/倒置拒绝，132 行）· `src/diff/port-presets.ts`（13 项 presets 声明数据 + `portOf` 纯查表，59 行）· 引擎**一行未改**（接管直接复用 `isManagedPort` / `classifyPorts` / `collectExternalRules`，两个函数读**同一个**判据 ⇒ 「移入」与「从清单消失」不可能只发生一半）
+  - 验证：**33 条**（`tests/unit/managed-ports-parse.test.ts` 23 + `tests/unit/managed-ports-takeover.test.ts` 10）——正例（单端口 / 闭区间 / 混写 / `'80-80'` 按单端口）· 倒置一例被拒且给出**所在项**（下标 + 原文 + 可读原因）· 非法项逐类各一例（空串 / `'1-'` / `'-5'` / 越界 `0` 与 `65536` / 垃圾 `'abc'` / 小数 `'1.5'` / 多段 `'1-2-3'`）· **不展开**：`'1-65535'` = **1 个区间**，求交量上界 = **映射宽度**（声明宽 65535 与宽 1000 落在同一映射上逐位相同，期望集 1000 条）· 接管：同一条 2000 对照「未声明 ⇒ 只在只读清单」vs「声明 `1000-3000` ⇒ 进五态且清单里没有」，闭区间两端 1000/3000 算接管而 999/3001 不算，重叠区间下每端口仍恰好一条；真机 19 条 fixture 上声明 `9000-9001` ⇒ 恰好 2 条移入 + 17 条留在清单，声明 `1-65535` ⇒ 五态仍 19 条
+  - ✅ 错误模型（取舍）：**全有或全无** —— 任一项非法 ⇒ `ok:false`，失败结果里**没有 `ports` 字段**（类型层面拿不到「解析到一半」的集合，杜绝半套声明静默生效），且**全部**非法项一次报完（非首错即停）；数字项与字符串项先归一成文本 ⇒ **同一判据**（`-5` 与 `'-5'` 同判「缺起点的区间」，均被拒）
+  - ✅ presets（REQ-16.4）：恰好 13 项、**不含** `1433`、端口两两不同、每项中文 label；**纯数据 + 纯查表**（零 `import`、零 `fetch`/`process`/`spawn`），另有一条静态用例扫源码钉死「勾选不得触发写操作 / 提权 / 联网」
+  - ⚠️ 留痕：两个新文件的**运行时导出面未接进 `src/index.ts`**（由集成方按导出预算统一决定）；本任务新增 33 条，包内 `pnpm -C packages/wsl-docker-ports test` **218/218 全绿**、`typecheck` exit 0（同批集成方的 `p0-redlines.test.ts` 另占 7 条）
 
 ---
 
@@ -144,7 +149,8 @@ T4.1–T4.5 **已整体迁至 [005-elevation-write-path](../005-elevation-write-
   - 内容：T0.1（编码）、T0.2（`--format`、漂移复现）→ 回写 README/design；**并记 D-2（外部规则只读清单）与 D-3（端口声明提到 P0）的最终口径**；提权相关真机结论（005 的 T0.1 / T3.2）由 **005** 回写
   - 验证：`grep -n "A-1\|A-2\|A-3\|superseded\|reset" specs/003-wsl-docker-ports/*.md` 可见结论；`leanspec` 行数无新增超线
 
-- [ ] T6.6 [REQ-2.4][REQ-9.3][REQ-10.2][REQ-10.4] 红线断言（四条禁止性需求的可二值判定）
+- [x] T6.6 [REQ-2.4][REQ-9.3][REQ-10.2][REQ-10.4] 红线断言（四条禁止性需求的可二值判定）
+  - ✅ **2026-10-09 落地（集成方）**：`tests/unit/p0-redlines.test.ts`（7 条）+ 共享脚手架 `tests/helpers/src-scan.ts`（同一份「走 `src/` 全树 + 剥注释复用 001 的 `strip-comments.mjs`」，不再各写正则）。四条各留证据（命令 `pnpm -C packages/wsl-docker-ports exec node --test tests/unit/p0-redlines.test.ts` ⇒ **7/7 pass**）：**①** ①-a `DOCKER_PS_ARGV` deepEqual `['docker','ps','--format','{{json .}}']`（行为断言）+ ①-b P0 内带引号的写子命令命中 `[]` + ①-c P0 的 docker 调用点白名单 = `['src/read/docker-probe.ts']`；**②** `v6tov6` / `socat` / `wsl2host` / `netsh2ip` 命中 `[]`，且唯一 netsh argv 不含 `udp`/`listenprotocol`/`protocol`；**③** `dependencies` 白名单**恰好** `['dsh-wsl-shared']`、四个依赖字段均无 `dsh-terminal-profiles`、源码零命中；**④** `'exec'` / `docker exec` / `execInContainer` / `containerExec` 全树命中 `[]`。🔴 **①的范围留痕（本条最要紧的口径决定）**：「P0 只读」钉死在 **`src/read/**` + `src/diff/**`** —— 若照字面写成「整个 `src/` 不许出现 `docker start`」，**T7.1（P1 容器启停/重启）一落地就假红**（那是 REQ-11.1 明文允许的）；④ **没有**这个例外（exec 属「下一期」）故扫全树。判据刻意精确到「**带引号的 argv 元素**」⇒ `execInDistro`（001 的 API 名）、`'running'`（状态值）不误伤。**变异自证 4 组**（均改回后哈希一致、复绿）：加 docker 写动作 const ⇒ ①-b 红；换一个 P0 文件加 docker 调用点 ⇒ ①-c 红（**白名单**被突破）；注入 `socat` + `['docker','exec']` ⇒ ②④ 红；注入 `'dsh-terminal-profiles'` ⇒ ③ 红。⚠️ **诚实缺口**：③ 的 `package.json` 白名单**半边未做变异自证**（改 `package.json` 会触发 pnpm 11 `verify-deps-before-run` 自动 install 并写回 lockfile，代价不值当）⇒ 该半边只以读到的实际清单为准。验证第②项「回写 `design.md`」并入 **T6.5**（与真机结论一次写完）。
   - 内容：四条 `SHALL NOT` 各配一条可判定断言 —— ① **P0 只读**（REQ-2.4）：P0 路径不存在 docker 写子命令（`start`/`stop`/`restart`/`rm`/`run`/`exec`），只用 `ps`/`inspect` ② **不代偿 UDP**（REQ-9.3）：不引入 `v6tov6` / 第三方转发工具 ③ **不建包边**（REQ-10.2）：依赖里没有 `dsh-terminal-profiles`，只用字符串键 `managedTerminal` 可选注入 ④ **不实现 exec**（REQ-10.4）：无容器 exec 调用，控件只有禁用态
   - 验证：四条断言各对应一条 `vitest`/脚本用例且全绿；每条留一行证据（命令 + 输出）→ 回写 design
 

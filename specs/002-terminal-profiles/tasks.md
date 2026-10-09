@@ -93,20 +93,24 @@
 
 ## Phase 3：WS 通道
 
-- [ ] T3.1 [REQ-7.1][REQ-7.6] 路由与 upgrade 注册
+- [x] T3.1 [REQ-7.1][REQ-7.6] 路由与 upgrade 注册
   - 内容：`ctx.webServer` 具名路由 + upgrade；注册返回 disposer
   - 验证：`vitest` + fake webServer —— 注册/卸载计数归零；卸载后不劫持未知路径
+  - ✅ **2026-10-09 落地**：`src/ws/routes.ts` —— `register({kind:'prefix', path:'/dsh-managed-terminal/'})` + `registerUpgrade({path:'/dsh-managed-terminal/ws'})`（upgrade **只能 exact**，多终端靠协议层 `instanceId`），两个 disposer **都经 `ctx.effect` 登记**；缺服务走非严格 `ctx.get('webServer')` + 自判（不 `static inject`）⇒ 不注册任何路由并给出原因。判据在 `tests/unit/ws-routes.test.ts`：只注册一次（fake 的宿主同名重复注册会抛错，`duplicateAttempts === 0`）、`ctx.effect` 恰好 2 次、`unload()` 后生效注册数 **2 → 0**、卸载前后 `/api/unknown` 都回落到官方行为（`handlerCalls === 0`）、前缀内未知名路径答 404（只答自己那一条）、dispose 幂等不会把计数减成负数
 
-- [ ] T3.2 [REQ-7.2][REQ-7.5] 握手校验
+- [x] T3.2 [REQ-7.2][REQ-7.5] 握手校验
   - 内容：校验 `Origin` + 一次性短 TTL 令牌；list 路由同样校验
   - 验证：`vitest` —— 无令牌/错令牌/过期令牌/跨源 → 立即关闭且响应体**不含**实例信息；令牌只能用一次
+  - ✅ **2026-10-09 落地**：`src/ws/auth.ts`（令牌表 + Origin 归一化 + `validateHandshake`，upgrade 与 list **共用同一函数** ⇒ 判据不可能漂移）+ `src/ws/upgrade-socket.ts`（拒绝即写固定文案响应再 `destroy`）。判据在 `tests/unit/ws-auth.test.ts`：无/错/过期/跨源/缺 Origin 分别为 401/401/401/403/403 且**立即关闭**；响应体断言用两根「哨兵串」（`inst-leak-canary` / `secret-profile-canary`）做 `not.toContain`，同时断言不含 101 头、不含 `Sec-WebSocket-Accept`、不回显令牌；令牌**只能用一次**（第二次 401；list 用掉后 upgrade 也 401 ⇒ 一次性是跨路由的）；合法路径的 `Sec-WebSocket-Accept` 与 RFC 6455 §1.3 官方向量一致且**不回显令牌**。**变异自证**：把 `redeem` 的过期分支改成恒 `ok` ⇒ 恰好 2 条过期用例变红，改回复绿
 
-- [ ] T3.3 [REQ-7.3][REQ-7.4] 重连续传与单活跃连接
+- [x] T3.3 [REQ-7.3][REQ-7.4] 重连续传与单活跃连接
   - 内容：重连带 `sinceSeq`；新连接顶掉旧连接（旧连接收 `error:'superseded'`）
   - 验证：`vitest` —— 断线重连后块连续无重复；并发两连接时旧连接被关闭且新连接正常收块
+  - ✅ **2026-10-09 落地**：`src/ws/connection.ts` —— `attach` 带 `sinceSeq` 时走 `manager.read(incremental)`：区间在 ⇒ **先 `attached` 再按 seq 升序补发块**（跨连接的块 seq 全集连续、无重复），区间已丢 ⇒ `lost { snapshot }`（REQ-6.3）；顶替语义 = **顶掉旧的**（旧连接收 `error:'superseded'` 后 `destroy`），且**先顶后读** ⇒ 不存在两个连接都能写的窗口。判据在 `tests/unit/ws-resume.test.ts`：重连后 `[1,2] + [3]` 连续无重复（`Set` 去重后长度相等）、`lost` 附完整快照且 `seq` 为下一号、旧连接被顶后**一个字节都没再多写**、旧连接的 `input` **不落 PTY**（`writeCalls` 只有新连接那条）、未 attach 就 `input` ⇒ `not-attached`、`attach` 令牌与绑定值不符 ⇒ `unauthorized`、实例不存在 ⇒ `instance-not-found`、畸形帧 ⇒ `bad-message`，外加一条**端到端字节路径**（upgrade → 半包粘合 → 命令帧）证明两层拼得起来。**变异自证**：注掉 `supersede(...)` 调用 ⇒ 恰好 2 条顶替用例变红，改回复绿
 
-- [ ] T3.4 [REQ-7.7][REQ-6.4] 背压与丢弃
+- [x] T3.4 [REQ-7.7][REQ-6.4] 背压与丢弃
   - 验证：`vitest` —— 消费者暂停后缓冲触顶 → 触发丢弃策略；断言**未**出现无界队列（队列长度 ≤ 常量）
+  - ✅ **2026-10-09 落地**：`src/ws/outbound.ts`（有界待发队列：块数 + 字节**双上限**，上限直接复用 `src/limits.ts` 的 `TERM_BUFFER_MAX_BLOCKS` / `TERM_BUFFER_MAX_BYTES`，测试引用常量不抄数字）+ `src/ws/frames.ts` 字节面。丢弃策略 = **丢新帧 + 置 `needsResync`**，下一轮 `pump` 下发 `lost { snapshot }` ⇒ 客户端自愈（丢弃 ≠ 静默，REQ-6.3）。⚠️ 顺手修掉一个真缺口：`pump` **不**再无条件 `flush()`（否则暂停期间每轮多灌 1 帧进内核 —— 单轮有界、总量无界），放行只认宿主的 `drain` 事件（`TextConnection.drain`，`socket.on('drain')` 转发）。判据在 `tests/unit/ws-backpressure.test.ts`：暂停后队列长度**恒等于** `TERM_WS_QUEUE_MAX_FRAMES`、`dropped > 0`、`needsResync === true`、内核里只有背压前那一帧；反复 `pump` 长度不增长且**没有 drain 就不许多写一帧**；恢复后先排空再用快照重同步（`lost` 附完整快照、`needsResync` 归 false、游标续推不回退）；一万次入队后长度仍 = 常量。**变异自证**：让 `withinLimits` 恒 `true`（队列变无界）⇒ 6/7 条用例变红，改回复绿
 
 ---
 
