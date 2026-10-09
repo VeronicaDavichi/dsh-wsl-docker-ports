@@ -68,9 +68,9 @@ Agent 面是这个组件的**主要卖点**（002 的概述已写死：官方右
 
 | 决策点 | 结论 | 理由摘要 |
 |---|---|---|
-| 工具族 | 完整 6 个（`terminal_new`/`terminal_list`/`terminal_read`/`terminal_write`/`terminal_resize`/`terminal_kill`）| 覆盖完整生命周期；缺 `terminal_kill` 会留孤儿 PTY（`plugin.agentSurface`）|
+| 工具族 | 完整 6 个（`managed_terminal_new`/`managed_terminal_list`/`managed_terminal_read`/`managed_terminal_write`/`managed_terminal_resize`/`managed_terminal_kill`）| 覆盖完整生命周期；缺 `managed_terminal_kill` 会留孤儿 PTY（`plugin.agentSurface`）|
 | 注册方式 | `dsh-tools` 的 `defineTool` | 宿主唯一公开的工具注册面 |
-| 读模型 | **快照 + 增量流都给**（`terminal_read` 的两种模式）| 快照给 TUI 正确画面，增量给低延迟（`plugin.agentReadModel`）|
+| 读模型 | **快照 + 增量流都给**（`managed_terminal_read` 的两种模式）| 快照给 TUI 正确画面，增量给低延迟（`plugin.agentReadModel`）|
 | 权限 | 受 `ctx.sandboxPolicy` + 工具审批 | 避免 Agent 借终端绕过 `read-only` / `workspace-write`（`plugin.agentPermission`）|
 | 失败语义 | 一律作为**工具可读结果**返回；throw 由宿主归一化成 `isError:true` 结果、**不中断会话**（**2026-10-09 订正**：原文「绝不抛出」过严 —— `defineTool` 自身即以 `ToolArgsError` 抛出做参数校验）| 目的不是「零 throw」，而是**失败可读 + 不中断会话**（下游最贵的失败是会话被打断）|
 | 服务面 vs 工具面 | `managedTerminal` **服务**（给 003）留 002；**工具面**（给 Agent）在本 Spec | 消费者与安全语义不同：服务是包间契约，工具是 Agent 权限面 |
@@ -92,7 +92,7 @@ Agent 面是这个组件的**主要卖点**（002 的概述已写死：官方右
 |---|---|---|
 | ~~B-1（**共用**，不重复）~~ | ~~`z.array(...).volatile()` 的 5 条真机行为链 → 见 [002 的 Phase 0](../002-terminal-profiles/tasks.md)~~ | ✅ **2026-10-08 五条全部定案，本 Spec 已继承关闭**（工具面不碰配置存活 ⇒ 无论结论如何本 Spec 都不受阻）。⚠️ **2026-10-09 订正**：本行原写「🟡 只等结论」，而结论当日就已出、004 的 T0.2 一直没接住 ⇒ 属**继承迟滞**，本轮补上 |
 | A-1（**本 Spec**）| `defineTool` 在 rc.2 上的**参数 schema 与错误返回形状**契约 | ✅ **2026-10-09 已定案（只读源码级复核）**：`defineTool` = **纯编译函数**、注册走 `ctx.tools.register(...)`（**返回 disposer**）；参数 DSL 是 **dsh-tools 自有**（`required` 写在属性节点内），**不是 Schemastery**；`output:{schema, render}` **必填**；工具体 throw → `isError:true` 结果且**不中断会话**；🔴 宿主 ask 门禁把 `cancelled`/`rejected` **一律**折成 `isError:true` ⇒ 满足 REQ-3.5 SHALL 自调 `ctx.approval.request`。结论已回写 design §5/§8 与 requirements 的 A-1/A-2（含 1 处冲突订正）|
-| A-2（**本 Spec**）| `terminal_resize` 参数顺序与夹紧 | 🔴 **2026-10-09 复核发现冲突并订正**：宿主 handle 是 **`resize(cols, rows)`（列在前）且不夹紧**，而本 Spec 原文写 `resize(id, rows, cols)`「夹紧并回报实际值」⇒ 002 SHALL 在**唯一入口**显式换序 + 自实现夹紧；**弄反不会报错，只会静默转置**（全套契约里唯一会静默出错处），已写进 REQ-1.6 / design §6 / tasks T1.2 |
+| A-2（**本 Spec**）| `managed_terminal_resize` 参数顺序与夹紧 | 🔴 **2026-10-09 复核发现冲突并订正**：宿主 handle 是 **`resize(cols, rows)`（列在前）且不夹紧**，而本 Spec 原文写 `resize(id, rows, cols)`「夹紧并回报实际值」⇒ 002 SHALL 在**唯一入口**显式换序 + 自实现夹紧；**弄反不会报错，只会静默转置**（全套契约里唯一会静默出错处），已写进 REQ-1.6 / design §6 / tasks T1.2 |
 
 ---
 
@@ -112,4 +112,4 @@ Agent 面是这个组件的**主要卖点**（002 的概述已写死：官方右
 
 1. 主人复核本 Spec，重点：**REQ-3 权限映射的拒绝粒度** 与 **REQ-4 的错误语义**（两者均已于 2026-10-09 按宿主契约复核结果订正）。
 2. **B-1 已继承关闭**（2026-10-08 定案）⇒ 004 现在的真实阻塞只剩 **`depends_on` 的 002**：本 Spec 的 T1.4 要消费 002 的 `session-manager` / 屏幕模型（**Phase 2 产物**），故 002 的 Phase 2 未落地前 004 不转 `in-progress`。
-3. ✅ **Phase 0 已全部关闭（2026-10-09）**：T0.1（`defineTool` 契约）与 T0.2（B-1 继承）均结案并回写 design/requirements；**残余真机项**（node-pty 失败文案、`output.render` 呈现形状、ConPTY containment 强度、`terminal_resize` 越界行为）**随 002 的 T0.5 安装接入验证一并复核**（需主人在场）。
+3. ✅ **Phase 0 已全部关闭（2026-10-09）**：T0.1（`defineTool` 契约）与 T0.2（B-1 继承）均结案并回写 design/requirements；**残余真机项**（node-pty 失败文案、`output.render` 呈现形状、ConPTY containment 强度、`managed_terminal_resize` 越界行为）**随 002 的 T0.5 安装接入验证一并复核**（需主人在场）。
