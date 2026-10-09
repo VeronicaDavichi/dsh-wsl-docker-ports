@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "可配置受管终端（插件包）：profile 驱动的真 PTY 右栏终端；Phase 1 只落地纯配置模型",
+  "description": "可配置受管终端（插件包）：profile 驱动的真 PTY 右栏终端；Phase 1 配置模型 + Phase 2 Host PTY 与屏幕模型",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -12,6 +12,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@xterm/addon-serialize": "0.14.0",
+    "@xterm/headless": "6.0.0",
     "dsh-wsl-shared": "workspace:*"
   },
   "devDependencies": {
