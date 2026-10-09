@@ -5,18 +5,31 @@
   "type": "module",
   "description": "WSL Docker 管理器 + 端口转发可视化（插件包）：只读事实层（docker / netsh）与（后续）写路径",
   "exports": {
-    ".": "./src/index.ts",
+    ".": "./lib/index.js",
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
     "./package.json": "./package.json"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs && tsc -p tsconfig.client.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --test \"tests/**/*.test.ts\""
+    "test": "node --test \"tests/**/*.test.ts\" && vitest run",
+    "test:client": "vitest run",
+    "check:client": "node scripts/verify-client-loader.mjs",
+    "check:host": "node scripts/verify-host-entry.mjs"
   },
   "dependencies": {
     "dsh-wsl-shared": "workspace:*"
@@ -31,5 +44,8 @@
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "vitest": "^5.0.3"
-  }
+  },
+  "files": [
+    "lib/**"
+  ]
 }

@@ -1,0 +1,260 @@
+/**
+ * T6.7 / REQ-14.1：插件**宿主入口**（`node --test`，零真机）
+ *
+ * 三条判据，每条都能二值判定：
+ * ① **入口形状**与 002 宿主半同口径（具名 `name`/`inject`/`apply` + 默认对象），且 `name` 与包名逐字一致；
+ * ② **装载零副作用**：`apply` 期间**一次外部命令都不执行**（探针是懒的）、不抛异常、
+ *    缺什么就记 `gaps` 里那一条（REQ-10.3）；
+ * ③ **服务面是真委派**：6 个方法都通到已实现的部件（用 fake 执行器 + 真 fixture 端到端验证），
+ *    `classify` 是纯函数 ⇒ 执行器调用数**不增**。
+ *
+ * 「零真实进程」不是靠自律：本文件**只**注入 fake 执行器，且断言 `calls` 的每一条都在 fake 的账上。
+ */
+
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import {
+  apply,
+  applyWslDockerPorts,
+  inject,
+  name as entryName,
+  PORTS_SERVICE,
+} from '../../src/plugin.ts';
+import type { PluginContextLike } from '../../src/plugin.ts';
+import { diff } from '../../src/diff/engine.ts';
+import type { DiffInput } from '../../src/diff/types.ts';
+import { createFakeExecutor, failure, fixtureBytes, ok } from '../helpers/fake-executor.ts';
+import { ETH0 } from './client-fixtures.ts';
+
+const WSL_LIST = '  NAME            STATE           VERSION\n* Ubuntu2204    Running         2\n  Debian        Stopped         2\n';
+const ETH0_TEXT = '2: eth0    inet 172.20.201.152/20 brd 172.20.207.255 scope global eth0\\       valid_lft forever preferred_lft forever\n';
+
+function readFixture(name: string): string {
+  return Buffer.from(fixtureBytes(name)).toString('utf8');
+}
+
+/** 一个「什么都答得上来」的 fake 执行器：按命令行分流（**不跑任何真进程**） */
+function routingExecutor(): ReturnType<typeof createFakeExecutor> {
+  return createFakeExecutor((call) => {
+    const line = [call.file, ...call.argv].join(' ');
+    if (line.startsWith('wsl.exe -l -v')) return ok(WSL_LIST);
+    if (line.includes('show v4tov4')) return ok(readFixture('netsh-portproxy-v4tov4.raw'));
+    if (line.includes('docker')) return ok(readFixture('docker-ps.redacted.jsonl'));
+    if (line.includes('addr show dev eth0')) return ok(ETH0_TEXT);
+    return failure('Unexpected', { stderr: `未预期的命令：${line}` });
+  });
+}
+
+interface FakeCtx {
+  readonly ctx: PluginContextLike;
+  readonly provided: { name: string; value: unknown }[];
+  readonly effects: (() => void)[];
+}
+
+function fakeCtx(withProvide = true, withEffect = true): FakeCtx {
+  const provided: { name: string; value: unknown }[] = [];
+  const effects: (() => void)[] = [];
+  const ctx: PluginContextLike = {
+    ...(withProvide ? { provide: (serviceName: string, value: unknown) => { provided.push({ name: serviceName, value }); return undefined; } } : {}),
+    ...(withEffect
+      ? {
+          effect: (callback: () => (() => void) | void) => {
+            const disposer = callback();
+            if (typeof disposer === 'function') effects.push(disposer);
+            return undefined;
+          },
+        }
+      : {}),
+  };
+  return { ctx, provided, effects };
+}
+
+test('T6.7 入口形状：name 与包名逐字一致 + 具名 apply/inject + 默认对象（002 同口径）', async () => {
+  const pkg = JSON.parse(await import('node:fs').then((fs) => fs.promises.readFile(new URL('../../package.json', import.meta.url), 'utf8'))) as { name: string };
+  assert.equal(entryName, 'dsh-wsl-docker-ports');
+  assert.equal(entryName, pkg.name, '入口 name、包名、patch 行的 id 必须逐字一致（否则 patch 行指不到东西）');
+  assert.equal(typeof apply, 'function');
+  assert.deepEqual(inject, [], '无强依赖：inject 必须是空数组，别把可选依赖写进去');
+  const module_ = await import('../../src/index.ts');
+  assert.equal('default' in module_, true, '宿主半要有默认对象形态');
+  assert.deepEqual(Object.keys(module_.default).sort(), ['apply', 'inject', 'name']);
+  assert.equal(module_.default.name, pkg.name);
+  assert.equal((module_.default as { apply: unknown }).apply, module_.apply);
+  console.log(`  · 扫了 3 个具名入口 + 1 个默认对象（name=${entryName}）；inject 长度 ${String(inject.length)}`);
+});
+
+test('T6.7 装载零副作用：apply 期间一条外部命令都不跑，探针是懒的', () => {
+  const fake = routingExecutor();
+  const host = fakeCtx();
+  const handle = applyWslDockerPorts(host.ctx, undefined, { executor: fake.executor });
+  assert.equal(fake.calls.length, 0, `装载不得执行任何外部命令，实际跑了 ${String(fake.calls.length)} 条：${JSON.stringify(fake.calls.map((call) => call.file))}`);
+  assert.equal(handle.effectCount(), 1, 'disposer 必须被 ctx.effect 收编');
+  console.log(`  · 装载扫了 ${String(fake.calls.length)} 条外部命令（要求 0）；effect 登记 ${String(handle.effectCount())} 个`);
+});
+
+test('T6.7 服务导出：provide 一次、服务名对、卸载幂等', () => {
+  const host = fakeCtx();
+  const handle = applyWslDockerPorts(host.ctx, undefined, { executor: routingExecutor().executor });
+  assert.equal(host.provided.length, 1, `provide 必须恰好 1 次，实际 ${String(host.provided.length)}`);
+  assert.equal(host.provided[0]?.name, PORTS_SERVICE);
+  assert.equal(host.provided[0]?.value, handle.service, '导出的必须就是那个服务对象（不是副本）');
+  assert.equal(handle.provided, true);
+  assert.deepEqual(handle.gaps.filter((gap) => gap.what === 'provide'), [], 'provide 成功时不该有 provide 缺口');
+  assert.equal(host.effects.length, 1);
+  host.effects[0]?.();
+  host.effects[0]?.();
+  assert.equal(handle.effectCount(), 1);
+  console.log(`  · provide 扫了 ${String(host.provided.length)} 次（${PORTS_SERVICE}）；disposer 调 2 次仍幂等；gaps=${JSON.stringify(handle.gaps.map((gap) => gap.what))}`);
+});
+
+test('T6.8 降级：空 ctx（无 provide / webServer / effect）不抛异常，四条缺口如实列出', () => {
+  const handle = applyWslDockerPorts({}, undefined, { executor: routingExecutor().executor });
+  assert.equal(handle.provided, false);
+  const whats = handle.gaps.map((gap) => gap.what);
+  assert.deepEqual(whats, ['provide', 'webServer', 'ElevationInvoker', 'effect'], `实际 ${JSON.stringify(whats)}`);
+  assert.ok(handle.gaps.every((gap) => gap.reason.length > 20), '每条缺口都要写清原因（不写「未知错误」）');
+  assert.equal(handle.effectCount(), 0);
+  assert.equal(handle.route.registered, false, '没有 webServer ⇒ 路由不注册');
+  assert.equal(handle.route.registrationCount(), 0);
+  handle.dispose();
+  console.log(`  · 空 ctx 扫了 ${String(whats.length)} 条缺口：${JSON.stringify(whats)}`);
+});
+
+test('T6.8 有 webServer ⇒ 路由真注册（prefix + 独占前缀），卸载后注册数归零', () => {
+  const routes: { kind: string; path: string }[] = [];
+  const surface = {
+    register: (route: { kind: 'exact' | 'prefix'; path: string }) => {
+      if (routes.some((item) => item.kind === route.kind && item.path === route.path)) throw new Error('重复 (kind,path) 注册');
+      routes.push({ kind: route.kind, path: route.path });
+      return () => {
+        const index = routes.findIndex((item) => item.kind === route.kind && item.path === route.path);
+        if (index >= 0) routes.splice(index, 1);
+      };
+    },
+  };
+  const host = fakeCtx();
+  const ctx: PluginContextLike = { ...host.ctx, get: (serviceName: string) => (serviceName === 'webServer' ? surface : undefined) };
+  const fake = routingExecutor();
+  const handle = applyWslDockerPorts(ctx, undefined, { executor: fake.executor });
+
+  assert.equal(handle.route.registered, true);
+  assert.equal(handle.route.registrationCount(), 1);
+  assert.deepEqual(routes, [{ kind: 'prefix', path: '/dsh-wsl-docker-ports/' }], '必须独占前缀（不蹭 002 的 /dsh-managed-terminal/）');
+  assert.equal(handle.gaps.some((gap) => gap.what === 'webServer'), false, '注册成功就不该有 webServer 缺口');
+  assert.equal(fake.calls.length, 0, `装载期零外部命令，实际 ${String(fake.calls.length)} 条`);
+  assert.equal(handle.route.requestCount(), 0, '装载期零请求');
+  assert.equal(typeof handle.snapshotBuilder.build, 'function', '装配器必须能被集成方直接复用');
+
+  // 卸载：`ctx.effect` 收编的 disposer 一调，注册数归零（漏登记会让再次挂载直接抛重复 (kind,path)）
+  host.effects[0]?.();
+  assert.equal(handle.route.registrationCount(), 0);
+  assert.deepEqual(routes, []);
+  console.log(`  · 注册扫了 ${String(routes.length)} 条路由（卸载后）；缺口 ${JSON.stringify(handle.gaps.map((gap) => gap.what))}`);
+});
+
+test('T6.8 仍然不做的事被如实记成缺口（不造假 ElevationInvoker：执行器已实现，缺的是计划装配 + 写传输）', () => {
+  const handle = applyWslDockerPorts(fakeCtx().ctx, undefined, { executor: routingExecutor().executor });
+  const webServer = handle.gaps.find((gap) => gap.what === 'webServer');
+  const elevation = handle.gaps.find((gap) => gap.what === 'ElevationInvoker');
+  assert.match(String(webServer?.reason), /webServer/u, '缺 webServer 必须点名服务（而不是含糊的「数据通道」）');
+  assert.match(String(elevation?.reason), /005/u, '必须点名归属（005）');
+  assert.match(String(elevation?.reason), /已实现/u, '必须写清「执行器已实现」，否则读的人会去重复实现一份');
+  assert.equal('PortsSource' in handle.service, false, '服务面不得提供一个假的 PortsSource');
+  assert.equal('run' in handle.service, false, '服务面不得提供一个假的提权入口');
+  console.log(`  · 扫了 ${String(handle.gaps.length)} 条缺口 + 服务面 ${String(Object.keys(handle.service).length)} 个成员（无假实现）`);
+});
+
+test('T6.7 委派①：resolveTarget 走真 `wsl -l -v`（只读、不带 -d、不冷启动）', async () => {
+  const fake = routingExecutor();
+  const handle = applyWslDockerPorts(fakeCtx().ctx, undefined, { executor: fake.executor });
+  const target = await handle.service.resolveTarget();
+  assert.equal(target.ok, true);
+  if (target.ok) {
+    assert.equal(target.resolved.name, 'Ubuntu2204');
+    assert.equal(target.resolved.source, 'wslDefault');
+    assert.equal(target.distros.length, 2);
+  }
+  const argvText = fake.calls.map((call) => [call.file, ...call.argv].join(' '));
+  assert.deepEqual(argvText, ['wsl.exe -l -v'], `只允许一条只读命令，实际 ${JSON.stringify(argvText)}`);
+  assert.equal(argvText.some((line) => line.includes(' -d ')), false, '解析发行版不得用 -d（会冷启动）');
+  console.log(`  · 扫了 ${String(argvText.length)} 条命令：${JSON.stringify(argvText)}`);
+});
+
+test('T6.7 委派②：readRules 端到端 = 执行器 → 探针 → 解析（真 fixture 的 19 条）', async () => {
+  const fake = routingExecutor();
+  const handle = applyWslDockerPorts(fakeCtx().ctx, undefined, { executor: fake.executor });
+  const outcome = await handle.service.readRules();
+  assert.equal(outcome.ok, true);
+  if (outcome.ok) {
+    assert.equal(outcome.rules.length, 19, `真 fixture 应解析出 19 条，实际 ${String(outcome.rules.length)}`);
+    assert.equal(outcome.rules[0]?.connectAddress, ETH0, 'connectAddress 必须与 fixture 一致（漂移检测的基准）');
+  }
+  const command = fake.calls.map((call) => [call.file, ...call.argv].join(' '));
+  assert.equal(command.length, 1);
+  assert.match(String(command[0]), /^netsh\.exe .*show v4tov4/u);
+  console.log(`  · 端到端扫了 ${String(outcome.ok ? outcome.rules.length : 0)} 条规则 / ${String(command.length)} 条命令`);
+});
+
+test('T6.7 委派③：readContainers 先解析发行版再探 docker（两条命令，顺序固定）', async () => {
+  const fake = routingExecutor();
+  const handle = applyWslDockerPorts(fakeCtx().ctx, undefined, { executor: fake.executor });
+  const outcome = await handle.service.readContainers();
+  assert.equal(outcome.ok, true);
+  const command = fake.calls.map((call) => [call.file, ...call.argv].join(' '));
+  assert.equal(command.length, 2, `应当恰好两条命令，实际 ${JSON.stringify(command)}`);
+  assert.match(String(command[0]), /^wsl\.exe -l -v/u);
+  assert.match(String(command[1]), /-d Ubuntu2204 .*docker ps/u, '第二条必须钉在解析出的发行版上');
+  assert.match(String(command[1]), /\{\{json \.\}\}/u, 'docker ps 必须用 --format {{json .}}（裸 json 会挂住）');
+  if (outcome.ok) assert.ok(outcome.containers.length > 0, '真 fixture 应至少有一个容器');
+  console.log(`  · 扫了 ${String(command.length)} 条命令，容器 ${String(outcome.ok ? outcome.containers.length : 0)} 个`);
+});
+
+test('T6.7 委派④：readLocalhostForwarding 透传读文件依赖（不碰真 `.wslconfig`）', async () => {
+  const handle = applyWslDockerPorts(fakeCtx().ctx, undefined, {
+    executor: routingExecutor().executor,
+    localhostForwarding: { filePath: 'X:\\fake\\.wslconfig', readFile: async () => '[wsl2]\nlocalhostForwarding=true\n' },
+  });
+  const outcome = await handle.service.readLocalhostForwarding();
+  assert.equal(outcome.ok, true);
+  if (outcome.ok) {
+    assert.equal(outcome.enabled, true);
+    assert.equal(outcome.path, 'X:\\fake\\.wslconfig');
+  }
+  console.log(`  · 扫了 1 次假文件读（path=${outcome.ok ? outcome.path : '—'}，enabled=${String(outcome.ok ? outcome.enabled : '—')}）`);
+});
+
+test('T6.7 委派⑤：probeEth0 现读（不吃缓存），默认**不**允许冷启动', async () => {
+  const fake = routingExecutor();
+  const handle = applyWslDockerPorts(fakeCtx().ctx, undefined, { executor: fake.executor });
+  const outcome = await handle.service.probeEth0();
+  assert.equal(outcome.ok, true);
+  if (outcome.ok) assert.equal(outcome.ip, ETH0);
+  const command = fake.calls.map((call) => [call.file, ...call.argv].join(' '));
+  assert.equal(command.length, 2, `解析发行版 + 探测各一条，实际 ${JSON.stringify(command)}`);
+  assert.match(String(command[1]), /ip -4 -o addr show dev eth0/u);
+  assert.equal(command.some((line) => line.includes('allowColdStart')), false, '默认不得允许冷启动（自动路径禁止冷启动）');
+  assert.equal(handle.service.probeEth0 !== undefined, true);
+  console.log(`  · 扫了 ${String(command.length)} 条命令，eth0=${outcome.ok ? outcome.ip : '—'}（默认不打冷启动开关）`);
+});
+
+test('T6.7 委派⑥：classify 是纯函数 ⇒ 执行器调用数**不增**，且与 Phase 2 引擎逐字一致', async () => {
+  const fake = routingExecutor();
+  const handle = applyWslDockerPorts(fakeCtx().ctx, undefined, { executor: fake.executor });
+  const before = fake.calls.length;
+  const input: DiffInput = { containers: [], managedPorts: [{ start: 3306, end: 3306 }], rules: [], eth0Ip: ETH0, localhostForwarding: true };
+  const mine = handle.service.classify(input);
+  const theirs = diff(input);
+  assert.deepEqual(mine, theirs, 'classify 必须是引擎的直通（不复制第二套口径）');
+  assert.equal(fake.calls.length, before, '纯判决不得触发任何外部命令');
+  assert.equal(mine.ok, true);
+  console.log(`  · 判决扫了 1 次（状态数 ${String(mine.ok ? mine.result.ports.length : 0)}）；执行器调用 ${String(before)} → ${String(fake.calls.length)}`);
+});
+
+test('T6.7 服务面自述：serviceName 可断言（消费方不用猜拿到的是哪个服务）', () => {
+  const handle = applyWslDockerPorts(fakeCtx().ctx, undefined, { executor: routingExecutor().executor });
+  assert.equal(handle.service.serviceName, PORTS_SERVICE);
+  const methods = Object.keys(handle.service).sort();
+  assert.deepEqual(methods, ['classify', 'probeEth0', 'readContainers', 'readLocalhostForwarding', 'readRules', 'resolveTarget', 'serviceName']);
+  console.log(`  · 服务面扫了 ${String(methods.length)} 个成员：${JSON.stringify(methods)}`);
+});

@@ -9,9 +9,12 @@
 # 生效路径：`dsh plugin add <本包>` 读 package.json 的 `dsh.bundle.patch` ⇒ 并入 bundle 栈
 # ⇒ profile 启动时合并本文件 ⇒ 本行被 insert 进来。**不需要手改任何 profile 文件。**
 #
-# ⚠️ 残余（故意留白、不猜）：本行 `name` 最终要经 `exports["."]` 解析到**构建产物**，而当前
-# `exports["."]` 仍指向 `./src/index.ts`（纯函数 barrel，无 `apply`）；本包的插件入口属 003 的
-# 收口任务（Phase 5+）。**在此之前不要**用本包做 T0.5 的装载验证。
+# ⚠️ 时序（T6.7 已收口，2026-10-09）：本行 `name` 经 `exports["."]` 解析到**构建产物**
+# `./lib/index.js`，该产物已导出 `name` / `inject` / `apply`（宿主按包根导出找它们）⇒ 本包
+# **可以**用于 T0.5 的装载验证了。跑之前先 `pnpm -C packages/wsl-docker-ports build`。
+#
+# 仍**未**接线（不影响本行装载，但会让右栏页按 ports-source-missing 降级，见 `src/plugin.ts`
+# 的 `gaps`）：真机快照装配 + 前后端数据通道（003 Phase 4 保留空位）与提权写路径（005）。
 - insert:
     - id: dsh-wsl-docker-ports
       name: dsh-wsl-docker-ports

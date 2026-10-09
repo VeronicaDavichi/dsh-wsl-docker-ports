@@ -1,0 +1,303 @@
+/**
+ * 003 插件**宿主入口**（T6.7）—— 与 002 宿主半（`packages/terminal-profiles/src/plugin.ts`）同口径。
+ *
+ * ## 形态（照 002 逐项对齐，依据 = 本机同族已装插件的生产代码）
+ *
+ * - `export const name = 'dsh-wsl-docker-ports'` —— **与包名、与 `cordis.patch.yml` 的 `id` 逐字一致**
+ *   （宿主按包根导出找 `name`；patch 行的 `id` 要按它引用）。
+ * - `export const inject: readonly string[] = []` —— **无强依赖**。本包缺任何服务都不该「加载期不激活」：
+ *   读层是只读探测、配置面走 `remote.settings`，缺了就在 `gaps` 里说清（REQ-10.3 的同一口径）。
+ * - `export function apply(ctx, config?)` —— 宿主调用；**返回值被宿主忽略**，给测试/集成方留一个句柄。
+ * - `export default { name, inject, apply }` —— 宿主官方三种形态之一（函数 / 对象 / `class`），
+ *   两种都给以免疫宿主侧解析差异（002 也是这样）。
+ * - **刻意不导出 `Config`**（与 002 的差异，理由在下面「为什么没有 Config」）。
+ *
+ * 🔴 **少了 `apply`，profile 里插了 patch 也不会激活** —— 宿主只会 import 到一堆普通导出。
+ * 这正是本包 `exports["."]` 从 `./src/index.ts` 切到 `./lib/index.js` 的原因。
+ *
+ * ## 本入口**只做装配与委派**，不新造能力
+ *
+ * 三块，全部由**已实现且已测**的部件拼成：
+ *
+ * 1. `PORTS_SERVICE`（6 个方法）：`wsl-shared` 的发行版解析 / `read/*-probe.ts` 的三个只读探针 /
+ *    `read/localhost-forwarding.ts` / `diff/engine.ts` 的纯判决；
+ * 2. **T6.8 快照装配**（`./snapshot.ts`）：把上面这些探针 + 001 的 `.wslconfig` 读法拼成
+ *    传输契约 `PortsSnapshot`，**没有新的进程调用、没有新的解析、没有新的命令文本**；
+ * 3. **T6.8 快照路由**（`./route.ts`）：自建 `ctx.webServer` 独占前缀 `/dsh-wsl-docker-ports/`，
+ *    `GET /dsh-wsl-docker-ports/snapshot` 返回 `{ok:true,snapshot}`。
+ *
+ * ## 为什么没有 `Config`（与 002 的**刻意**差异）
+ *
+ * 002 必须声明 `Config`，因为它的 `profiles` 是 `volatile` 数组（要 Schemastery 才能让 volatile 生效）。
+ * 本包 P0 的四个配置项（`managedPorts` / `distro` / `elevationPolicy` / `scopes`）走**客户端 settings
+ * 写回**（`remote.settings.update(ns, patch)`），宿主进程**不持有**它们的活体副本 ⇒ 没有 volatile 需求。
+ * 而拿 Schemastery 只能经 `@deepseek-ai/schemastery`（本包**未声明**该依赖）⇒ 声明一个假 schema 比
+ * 不声明更坏（002 文件头已记：假 schema 会让 volatile 静默失效）。故 `Config` 交给「真机 T0.5 确认
+ * settings 命名空间是否需要宿主侧 schema」这一步决定，**此处不猜**（2026-10-09 集成方裁定：
+ * **不许用「先加个依赖试试」解决**）。
+ *
+ * ## 仍然缺的那一件（不静默，写进 `gaps`）
+ *
+ * **提权写路径的接线**：执行器属 **005**（`runElevate` + `defaultElevationDeps` **已实现**），
+ * 缺的是「带 ownership 判定的写计划装配」+「浏览器点击 → 宿主执行」的传输（本波只开了只读 GET）。
+ * ⇒ 本入口**不做**假的 `ElevationInvoker`：那会让「写成功」变成谎报。如实记成 gap。
+ */
+
+import { createExecutor, listDistros, resolveDistro } from 'dsh-wsl-shared';
+import type { DistroResolution, Executor, WslDistro, WslSharedError } from 'dsh-wsl-shared';
+import { diff } from './diff/engine.ts';
+import type { DiffInput, DiffOutcome } from './diff/types.ts';
+import { probeDockerPs } from './read/docker-probe.ts';
+import type { DockerPsOutcome } from './read/docker-probe.ts';
+import { createEth0Source } from './read/eth0-source.ts';
+import type { Eth0SourceOptions } from './read/eth0-source.ts';
+import { readLocalhostForwarding } from './read/localhost-forwarding.ts';
+import type { LocalhostForwardingDeps, LocalhostForwardingOutcome } from './read/localhost-forwarding.ts';
+import { probePortproxyRules } from './read/netsh-probe.ts';
+import type { NetshProbeOptions, PortproxyOutcome } from './read/netsh-probe.ts';
+import { registerPortsRoute } from './route.ts';
+import type { PortsRouteRegistration } from './route.ts';
+import { createSnapshotBuilder } from './snapshot.ts';
+import type { SnapshotBuilder, SnapshotDeps } from './snapshot.ts';
+import { PORTS_SNAPSHOT_PATH } from './wire.ts';
+import type { Eth0Outcome } from 'dsh-wsl-shared';
+
+/** 插件名（供 profile 清单的 `id` 引用；**与包名逐字一致** —— 二者不一致会让 patch 行指不到东西） */
+export const name = 'dsh-wsl-docker-ports';
+
+/** 无强依赖：缺服务一律降级 + 记 gap，不拒绝加载（见文件头） */
+export const inject: readonly string[] = [];
+
+/** 宿主侧服务名（`ctx.provide` 的键；真机 T0.5 用它核对服务导出生效） */
+export const PORTS_SERVICE = 'wslDockerPorts';
+
+/** 一条「降级原因」（不静默：装载后可直接读出来定位，口径同 002 的 `PluginGap`） */
+export interface PluginGap {
+  readonly what: string;
+  readonly reason: string;
+}
+
+/**
+ * 本插件用到的宿主上下文面（窄接口，只列真用到的成员）。
+ *
+ * `get` / `provide` / `effect` 都写成**可选**：测试与降级路径都要能在没有它们的 ctx 上跑完，
+ * 而「宿主没有 `provide`」应当是一个**可见的 gap**，不是一个 `TypeError`。
+ */
+export interface PluginContextLike {
+  readonly get?: (serviceName: string) => unknown;
+  readonly provide?: (serviceName: string, value: unknown) => unknown;
+  readonly effect?: (callback: () => (() => void) | void, label?: string) => unknown;
+}
+
+/** 注入点（**测试与集成方**用；生产用缺省值） */
+export interface PortsHostDeps {
+  /** 外部命令执行器（001）；缺省 `createExecutor()`（真进程，**只在快照被请求时才跑**） */
+  readonly executor?: Executor | undefined;
+  /** 透传 `readLocalhostForwarding` 的注入面（测试用；生产留空即走默认路径解析） */
+  readonly localhostForwarding?: LocalhostForwardingDeps | undefined;
+  /** 覆盖 nat 门的数据源（默认 001 的 `readNetworkingMode()` 真读 `.wslconfig`） */
+  readonly readNetworkingMode?: SnapshotDeps['readNetworkingMode'];
+  /** 透传探针选项（超时等） */
+  readonly netsh?: NetshProbeOptions | undefined;
+  readonly docker?: { readonly attempts?: number; readonly timeoutMs?: number } | undefined;
+  readonly eth0?: Eth0SourceOptions | undefined;
+  /** 固定时间戳（测试）；默认 `Date.now` */
+  readonly now?: (() => number) | undefined;
+  /** 提权可用性探测（005 的只读后端探测）；缺省**保守地**返回 false */
+  readonly probeElevationAvailable?: (() => Promise<boolean>) | undefined;
+  /** 整体替换装配器（集成方/测试；缺省用 `createSnapshotBuilder(…)`） */
+  readonly snapshotBuilder?: SnapshotBuilder | undefined;
+}
+
+/** 目标发行版（解析结果 + 全量列表；每个探针都要它，故只解析一次） */
+export type TargetDistro = { readonly ok: true; readonly resolved: DistroResolution; readonly distros: readonly WslDistro[] } | WslSharedError;
+
+/**
+ * 宿主侧只读服务面：**6 个方法，全部是已有部件的一对一委派**。
+ *
+ * 📌 为什么方法这么「碎」而不是一个 `load(): PortsSnapshot`：把探针结果拼成客户端快照是
+ * **Phase 4** 的活儿（`PortsSnapshot` 是客户端类型）。这里只导出现成能力 ⇒ 不越界、也不造假。
+ */
+export interface PortsHostService {
+  /** 服务名（= `PORTS_SERVICE`），便于消费方断言拿到的是哪个服务 */
+  readonly serviceName: string;
+  /** 解析目标发行版（001 的四级优先级）；**只读**，不冷启动 */
+  resolveTarget(): Promise<TargetDistro>;
+  /** `docker ps` 只读探测（超时 + 重试；被唤醒后第一次空输出不当「没有容器」） */
+  readContainers(): Promise<DockerPsOutcome | WslSharedError>;
+  /** `netsh ... show v4tov4` 只读探测 */
+  readRules(): Promise<PortproxyOutcome>;
+  /** 只读 `.wslconfig` 的 `localhostForwarding` */
+  readLocalhostForwarding(): Promise<LocalhostForwardingOutcome>;
+  /** 现读 WSL eth0（不吃缓存；`allowColdStart` 只允许「启动并核验」传 true） */
+  probeEth0(allowColdStart?: boolean): Promise<Eth0Outcome | WslSharedError>;
+  /** 五态判决：**纯函数**（零进程、零 IO），对拍 003 Phase 2 的引擎 */
+  classify(input: DiffInput): DiffOutcome;
+}
+
+/** `apply` 的返回值（**宿主会忽略它**；给测试与集成方一个可读的装载结果） */
+export interface WslDockerPortsPluginHandle {
+  /** 已导出的只读服务面（宿主没有 `provide` 时仍会构造，只是没导出） */
+  readonly service: PortsHostService;
+  /** T6.8 的快照装配器（路由的处理器就是调它；也可被集成方直接复用） */
+  readonly snapshotBuilder: SnapshotBuilder;
+  /** T6.8 的快照路由注册结果（`registered:false` ⇒ 见 `gaps` 里的 `webServer` 条） */
+  readonly route: PortsRouteRegistration;
+  /** 本次装载的降级原因（空数组 = 一切齐备） */
+  readonly gaps: readonly PluginGap[];
+  /** `ctx.provide` 是否真的调用成功 */
+  readonly provided: boolean;
+  effectCount(): number;
+  dispose(): void;
+}
+
+/** 插件配置（P0 只用到 `distro`；清单当前**没有** `config:` 块 ⇒ 生产上是空对象） */
+export interface PortsPluginConfigLike {
+  /** 目标发行版；留空则按 001 的四级优先级解析 */
+  readonly distro?: string | undefined;
+}
+
+/** 宿主入口（cordis 调用；返回值被忽略） */
+export function apply(ctx: PluginContextLike, config?: PortsPluginConfigLike | undefined): void {
+  applyWslDockerPorts(ctx, config);
+}
+
+/**
+ * 真正的装配（`apply` 的实体 + 测试入口）。
+ *
+ * 装配顺序 = 依赖顺序：执行器 → 只读服务面 → 服务导出 → disposer 收编。
+ * **全程不抛**：任何缺失都变成 `gaps` 里的一条。
+ */
+export function applyWslDockerPorts(
+  ctx: PluginContextLike,
+  config?: PortsPluginConfigLike | undefined,
+  deps: PortsHostDeps = {},
+): WslDockerPortsPluginHandle {
+  const gaps: PluginGap[] = [];
+  const executor = deps.executor ?? createExecutor();
+  const configured = config?.distro;
+
+  const resolveTarget = async (): Promise<TargetDistro> => {
+    const listed = await listDistros(executor);
+    if (!listed.ok) return listed;
+    const resolved = resolveDistro(listed.distros, configured);
+    if (!resolved.ok) return resolved;
+    return { ok: true, resolved, distros: listed.distros };
+  };
+
+  const service: PortsHostService = {
+    serviceName: PORTS_SERVICE,
+
+    resolveTarget,
+
+    // ⚠️ 两个探针都要「目标发行版」⇒ 这里现解析一次，而不是各自再走一遍 `wsl -l -v`
+    readContainers: async (): Promise<DockerPsOutcome | WslSharedError> => {
+      const target = await resolveTarget();
+      if (!target.ok) return target;
+      const options = deps.docker === undefined ? {} : deps.docker;
+      return probeDockerPs(executor, target.resolved.name, target.distros, options);
+    },
+
+    readRules: async (): Promise<PortproxyOutcome> =>
+      probePortproxyRules(executor, deps.netsh === undefined ? {} : deps.netsh),
+
+    readLocalhostForwarding: async (): Promise<LocalhostForwardingOutcome> =>
+      readLocalhostForwarding(deps.localhostForwarding === undefined ? {} : deps.localhostForwarding),
+
+    probeEth0: async (allowColdStart?: boolean): Promise<Eth0Outcome | WslSharedError> => {
+      const target = await resolveTarget();
+      if (!target.ok) return target;
+      // 显式拼可选字段（不写 `{...base, ...override}`）：`exactOptionalPropertyTypes` 下
+      // 「可选字段的值可能是 undefined」与「字段不存在」是两回事（口径同 `read/eth0-source.ts`）
+      const options: { -readonly [K in keyof Eth0SourceOptions]: Eth0SourceOptions[K] } = { ...(deps.eth0 ?? {}) };
+      if (allowColdStart !== undefined) options.allowColdStart = allowColdStart;
+      return createEth0Source(executor, target.resolved.name, target.distros, options).probe();
+    },
+
+    // 唯一的非 IO 方法：纯判决直接委派给 Phase 2 的引擎（不复制一份口径）
+    classify: (input: DiffInput): DiffOutcome => diff(input),
+  };
+
+  const provided = provideService(ctx, PORTS_SERVICE, service);
+  if (!provided) {
+    gaps.push({
+      what: 'provide',
+      reason:
+        '宿主 ctx 上没有 provide() ⇒ 只读服务面未导出；服务导出缺口只影响宿主侧消费方，' +
+        '右栏页的数据通道另见下面的 gaps 条目（REQ-10.3 的降级，不是错误）。',
+    });
+  }
+
+  // ── T6.8：宿主侧快照装配 + 自建路由（右栏页的数据通道） ──────────────────────
+  // ① 装配器：**只构造，不执行**（探针在请求处理里才跑 ⇒ 装载期零外部命令）
+  const snapshotDeps: SnapshotDeps = {
+    executor,
+    ...(deps.localhostForwarding === undefined ? {} : { localhostForwarding: deps.localhostForwarding }),
+    ...(deps.netsh === undefined ? {} : { netsh: deps.netsh }),
+    ...(deps.docker === undefined ? {} : { docker: deps.docker }),
+    ...(deps.eth0 === undefined ? {} : { eth0: deps.eth0 }),
+    ...(deps.readNetworkingMode === undefined ? {} : { readNetworkingMode: deps.readNetworkingMode }),
+    ...(deps.now === undefined ? {} : { now: deps.now }),
+    // 提权可用性 = 005 的只读后端探测（`where.exe gsudo` + `gsudo status`，零提权、零写入）
+    elevationAvailable: deps.probeElevationAvailable ?? (async (): Promise<boolean> => false),
+    // 002 的 `managedTerminal` 只按字符串键软取（REQ-10.2：不建包依赖边）
+    execAvailable: (): boolean => ctx.get?.('managedTerminal') !== undefined,
+  };
+  const builder: SnapshotBuilder = deps.snapshotBuilder ?? createSnapshotBuilder(snapshotDeps);
+
+  // ② 路由：缺 webServer ⇒ 不注册 + 记 gap（客户端半随后按 ports-source-missing 降级）
+  const route: PortsRouteRegistration = registerPortsRoute(ctx, builder);
+  if (!route.registered) {
+    gaps.push({
+      what: 'webServer',
+      reason: `${route.reason ?? '宿主未提供 webServer'} ⇒ 快照端点 ${PORTS_SNAPSHOT_PATH} 未注册；` +
+        '客户端半会按 ports-source-missing 降级（不注册页面、不抛异常），只读服务面仍可用。',
+    });
+  }
+
+  // ③ 提权写路径：**执行器已实现**（005 的 `runElevate`），未接线的是「计划装配 + 浏览器→宿主传输」
+  gaps.push({
+    what: 'ElevationInvoker',
+    reason:
+      '提权执行器**已实现**（005 的 `elevate/runner.ts` `runElevate` + `defaultElevationDeps`）' +
+      '⇒ 本入口的职责只是接线，不是实现。未接线的原因：`ElevateRequest.plan` 需要一份**带 ownership ' +
+      '判定的写计划**，而「浏览器点击 → 宿主执行」的传输（本波只做了 GET 只读路由）尚未开；' +
+      '在没有它之前接线，只会得到一个「按钮可点但拿不到合法计划」的假入口 —— 故不接，也不造假实现。',
+  });
+
+  let effectCount = 0;
+  let disposed = false;
+  const dispose = (): void => {
+    if (disposed) return;
+    disposed = true;
+    route.dispose(); // 幂等；`ctx.effect` 也会在卸载时调它
+  };
+
+  if (typeof ctx.effect === 'function') {
+    ctx.effect(() => {
+      effectCount += 1;
+      return dispose;
+    });
+  } else {
+    gaps.push({
+      what: 'effect',
+      reason: '宿主 ctx 上没有 effect() ⇒ 卸载钩子未登记（路由的 disposer 只能在手动 dispose() 时生效）。',
+    });
+  }
+
+  return { service, snapshotBuilder: builder, route, gaps, provided, effectCount: () => effectCount, dispose };
+}
+
+/* ────────────────────────── 内部的窄适配 ────────────────────────── */
+
+/**
+ * 🔴 服务导出的**唯一**调用点（窄缝，照 002 的口径）。
+ *
+ * 单独一个函数是为了：真机 T0.5 若发现签名/时机不同，改这一处即可；且「宿主没有 provide」
+ * 能被记成 gap 而不是崩掉整个插件加载。
+ */
+function provideService(ctx: PluginContextLike, serviceName: string, value: unknown): boolean {
+  if (typeof ctx.provide !== 'function') return false;
+  ctx.provide(serviceName, value);
+  return true;
+}

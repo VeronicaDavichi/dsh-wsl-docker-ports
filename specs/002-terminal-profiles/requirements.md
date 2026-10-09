@@ -55,19 +55,9 @@
 | 画布尺寸变化 | （fit 自动）| 容器 resize | `rows/cols` 更新；PTY 收到 resize |
 | 滚动区 | `term-scrollback` | 滚轮 / 拖动 | 视口变化；**不**改变 Host 屏幕模型 |
 
-### 2.2 配置页（`plugins.row.config`）
+### 2.2 配置页（`plugins.row.config`）（已迁出）
 
-| 控件 | data-testid | 触发行为 | 副作用（可观察）|
-|------|-------------|---------|----------------|
-| 新增 profile | `btn-profile-add` | 追加空条目 | 表单 +1 行 |
-| 删除 profile | `btn-profile-remove` | 移除条目 | 表单 −1 行 |
-| 字段编辑 | `inp-profile-<field>` | 改 `name/command/args/cwd/cwdLinux/env` | 表单状态变化；**未**写盘 |
-| 保存 | `btn-profile-save` | 写 profile patch | volatile-only → 终端**存活**；否则先弹确认（REQ-2.2）|
-| 校验错误提示 | `cfg-error` | 校验/写盘失败 | 显示原因；**不**写盘；保留用户输入 |
-| 只读原因提示 | `cfg-readonly` | home patch 抢占 | 显示「写入被拒」原因 + 路径 |
-
----
-
+> ✅ **2026-10-09 已迁出至 [`007-terminal-config-page`](../007-terminal-config-page/README.md)**（与 `REQ-10`、design §4、`Phase 6` 同批；编号原样保持）。
 ## 3. 功能需求
 
 ### REQ-1 配置模型与容错
@@ -131,14 +121,9 @@
 
 Agent 工具族与沙箱权限**已整体迁至 [004-terminal-agent-surface](../004-terminal-agent-surface/requirements.md)** 并重编号为 REQ-1..REQ-4（2026-10-08 拆分；原 REQ-8/REQ-9 的内容**逐条保留、无删改**）。本 Spec 自即日起**不再定义** Agent 面 —— 它属于 004。编号 **8/9 保留为空位**，以免下方全部既有引用错位。
 
-### REQ-10 配置页
+### REQ-10 配置页（已迁出）
 
-- **REQ-10.1** 配置页 SHALL 经 `plugins.row.config`（键 `<包名>#<行 id>`）注册，并用 `ctx.inject(['settings'], child => child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)))` 关闭自动表单、自绘界面。**2026-10-08 源码实证**：slot 名与键格式、以及 `configure({ auto: false }, ctx.fiber)` 的用法均有官方真实调用点。
-- **REQ-10.2** 写入 SHALL 走 **live（volatile）字段路径**：`ctx.settings.{update,replace,mutate}`（三写操作，陈旧写入被拒）—— 命名空间 = **本包 patch 条目 id**，schema 由本包**静态导出 `Config`** 提供。SHALL NOT 拿 `ctx.configEditor.edit()` 写 live 字段（那是**完整配置**路径，官方原文 `ordinary fields retain Loader's normal lifecycle` ⇒ **会重挂载、杀正在跑的终端**）。本包 SHALL NOT 自行读写、拼接或重写 YAML。
-- **REQ-10.3** GIVEN 本行被 home patch 或 `--patch` 覆盖（写入被拒），THEN 表单 SHALL 显示只读原因与文件路径，SHALL NOT 假装保存成功。
-- **REQ-10.4** GIVEN 保存失败（revision 冲突 / 校验失败），THEN 系统 SHALL 显示原因并保留用户输入（不清空表单）。
-- **REQ-10.5** GIVEN 本行不满足宿主「唯一寻址且在 profile 根 Include 内」前提（**live 路径同样依赖它**：settings 按**条目 id** 寻址，源码 `row.options.id === ns`），THEN 表单 SHALL 展示该限制，SHALL NOT 让用户白填。
-
+> ✅ **2026-10-09 已迁出至 [`007-terminal-config-page`](../007-terminal-config-page/requirements.md)** —— `REQ-10.1`–`REQ-10.5` 与本文件 §2.2 **一并移交**，编号不变。
 ### REQ-11 跨包服务（供 003 消费）
 
 - **REQ-11.1** 本包 SHALL 导出 `managedTerminal` 服务，面为 `open` / `list` / `read` / `write` / `resize` / `kill` 的能力子集。

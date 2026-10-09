@@ -1,0 +1,42 @@
+# 任务：终端配置页（007）
+
+> 本文件由 [`../002-terminal-profiles/tasks.md`](../002-terminal-profiles/tasks.md) **拆分而来**（2026-10-09）：`T6.1`–`T6.4` **编号原样保持**，002 侧 `Phase 6` 留「已迁出」空位。
+> **准入/准出**：Phase 6 的代码与测试已交付于工作区（集成方复验记录见下）；**整包**的门（用例数 / 产物体积 / 单文件行数）留在 002 的 `T7.3`。
+> **真机项**见文末 —— 与 002/003 的真机批次同场执行。
+
+## Phase 6：配置页
+
+- [x] T6.1 [REQ-10.1][REQ-10.2] 自绘配置页 + 写入管道
+  - 📌 **2026-10-09 实物契约**：配置页注册 = `ctx.slots.inject('plugins.row.config', () => ctx.slots.register({ name: 'plugins.row.config', key: '<包名>#<行 id>' }, (ownerProps) => ownerProps?.view === 'summary' ? 一行摘要 : 页面))`（**槽驱动**：宿主不声明该槽就只是**不注册、不炸 boot**）；**写管道首选宿主服务** `ctx.get('remote.settings').update(ns, patch, expectedRevision)`、读走 `describe()`（自建 HTTP 路由留给终端动作/大文件，**不再是配置写入的唯一管道**）；`ctx.slots.register` 是 **`(options, Component)` 两个位置参数**（`name` 在 options 内，写成 `(name, id, …)` 会编译不过）。见 [`client-contract.md`](../../client-contract.md) §C10/§D12/§D13。
+  - 内容：`plugins.row.config`（键 `<包名>#<行 id>`）+ `configure({ auto: false })`；写入只经 **settings 三写操作**（live 字段），**不用** `ctx.configEditor.edit()`（完整配置路径会重挂载）
+  - 验证：`vitest` + fake ctx —— 注册键正确、`auto: false` 生效；`grep` 断言本包**无** YAML 手写（无 `writeFile` 到 `cordis.patch.yml`）
+
+- [x] T6.2 [REQ-2.2][REQ-2.3] volatile-only 判定与确认
+  - 内容：保存前判定变更是否 volatile-only；否则弹确认「正在运行的终端将被终止」；不为 ordinary 字段声明造新实例的 transform
+  - 验证：`vitest` —— volatile-only → 不弹确认且走 settings 路径；含 ordinary → 弹确认且**未**写盘（直到确认）；transform 断言（连续两次 parse 结构相等）
+
+- [x] T6.3 [REQ-10.3][REQ-10.4][REQ-10.5] 失败与只读态
+  - 验证：`vitest` —— home patch 覆盖 → 只读 + 原因 + 路径；revision 冲突 → 提示且**保留输入**；不满足唯一寻址 → 展示限制
+
+- [x] T6.4 [REQ-1.2][REQ-2.4] 容错与语义明示
+  - 验证：`vitest` —— 单条无效不影响保存其余；配置页文案含「改 cwd 只影响新建实例」
+
+---
+
+---
+
+## 集成方复验记录（2026-10-09；独立复跑，不采信转述）
+
+- ✅ **T6.1–T6.4 判据完成**，四条均有**可被变异杀死**的判据（交付报告 §4 的 M-A…M-D 四处变异各自红在具体断言上、复原后源码 hash 与 bundle 字节数回到原值）。
+- **复跑读数**：`typecheck` **exit 0** · `vitest` **33 文件 / 408 passed | 1 skipped（409）** · `build` 出主 bundle + 懒加载 chunk · `check:client` **60 条判据（含 4 条反控）全部通过** · `pnpm install --frozen-lockfile` **exit 0**，`pnpm-lock.yaml` SHA256 **`FEADFDB56EBAC31A…`** 与改动前逐字相同。
+- **体积（本 Spec 产出的直接后果）**：主 bundle **43,537 B**（Phase 4 时 11,037 B ⇒ 配置页 +32,500 B）、chunk **447,255 B**。本包**无** `check:size` 脚本（001 才有）⇒ NFR-2 的「记账」由交付报告与 002 的 `T7.3` 承担。
+- **反向核对（集成方独立扫描）**：`src/` 下 `writeFile` / `cordis.patch.yml` / `configEditor` **0 命中**；**0 个文件 > 400 行**（最大 `src/plugin.ts` 394）；`peerDependencies.react = ^18.2.0` 且不在 `dependencies`。
+- 🔴 **事故留痕（代理自报，原文已核实于 `scripts/verify-client-loader.mjs` L75–79）**：压 `417 → 327` 行时**搬迁脚本锚点写坏**，连带删掉 `runCanaries` / `checkManifest` / `checkMainBundle` 与一个 `export` 块；**当时未提交、git 无副本**（代理直读 `.git` 对象自证），故按契约**逐条重写** ⇒ `check:client` 判据 **59 → 60**，**文案不可能逐字复原**。⚠️ 这是本轮**唯一真实损失**；我复核后判定**判据有效性不受影响**（重写以 `.d.mts` 复用面 + 消费者断言为据，60/60 与 4 条反控齐全），但**「搬迁/重构脚本必须先备份或先提交」应升级为本仓规矩**。
+- 🔵 **有意偏差（代理声明，我认同）**：`dsh.client.inject: []` / `external: []` 保持真实声明（确认框走原生 HTML 元素，不用 `@deepseek-ai/*` UI 原语 ⇒ §P4 的 external 供应商问题不触发）。
+## 真机待办（主人场；与 002/003 同批）
+
+- `remote.settings` 的真机形状核对（§D13 逐字：`{ ok, value, error }`）与 **volatile live 写入 152ms 不重挂载**的现场复现。
+- **home patch 覆盖 ⇒ 只读 + 原因 + 路径**的真机复现（离线只有 `writable:false` / `readOnly:true` 的注入态）。
+- **revision 冲突 ⇒ 保留输入**的真机复现（需并发写触发）。
+- T0.5 装载链路：`plugins.row.config` 槽位是否真被宿主提供、`auto:false` 是否真生效。
+

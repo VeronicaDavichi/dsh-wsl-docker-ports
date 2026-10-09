@@ -148,25 +148,12 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 
 ---
 
-## Phase 6：配置页
-
-- [ ] T6.1 [REQ-10.1][REQ-10.2] 自绘配置页 + 写入管道
-  - 📌 **2026-10-09 实物契约**：配置页注册 = `ctx.slots.inject('plugins.row.config', () => ctx.slots.register({ name: 'plugins.row.config', key: '<包名>#<行 id>' }, (ownerProps) => ownerProps?.view === 'summary' ? 一行摘要 : 页面))`（**槽驱动**：宿主不声明该槽就只是**不注册、不炸 boot**）；**写管道首选宿主服务** `ctx.get('remote.settings').update(ns, patch, expectedRevision)`、读走 `describe()`（自建 HTTP 路由留给终端动作/大文件，**不再是配置写入的唯一管道**）；`ctx.slots.register` 是 **`(options, Component)` 两个位置参数**（`name` 在 options 内，写成 `(name, id, …)` 会编译不过）。见 [`client-contract.md`](../../client-contract.md) §C10/§D12/§D13。
-  - 内容：`plugins.row.config`（键 `<包名>#<行 id>`）+ `configure({ auto: false })`；写入只经 **settings 三写操作**（live 字段），**不用** `ctx.configEditor.edit()`（完整配置路径会重挂载）
-  - 验证：`vitest` + fake ctx —— 注册键正确、`auto: false` 生效；`grep` 断言本包**无** YAML 手写（无 `writeFile` 到 `cordis.patch.yml`）
-
-- [ ] T6.2 [REQ-2.2][REQ-2.3] volatile-only 判定与确认
-  - 内容：保存前判定变更是否 volatile-only；否则弹确认「正在运行的终端将被终止」；不为 ordinary 字段声明造新实例的 transform
-  - 验证：`vitest` —— volatile-only → 不弹确认且走 settings 路径；含 ordinary → 弹确认且**未**写盘（直到确认）；transform 断言（连续两次 parse 结构相等）
-
-- [ ] T6.3 [REQ-10.3][REQ-10.4][REQ-10.5] 失败与只读态
-  - 验证：`vitest` —— home patch 覆盖 → 只读 + 原因 + 路径；revision 冲突 → 提示且**保留输入**；不满足唯一寻址 → 展示限制
-
-- [ ] T6.4 [REQ-1.2][REQ-2.4] 容错与语义明示
-  - 验证：`vitest` —— 单条无效不影响保存其余；配置页文案含「改 cwd 只影响新建实例」
 
 ---
 
+## Phase 6（已迁出）：配置页
+
+> ✅ **2026-10-09 已迁出至 [`007-terminal-config-page`](../007-terminal-config-page/tasks.md)**（同款先例：`Phase 5 → 004`）。`T6.1`–`T6.4` **连同判据**一并移交，编号原样保持以免既有引用错位；**整包**质量门 `T7.3` 仍留在本文件。
 ## Phase 7：服务导出与收口
 
 - [x] T7.1 [REQ-11.1][REQ-11.2][REQ-11.3] 导出 `managedTerminal` 服务
@@ -178,11 +165,14 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
   - 验证：`vitest` + fake —— 卸载后 WS 连接数、路由数、页类型数、工具数、resize 监听数全部归零；**全部实例被终止**（PTY kill 调用数 = 实例数）
   - ✅ **2026-10-09 落地（打底）**：`src/plugin.ts` 用**一个**幂等 `dispose()` 收全部 —— `channel.closeAll()`（WS 连接）→ `channel.dispose()`（路由）→ 工具面 `dispose()` → `serviceHost.dispose()`（清订阅 → 停定时器 → 逐个 `kill` 全部实例）；并收进 `ctx.effect`（宿主**不会**自动收编，design §11）。判据（`plugin-entry.test.ts`，卸载前后逐项）：WS 连接 `activeCount 1→0`、路由/升级 `liveCount 2→0`、`routeCount 2→0`、工具 `6→0`、订阅监听 `1→0`、定时器 `1→0`、`list() → []`、`terminateCount === [1,1]` 且 `terminated === true`（**kill 调用数 = 实例数**）、原 list 路由回落到官方行为（不是「注册着但答得动」）。**页类型数 = 0**：Phase 4 未实现 ⇒ fake ctx 装**计数版** `sidebarRightTabs`，真注册一次就变红（比「不写断言」强）；**resize 监听数 = 0** = 订阅监听 + 定时器，Phase 5 的 xterm fit 监听尚未实现 ⇒ 该项当前平凡为 0（已在测试头注写明代理口径）。另证**卸载后可重新装载**：同一 webServer 再 `apply` 一次仍 `registered === true` 且 `duplicateAttempts === 0`（REQ-7.6 的真实风险 = 残留路由撞「重复 `(kind,path)` 抛错」）。⚠️ 残余真机项并入 T0.5：真机装载 → 卸载后同样归零
 
-- [ ] T7.3 [NFR-1..NFR-6] 质量门
+- [x] T7.3 [NFR-1..NFR-6] 质量门
   - 验证：`pnpm -C packages/terminal-profiles typecheck` + `test` + `build` 三项全绿；记录用例数、主 bundle 与 xterm chunk 体积；`package.json` 的 `peerDependencies.react` = `^18.2.0` 且**不在** `dependencies`；单文件 ≤ 400 行
   - 🔵 **2026-10-09 集成方提示（体积基线必须用冻结后的数）**：T7.4 已写入 README 的基线 **11,037 B** 是 **Phase 4 交付时**的主 bundle 数；**Phase 6 配置页进 bundle 后**实测已变为 **41,757 B**（`lib/client.js`；chunk `client.terminal.js` 仍 447,255 B）⇒ 本门记录**以构建冻结后的复算值为准**，并**由集成方**同步更新 README 那一行（代理**不要**改 README，那是集成方的文件）。同时记录对照：官方终端页主 bundle **19,887 B** ⇒ 本包主 bundle 现为它的 **2.1×**（配置页 + 标签壳都在主 bundle）；若主人要压，**可选**把配置页改为懒加载 chunk（§E 允许），但**不是**本门的硬要求 —— 记数、说明、不擅自改架构。
   - ✅ **2026-10-09 清单判据已满足（集成方读值）**：`peerDependencies.react = "^18.2.0"` ✓ 且 `dependencies` 里**无** `react`（本包 `dependencies` = `@xterm/addon-serialize` / `@xterm/headless` / `dsh-wsl-shared`）✓；`devDependencies.react = 18.2.0` 是**测试期**用（判据只禁 `dependencies`）✓。🔵 **顺带钉死一个幻影**：`peerDependencies` **不进 lockfile** —— 实测三个 importer 段（`packages/terminal-profiles` L21 / `wsl-docker-ports` L76 / `wsl-shared` L110）**全无** `peerDependencies:` 键，全文件的 30 处同名键**都在 package 级** ⇒ 改 peer **不会**让 `pnpm install --frozen-lockfile` 失败（无需为它跑 install）；整合时仍会复验一次 `--frozen-lockfile` exit 0。
   - 🔴 **2026-10-09 12:06 收口快照（代理仍在飞 ⇒ T6.1–T6.4 与 T7.3 均不勾选；代码在工作区未提交，本包 21 个文件）**：**已独立核验通过** —— ① `typecheck` **exit 0**（1.1s）；② `vitest` **33 文件 / 408 passed | 1 skipped / exit 0**（10s，含 Phase 6 配置页 4 个测试文件 1,296 行 + `tests/helpers/config-fixtures.ts`）；③ 判据关键词覆盖齐：volatile-only **26** / 确认 **16** / 只读+原因+路径 **58**（用例原文「只读 ⇒ 同时显示原因与文件路径，且点保存也**不写盘**（REQ-10.3）」）/ revision 冲突 **43** + **保留输入 8**（断言到字面值，含**尾随空格未被重置**）/ 单条无效 **12** / 语义文案 **3**（含「改 cwd 只影响新建实例」）；④ `configEditor` 仅注释 **3** 处、写入走 `remote.settings.update` 两参形式；⑤ 清单判据已满足（见上一条）。🔴 **不勾选的理由**：剩余 6 条要靠**代理自己的收尾报告**确认「T6.1–T6.4 判据全部完成」，我**不替它宣布**；体积基线仍需**构建冻结后**复算并更新 README（集成方负责）。**复跑命令**：`pnpm -C packages/terminal-profiles typecheck && pnpm -C packages/terminal-profiles test && pnpm -C packages/terminal-profiles build`。
+  - ✅ **2026-10-09 T7.3 收工（集成方独立复跑）**：`typecheck` **exit 0** · `vitest` **33 文件 / 408 passed | 1 skipped** · `build` 出两份产物（主 bundle **43,537 B** / chunk **447,255 B**）· `check:client` **60/60（含 4 条反控）** · `pnpm install --frozen-lockfile` **exit 0** 且 lockfile SHA256 **`FEADFDB56EBAC31A…`** 与改动前逐字相同 · **0 个文件 > 400 行**（最大 394）。
+  - 🔵 本包**无** `check:size` 脚本 ⇒ NFR-2 的「主 bundle 记账」以本行实测数为准；README 基线行已同步为 43,537 B（Phase 4 的 11,037 B 保留为历史值）。
+  - 🔴 **Phase 6 已迁出**（见上「已迁出」空位）：`T6.1`–`T6.4` 连同判据移入 [`007-terminal-config-page`](../007-terminal-config-page/tasks.md)，本文件只保留**整包**质量门。
 - [x] T7.4 文档回写（2026-10-09 完成）
   - 内容：T0.1（B-1 结论）、T0.3（前缀）、体积基线、REQ-7.4 的顶掉策略 → 回写 README/design
   - 验证：`grep -n "B-1\|B-3\|superseded" specs/002-terminal-profiles/*.md` 可见结论；`leanspec validate` 无新增告警

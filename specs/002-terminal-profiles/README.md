@@ -117,7 +117,7 @@ transitions:
 | 样式 | `xterm.css` **只在自有容器作用域内**加载，不注入全局 | 官方终端另有一份 xterm chunk，两份共存会互相污染 |
 | React | `peerDependencies: ^18.2.0`，**不打进 bundle** | 宿主 slot 渲染 React 节点；Vue 需适配层 |
 | 构建 | esbuild → CJS client bundle | 符合宿主 ModuleLoader 的 CJS 契约；与同机三个插件一致 |
-| 体积基线（**2026-10-09 实测**）| 主 bundle **11,037 B** + 懒加载 chunk **447,255 B**（官方终端页对照：19,887 B + 685,949 B）| 主产物名恰 `client.js`、chunk 为**兄弟文件** `client.terminal.js`、xterm **只**内联在 chunk（主产物里 3 处 "xterm" 全是注释/函数名）；两者 `require` 仅 `react` / `react/jsx-runtime`（**零** `react-dom`、零幽灵声明）⇒ 清单 `dsh.client.external = []` 合法；`pnpm -C packages/terminal-profiles check:client` **56 条判据（含 4 条反控）** 守这一条。⚠️ 测产物**必须在构建进程结束后**（同日实测过一次「react-dom 被内联」的中间态：主 126,358 B、字符串 `require` 0 处）|
+| 体积基线（**2026-10-09 实测**）| 主 bundle **43,537 B**（**2026-10-09 Phase 6 后复算**；Phase 4 时为 11,037 B） + 懒加载 chunk **447,255 B**（官方终端页对照：19,887 B + 685,949 B）| 主产物名恰 `client.js`、chunk 为**兄弟文件** `client.terminal.js`、xterm **只**内联在 chunk（主产物里 3 处 "xterm" 全是注释/函数名）；两者 `require` 仅 `react` / `react/jsx-runtime`（**零** `react-dom`、零幽灵声明）⇒ 清单 `dsh.client.external = []` 合法；`pnpm -C packages/terminal-profiles check:client` **56 条判据（含 4 条反控）** 守这一条。⚠️ 测产物**必须在构建进程结束后**（同日实测过一次「react-dom 被内联」的中间态：主 126,358 B、字符串 `require` 0 处）|
 | 基线 | **0.2.0-rc.2** | 本机 `dsh --version` 与全部 `dsh-client-ui-*` 实测一致 |
 
 ---

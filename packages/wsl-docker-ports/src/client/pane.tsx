@@ -1,0 +1,250 @@
+/**
+ * 右栏页的**装配与状态**（003 T5.1–T5.8）
+ *
+ * ## 组件只做三件事
+ *
+ * ① 挂载时**只读**拉一次快照（`runtime.source.load()`），把 `PortsSnapshot` 交给纯函数
+ *    `buildPortsPageView`；② 把视图模型交给三个区域组件画出来；③ 把用户点击交给**注入的**
+ *    runtime（配置写回走 `settings`，转发写走 `elevation`）。
+ *
+ * ## 两条结构性纪律
+ *
+ * - **不 require `react-dom`**（contract §P4-3）：组件由宿主渲染进它的树，本半自己不建 root。
+ * - **挂载路径不写任何东西**（NFR-2）：`useEffect` 里只有 `source.load()`，没有任何
+ *   `settings` / `elevation` 调用 —— 测试用计数器断言开页后两者均为 0。
+ *
+ * JSX 走**经典**转换（`React.createElement`）⇒ 主 bundle 只 require 基线里的 `react`。
+ * 区域组件拆在 `pane-tables.tsx` / `pane-settings.tsx`（单文件 ≤ 400 行是 SHALL）。
+ */
+
+import { useCallback, useEffect, useState, type ReactElement } from 'react';
+
+import type { Scope } from '../diff/types.ts';
+import type { ClientRuntime, ForwardAction } from './host.ts';
+import { buildPortsPageView, summarizeWriteReport } from './page.ts';
+import { ContainersBlock, DistroBlock, DockerFailureBlock, ExternalRulesBlock, PortsBlock, UnsupportedBlock } from './pane-tables.tsx';
+import { ElevationBlock, ManagedPortsBlock, NextPhaseBlock, RawOutputBlock } from './pane-settings.tsx';
+import { mergeManagedPortsDecl, TESTID } from './rows.ts';
+import type { NatGatePanelView, PortRowView, PortsPageView, PortsSnapshot } from './types.ts';
+
+export interface PortsPaneProps {
+  readonly runtime: ClientRuntime;
+  /** 关掉自动加载（测试要自己控制首帧时用） */
+  readonly autoLoad?: boolean;
+}
+
+export interface LastWriteView {
+  readonly status: string;
+  readonly message: string;
+  readonly unapplied: readonly string[];
+}
+
+/** 该动作**计划**动哪几步（`SummarizeWriteReport` 据此报「未改项」，与 005 脚本的步骤名同源） */
+export function plannedKinds(action: ForwardAction, scope: Scope, fix: PortRowView['fix']): readonly string[] {
+  if (action === 'fix-drift') return fix?.steps.map((step) => step.kind) ?? [];
+  if (action === 'apply') return scope === 'lan' ? ['portproxy-add', 'firewall-add'] : ['portproxy-add'];
+  if (action === 'remove') return ['portproxy-delete', 'firewall-delete'];
+  return [];
+}
+
+function PaneHeader(props: {
+  readonly view: PortsPageView;
+  readonly busy: boolean;
+  readonly onRefresh: () => void;
+  readonly onLaunch: () => void;
+}): ReactElement {
+  const { view, busy, onRefresh, onLaunch } = props;
+  return (
+    <div className="wdp-head">
+      <button type="button" className="wdp-btn" data-testid={TESTID.refresh} disabled={busy} onClick={onRefresh}>
+        刷新
+      </button>
+      <span className="wdp-muted">
+        上次刷新：<span data-testid="last-refreshed">{view.refreshedAtText}</span>
+      </span>
+      <span className="wdp-muted">eth0：{view.eth0.text}</span>
+      {!view.eth0.known ? (
+        <button type="button" className="wdp-btn" data-testid={view.eth0.launchTestId} title={view.eth0.launchNote} onClick={onLaunch}>
+          启动并核验
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** NAT 硬前提区（REQ-1.1/1.4）：非 NAT 时这里同时是**原因**与**修复指引**的落点 */
+function NatGateBlock({ nat }: { readonly nat: NatGatePanelView }): ReactElement {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="wdp-card wdp-gate" data-testid={nat.testId} data-gate-open={nat.open ? '1' : '0'}>
+      <h3>NAT 硬前提</h3>
+      <p className={nat.open ? 'wdp-secondary' : 'wdp-error'}>{nat.reason}</p>
+      {nat.guide !== null ? (
+        <>
+          <button type="button" className="wdp-btn" data-testid={TESTID.natGuide} onClick={() => setOpen((value) => !value)}>
+            {open ? '收起修复指引' : '展开修复指引'}
+          </button>
+          {open ? (
+            <div data-testid="nat-guide-body">
+              <ul className="wdp-list">
+                {nat.guide.lines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+              <p className="wdp-muted">配置文件路径：{nat.guide.path}</p>
+              <pre className="wdp-pre" data-testid="nat-guide-command">
+                {nat.guide.commandText}
+              </pre>
+              <p className="wdp-muted">{nat.guide.note}</p>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function LastWriteBlock({ lastWrite }: { readonly lastWrite: LastWriteView | null }): ReactElement | null {
+  if (lastWrite === null) return null;
+  return (
+    <section className="wdp-card" data-testid="last-write">
+      <h3>最近一次写操作：{lastWrite.status}</h3>
+      <p className="wdp-secondary">{lastWrite.message}</p>
+      {lastWrite.unapplied.length > 0 ? (
+        <p className="wdp-error" data-testid="unapplied">
+          未改动：{lastWrite.unapplied.join('、')}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+export function PortsPane(props: PortsPaneProps): ReactElement {
+  const { runtime, autoLoad = true } = props;
+  const [view, setView] = useState<PortsPageView | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [checkedPresets, setCheckedPresets] = useState<readonly string[]>([]);
+  const [scopeDraft, setScopeDraft] = useState<Readonly<Record<string, Scope>>>({});
+  const [lastWrite, setLastWrite] = useState<LastWriteView | null>(null);
+
+  const refresh = useCallback(
+    async (allowColdStart: boolean, previous: LastWriteView | null): Promise<void> => {
+      setBusy(true);
+      setLoadError(null);
+      try {
+        const snapshot: PortsSnapshot = await runtime.source.load(allowColdStart ? { allowColdStart: true } : undefined);
+        setView(buildPortsPageView(snapshot, { lastWrite: previous }));
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [runtime],
+  );
+
+  // 开页：**唯一**的挂载期副作用入口，而且它是只读的（NFR-2）
+  useEffect(() => {
+    if (!autoLoad) return;
+    void refresh(false, null);
+  }, [autoLoad, refresh]);
+
+  useEffect(() => {
+    if (view === null) return;
+    setDraft(view.managedPorts.rangeText);
+    setCheckedPresets(view.managedPorts.presets.filter((preset) => preset.checked).map((preset) => preset.name));
+  }, [view]);
+
+  if (view === null) {
+    return (
+      <div className="wdp-page" data-plugin="dsh-wsl-docker-ports">
+        <div className="wdp-head">
+          <span>{busy ? '正在读取 docker / netsh / eth0 …' : '尚未读取'}</span>
+          <button type="button" className="wdp-btn" data-testid={TESTID.refresh} disabled={busy} onClick={() => void refresh(false, lastWrite)}>
+            刷新
+          </button>
+        </div>
+        {loadError !== null ? <p className="wdp-error">读取失败：{loadError}</p> : null}
+      </div>
+    );
+  }
+
+  const runForward = async (action: ForwardAction, row: PortRowView): Promise<void> => {
+    if (runtime.elevation === undefined) {
+      setActionError('写路径不可用：本行只做只读展示');
+      return;
+    }
+    setActionError(null);
+    const report = await runtime.elevation.run({ action, port: row.port, scope: scopeDraft[String(row.port)] ?? row.scopeControl.value });
+    const summary = summarizeWriteReport(plannedKinds(action, row.scopeControl.value, row.fix), report);
+    setLastWrite(summary);
+    await refresh(false, summary);
+  };
+
+  const savePorts = async (): Promise<void> => {
+    const ports = view.managedPorts.presets.filter((preset) => checkedPresets.includes(preset.name)).map((preset) => preset.port);
+    const result = await runtime.settings?.writeManagedPorts(mergeManagedPortsDecl(draft, ports));
+    if (result !== undefined && !result.ok) setActionError(result.message);
+    await refresh(false, lastWrite);
+  };
+
+  const writeSettings = async (run: () => Promise<{ ok: boolean; message: string } | undefined>): Promise<void> => {
+    const result = await run();
+    if (result !== undefined && !result.ok) setActionError(result.message);
+    await refresh(false, lastWrite);
+  };
+
+  return (
+    <div className="wdp-page" data-plugin="dsh-wsl-docker-ports">
+      <PaneHeader view={view} busy={busy} onRefresh={() => void refresh(false, lastWrite)} onLaunch={() => void refresh(true, lastWrite)} />
+      {actionError !== null ? (
+        <p className="wdp-error" data-testid="action-error">
+          {actionError}
+        </p>
+      ) : null}
+      <NatGateBlock nat={view.nat} />
+      <DistroBlock
+        distro={view.distro}
+        onChange={(name) => void writeSettings(async () => runtime.settings?.writeDistro(name))}
+      />
+      {view.docker.ok === false ? (
+        <DockerFailureBlock docker={view.docker} />
+      ) : (
+        <ContainersBlock rows={view.containers} count={view.containerCount} />
+      )}
+      <PortsBlock
+        rows={view.ports}
+        note={view.portsNote}
+        scopeDraft={scopeDraft}
+        onScope={(port, scope) => {
+          setScopeDraft((previous) => ({ ...previous, [String(port)]: scope }));
+          void writeSettings(async () => runtime.settings?.writeScope(port, scope));
+        }}
+        onForward={(action, row) => void runForward(action, row)}
+      />
+      <p className="wdp-muted" data-testid={TESTID.udpTip}>
+        {view.udpTip.text}
+      </p>
+      <UnsupportedBlock rows={view.unsupported} />
+      <ExternalRulesBlock external={view.external} />
+      <ManagedPortsBlock
+        form={view.managedPorts}
+        draft={draft}
+        checked={checkedPresets}
+        onDraft={setDraft}
+        onToggle={(name, on) => setCheckedPresets((previous) => (on ? [...previous, name] : previous.filter((item) => item !== name)))}
+        onSave={() => void savePorts()}
+      />
+      <ElevationBlock
+        elevation={view.elevation}
+        onChange={(policy) => void writeSettings(async () => runtime.settings?.writeElevationPolicy(policy))}
+      />
+      <NextPhaseBlock exec={view.exec} />
+      <RawOutputBlock docker={view.docker} />
+      <LastWriteBlock lastWrite={view.lastWrite} />
+    </div>
+  );
+}

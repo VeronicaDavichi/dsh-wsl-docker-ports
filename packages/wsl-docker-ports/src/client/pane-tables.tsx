@@ -1,0 +1,238 @@
+/**
+ * 只读区域组件（003 T5.1 / T5.4 / T5.7）：发行版 / docker 失败 / 容器表 / 端口表 / 不可转发 / 外部规则
+ *
+ * ## 这里为什么一个写动作都没有
+ *
+ * 容器表、不可转发映射、外部规则区**只展示**（REQ-2.4 / REQ-9.2 / REQ-15.1）。
+ * 「外部规则区无动作控件」因此不是纪律，而是**这个文件里没有任何写回调入参** ——
+ * 测试对该区域的 DOM 扫 `button/select/input/textarea`，命中数必须是 0。
+ *
+ * 端口表带动作，但每个控件的可用性**只**来自视图模型（`enabled` / `disabledReason`），
+ * 组件自己不判 NAT、不判策略（判据只有一处：`page.ts` 的 `writeGate`）。
+ */
+
+import type { ReactElement } from 'react';
+
+import type { Scope } from '../diff/types.ts';
+import type { ContainerRowView, DistroPanelView, DockerView, ExternalRulesView, ForwardActionView, PortRowView, UnsupportedRowView } from './types.ts';
+import { TESTID } from './rows.ts';
+
+export function DistroBlock(props: { readonly distro: DistroPanelView; readonly onChange: (name: string) => void }): ReactElement {
+  const { distro, onChange } = props;
+  return (
+    <section className="wdp-card" data-testid="distro-panel">
+      <h3>目标发行版</h3>
+      <p className="wdp-secondary">
+        {distro.name ?? '未解析'}（来源：{distro.sourceLabel}
+        {distro.state === null ? '' : `，状态：${distro.state}`}）
+      </p>
+      {distro.error !== null ? <p className="wdp-error">{distro.error}</p> : null}
+      {distro.staleMessage !== null ? (
+        <p className="wdp-error" data-testid="distro-stale">
+          {distro.staleMessage}
+        </p>
+      ) : null}
+      {distro.options.length > 0 ? (
+        <select
+          className="wdp-btn"
+          data-testid={TESTID.distro}
+          data-settings-control="1"
+          value={distro.name ?? ''}
+          onChange={(event) => onChange(event.target.value)}
+        >
+          {distro.options.map((option) => (
+            <option key={option.name} value={option.name}>
+              {option.name}（{option.state}
+              {option.isDefault ? '，默认' : ''}）
+            </option>
+          ))}
+        </select>
+      ) : null}
+    </section>
+  );
+}
+
+export function DockerFailureBlock({ docker }: { readonly docker: Extract<DockerView, { ok: false }> }): ReactElement {
+  return (
+    <section className="wdp-card" data-testid="docker-failure">
+      <h3>docker 读取失败（{docker.reason}）</h3>
+      <p className="wdp-error">{docker.message}</p>
+      <p className="wdp-secondary">{docker.hint}</p>
+      {docker.raw !== null ? <pre className="wdp-pre">{docker.raw}</pre> : null}
+    </section>
+  );
+}
+
+export function ContainersBlock(props: { readonly rows: readonly ContainerRowView[]; readonly count: number }): ReactElement {
+  return (
+    <section className="wdp-card">
+      <h3>容器（{props.count}）</h3>
+      <table className="wdp-table" data-testid={TESTID.containers}>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>名称</th>
+            <th>镜像</th>
+            <th>状态</th>
+            <th>端口</th>
+            <th>摘要</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.rows.map((row) => (
+            <tr key={row.id}>
+              <td>{row.id}</td>
+              <td>{row.name}</td>
+              <td>{row.image}</td>
+              <td>{row.state}</td>
+              <td>{row.ports}</td>
+              <td>{row.status}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+export function PortRowActions(props: {
+  readonly row: PortRowView;
+  readonly onForward: (action: ForwardActionView['kind'], row: PortRowView) => void;
+}): ReactElement {
+  return (
+    <>
+      {props.row.actions.map((action) => (
+        <button
+          key={action.kind}
+          type="button"
+          className="wdp-btn"
+          data-testid={action.testId}
+          data-write-control="1"
+          disabled={!action.enabled}
+          title={action.disabledReason ?? ''}
+          onClick={() => props.onForward(action.kind, props.row)}
+        >
+          {action.label}
+        </button>
+      ))}
+    </>
+  );
+}
+
+export function PortsBlock(props: {
+  readonly rows: readonly PortRowView[];
+  readonly note: string | null;
+  readonly scopeDraft: Readonly<Record<string, Scope>>;
+  readonly onScope: (port: number, scope: Scope) => void;
+  readonly onForward: (action: ForwardActionView['kind'], row: PortRowView) => void;
+}): ReactElement {
+  const { rows, note, scopeDraft, onScope, onForward } = props;
+  return (
+    <section className="wdp-card">
+      <h3>端口转发（五态）</h3>
+      {note !== null ? <p className="wdp-error">{note}</p> : null}
+      <table className="wdp-table" data-testid={TESTID.ports}>
+        <thead>
+          <tr>
+            <th>端口</th>
+            <th>状态</th>
+            <th>作用域</th>
+            <th>动作</th>
+            <th>证据</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.port} data-port={String(row.port)} data-state={row.state}>
+              <td>{row.port}</td>
+              <td>
+                <span className={`wdp-tag wdp-tag-${row.tone}`} data-testid={`state-${String(row.port)}`}>
+                  {row.stateLabel}
+                </span>
+                {row.reasonText !== null ? <div className="wdp-muted">{row.reasonText}</div> : null}
+                {row.scopeMismatch ? <div className="wdp-muted">监听地址与声明作用域不一致（事实位，不判冲突）</div> : null}
+              </td>
+              <td>
+                <select
+                  className="wdp-btn"
+                  data-testid={row.scopeControl.testId}
+                  data-write-control="1"
+                  value={scopeDraft[String(row.port)] ?? row.scopeControl.value}
+                  disabled={!row.scopeControl.enabled}
+                  title={row.scopeControl.disabledReason ?? ''}
+                  onChange={(event) => onScope(row.port, event.target.value as Scope)}
+                >
+                  {row.scopeControl.options.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </td>
+              <td>
+                <PortRowActions row={row} onForward={onForward} />
+              </td>
+              <td>
+                {row.drift !== null ? <div data-testid={`drift-${String(row.port)}`}>{row.drift.text}</div> : null}
+                {row.fix !== null ? (
+                  <div data-testid={`fix-${String(row.port)}`}>
+                    <div className="wdp-muted">
+                      修复序列（先删后加）：{row.fix.steps.map((step) => `${String(step.order)}.${step.kind}`).join(' → ')}
+                    </div>
+                    {row.fix.blocked !== null ? <div className="wdp-error">{row.fix.blocked.message}</div> : null}
+                  </div>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+/** 不可转发映射（REQ-9.2）：**只标不支持**，不给任何「试试看」的入口 */
+export function UnsupportedBlock({ rows }: { readonly rows: readonly UnsupportedRowView[] }): ReactElement | null {
+  if (rows.length === 0) return null;
+  return (
+    <section className="wdp-card" data-testid="unsupported-section">
+      <h3>不可转发的映射（{rows.length}）</h3>
+      <table className="wdp-table" data-testid="tbl-unsupported">
+        <tbody>
+          {rows.map((row) => (
+            <tr key={`${row.containerName}-${row.protocol}-${row.containerPort}`}>
+              <td>{row.containerName}</td>
+              <td>
+                {row.host} → {row.containerPort}/{row.protocol}
+              </td>
+              <td className="wdp-tag wdp-tag-muted">{row.stateLabel}</td>
+              <td className="wdp-muted">{row.reason}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+/**
+ * 外部规则只读区（REQ-15.1）。**刻意不接任何回调**：本组件没有 `onXxx` 入参，
+ * 于是「无动作控件」在类型层就成立。
+ */
+export function ExternalRulesBlock({ external }: { readonly external: ExternalRulesView | null }): ReactElement | null {
+  if (external === null) return null;
+  return (
+    <section className="wdp-card" data-testid="external-rules">
+      <h3>{external.title}</h3>
+      <p className="wdp-muted">{external.note}</p>
+      <ul className="wdp-list">
+        {external.rows.map((rule) => (
+          <li key={rule.display} className="wdp-row">
+            <code>{rule.display}</code>
+            <span className="wdp-muted">{rule.reason}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
