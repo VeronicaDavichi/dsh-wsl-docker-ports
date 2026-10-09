@@ -90,6 +90,8 @@
 | 7 | `read-only` 沙箱下 Agent `write` | 被拒绝 + 原因；页面键盘输入仍可用 | 工具输出 |
 | 8 | Agent `kill` 后再 `list` | 实例消失、无孤儿 PTY | 工具调用记录 |
 | 9 | 禁用插件再启用 | 工具注册无重复（注册数 = 6 而非 12）| 日志 + 工具列表 |
+| 10 | 沙箱策略形状（**2026-10-09 集成方补**）：`danger-full-access` / `workspace-write` 下 Agent 的 `write` **可用** | 写工具在可写档下**真的能写** | 工具输出 + 截图 |
+| 10b | 承上：若第 10 行**被拒** | 判定为「真 `ctx.sandboxPolicy.resolve()` 的**入参形状**与我们的 `{ session }` 不符」—— 本实现**故意 fail-closed**（`mode` 解析不出 ⇒ 归 `read-only`），所以**不会**静默放行，只会写全被拒 | 对照 `src/tools/policy.ts` 的 `resolvePolicy` 与真服务签名 |
 
 ---
 
