@@ -99,6 +99,38 @@
 
 ---
 
+
+## 🔴 2026-10-09 真机装载发现（volatile-probe profile 实测，非推测）
+
+**方法**：`dsh plugin --profile volatile-probe add "dsh-wsl-docker-ports@link:…"`（CLI 自动写好 dependencies + `dsh.profile.bundles`，并把包自带 `dsh.bundle.patch` 的 `- insert:` 并入合成树）→ `dsh --profile volatile-probe --port 43199 --no-open`。验证后 profile 已完全还原（`--dump-config` 前后 sha256 相同），**desktop profile 零改动**。
+
+### ✅ 真机上被证实的假设（这些可以放心）
+- **`HttpResponseLike` 成立**：`response.statusCode = …; setHeader(); end()` 在真宿主上正确落地 —— 用「纠正前缀的孪生 handler + 本包真实 `snapshotBuilder`」拿到端到端 `200`、`Content-Type: application/json; charset=utf-8`、`Content-Length` 正确、`Cache-Control: no-store` 正确；反例 404/405 亦按 JSON 返回。
+- **注册签名正确**：宿主的 `register(route)` 就是 `{ kind, path, handler }` 对象式形状。
+- **真数据全部对得上**：19 条规则 = `diff.external` **17** + 受管 2（8080/5432）· `connectaddress` 全 `172.20.201.152` · `listenAddress` 全 `0.0.0.0` · `eth0Ip = 172.20.201.152`（**未漂移**）· `distro = Ubuntu2204` · NAT + `localhostForwarding=true` · UDP `[]`。
+- **冷启动行为如实**：首次 `docker.ok:false, reason:"timeout"`（10 s 硬超时砍掉，正是已知行为），5 s 后重试 `ok:true`、**6 个容器**、`t=1.17s` ⇒ 「超时 + 重试、不把空输出当没有容器」的纪律在真机上被复验。
+
+### 🔴 缺陷 A：路由注册的启动时序竞态（静默，功能不通）
+- 实测时间线：`+68ms ctx.get('"'webServer"') === undefined` → `+755ms` 本包 `inject(['"'webServer"'])` 才 FIRED；当前实现在 `apply` 里**同步**取服务 ⇒ 拿 `undefined` ⇒ 走「不注册 + 记 gap」⇒ **路由从未进入宿主路由表**（插件面板仍显示「运行中」，**零报错**）。
+- 修法判据：改为宿主可用时机注册（`ctx.inject(['"'webServer"'])` 等），断言 = 启动后 `registrationCount() === 1`；**对抗性测试必须模拟真机时序**（服务只在后续 tick/inject 后才可用），且在旧代码上会**红**。
+
+### 🔴 缺陷 B：`PORTS_HTTP_PREFIX` 尾斜杠导致永不匹配 + 405 不可达
+- 宿主 `dsh-host-webserver/lib/index.js:328` 判定 = `pathname !== prefix && !pathname.startsWith(`${prefix}/`)`；本包常量**带尾斜杠** ⇒ 实际要求 `startsWith("/dsh-wsl-docker-ports//")` ⇒ `/…/snapshot` **永远不匹配**（被宿主兜底 404 吃掉：无 Content-Type、无 body）。
+- 实测对照：`/…/snapshot` → 宿主 404；`/dsh-wsl-docker-ports/`（正好等于 prefix）→ **我们的 JSON** 404；`/…//snapshot` → 命中 handler 后被自己的路径判等拒掉；`POST /dsh-wsl-docker-ports/` → **JSON 404**（⇒ handler **先判路径后判方法**，**405 真机不可达**）。
+- 修法判据：常量去尾斜杠为 `'/dsh-wsl-docker-ports'`（对外端点 URL **不变** ⇒ `client-contract.md` §P9 不受影响）；handler 改为「已知路径 + 非 GET ⇒ 405 / 未知路径 ⇒ 404」；两条都要有会红的回归。
+
+### 🔴 缺陷 C：客户端半同类的时序隐患（页不出现，未证实）
+- 真机：客户端 bundle **已加载**（`__DSH_BOOT__.entries` 有本包、`inject:["@deepseek-ai/dsh-client-ui-sidebar-right"]`、我们的 CSS 已注入），但**右栏没有我们的页**、**无任何 `/dsh-wsl-docker-ports/snapshot` 请求**、**控制台 0 error / 0 warning**。
+- 可疑点：客户端半**先同步软取** `sidebarRightTabs`/`sidebarRight`，**之后**才 `ctx.inject` 注册 ⇒ 与 A 同类。**尚未证实** ⇒ 由修复任务查清（若为别因，如 kind/priority/slot 名或清单字段，也须如实报告并修）。
+
+### ⚠️ 顺带发现的不可信字段（须处理或如实标注）
+- `elevationAvailable` 目前是 `async () => false` 的**占位**，**不是真探测**（本机 gsudo 2.6.1 已装）⇒ 该字段现在**不可信**；要么实现真探测（按路径/产品名 `where.exe gsudo`，**绝不按命令名 `sudo`**），要么在契约里如实标注「未实现、恒 false」。
+- `iphlpsvcRunning` 恒 `null`（未实现探测）—— 同上，标注或实现。
+- 冷启动那次响应内部不自洽：`diff` 已取到 eth0，而同一份 JSON 里 `distro.state` 仍是 `"Stopped"`（状态读取与启动竞态）；重试后为 `Running` ⇒ 须修或标注。
+
+### 🔸 真机副作用（如实记录，非仓库改动）
+- 为取 docker/eth0 数据发过一次 `allowColdStart=1` ⇒ 启动过 `Ubuntu2204`（约 20.7 s，拉起 dockerd 与 6 个容器）；事后 `wsl -l -v` 自行回到 `Stopped`，与开工前一致。**未做任何 portproxy / 防火墙 / 注册表写操作**。
+
 ## Phase 4（已迁出）：提权辅助进程
 
 T4.1–T4.5 **已整体迁至 [005-elevation-write-path](../005-elevation-write-path/tasks.md)** 的 Phase 2（脚本生成与参数结构 / RunAs 调用与回传解析 / 拒绝 UAC 分支 / 策略与临时文件清理 / 来源约束）。**Phase 编号 4 保留为空位**，以免 T5.x / T6.x / T7.x 等既有引用错位。
