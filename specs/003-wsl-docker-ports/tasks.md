@@ -160,6 +160,13 @@ T4.1–T4.5 **已整体迁至 [005-elevation-write-path](../005-elevation-write-
 
 ---
 
+- [ ] T6.7 [REQ-14.1][REQ-14.3] 插件宿主入口 `apply`（**T0.5 的前置** —— 兑现 T6.4 那条「清单缺口」的处置口径）
+  - 内容：实现插件入口（**与 002 宿主半同口径**，回报里写清依据）；把 `src/index.ts` 从「纯函数 barrel」**收敛成入口**（同包内部件继续走相对路径；T6.4 审计到的 **27 个零消费方导出**随之收敛 —— 001 REQ-6.4）；`exports["."]` 改指 **`./lib/index.js`**；补 `files`（覆盖 `lib/**`）；删掉 `cordis.patch.yml` 文件头「入口交付前**不得**用于 T0.5」那句
+  - 验证：① `pnpm -C packages/wsl-docker-ports build` ⇒ exit 0，**且构建后真 `import('./lib/index.js')`**（打印入口导出名与数量 —— 只跑 `tsc` 会假绿）② 读 `package.json` 断言 `exports["."] === './lib/index.js'`（**读值，不靠 grep 注释**）③ 清单四件套齐（`dsh.bundle.patch` / `cordis.patch.yml` 实物 / `exports["./package.json"]` / 入口 = **构建产物**）④ 与本机 profile 的 **8/8** 可安装 bundle 逐项对照并打印对照表 ⑤ 收敛后 `src/index.ts` 运行时导出数**下降**，并逐条列出存留导出的消费方
+  - ⚠️ **时序（必须遵守）**：本任务与 Phase 5 **同包** ⇒ 等 Phase 5 交付后再动手（并发写会互相砸构建）；且「公开面收敛」属**主人待拍板项**（T6.4 审计行的推荐方案 ①）⇒ 动手前先出示 ⑤ 的消费方清单
+
+---
+
 ## Phase 7：P1（P0 真机验收通过后再启）
 
 - [ ] T7.1 [REQ-11.1][REQ-11.4] 容器启停 / 重启（用户可，Agent 拒绝）
