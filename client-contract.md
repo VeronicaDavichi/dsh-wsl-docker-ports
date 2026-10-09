@@ -399,6 +399,15 @@ export interface DshPackageManifest {
 | Z9 | **新增** | `context.remote` 在 **0.2.0-rc.2** 的名字与形状（只有 0.1.7 系的三方用法，**无官方 d.ts**） |
 | Z1/Z2/Z3/Z6/Z7/Z8 | 不变 | 见 §Z 原表 |
 
+### P9 📌 003 的宿主↔客户端**数据通道**（2026-10-09 在制品实测：`packages/wsl-docker-ports/src/{wire,route,snapshot}.ts` + `src/client/route-source.ts`）
+
+- **传输 = 自建 `ctx.webServer` 具名路由、HTTP-only**：`register({ kind: 'prefix' })`，**不用** `registerUpgrade`（快照是「一问一答的只读数据」，无服务端推送需求）。独占前缀字面量 `PORTS_HTTP_PREFIX = '/dsh-wsl-docker-ports/'`；快照端点 `PORTS_SNAPSHOT_PATH = '/dsh-wsl-docker-ports/snapshot'`、`PORTS_SNAPSHOT_METHOD = 'GET'`。**不蹭 002 的 `/dsh-managed-terminal/`**（源码注释里明写）。
+- 🔴 **disposer 必须登记进 `ctx.effect`** —— 宿主**不会**自动收编 `register()`/`registerUpgrade()` 的返回值；重复 `(kind,path)` 会抛错 ⇒ 漏登记 = 卸载后残留、重装必撞（与 002 同款陷阱，两包各自踩过一次）。
+- **查询参数是「声明」不是「事实」**：`managedPorts` / `scope` / `distro` / `elevationPolicy` / `allowColdStart`；作用域对分隔符 `':'`；`ELEVATION_POLICIES = ['none','ask','passby']`、缺省 `'none'`。🔴 **非法值一律落到最保守默认、不返回 400**（客户端自己拼参数，回 400 只会让右栏页白屏）。
+- **响应形状**：`{ ok: true; snapshot } | { ok: false; error: { code, message } }`；**路由级错误只有两条** —— `rules-unavailable` **503**（读不到 netsh 规则 ⇒ 事实不可信，必须整体失败）与 `internal` **500**（未预期抛出）。**其余降级全部走 200 + 快照内字段**（`docker.ok:false` / `diff.ok:false` / `distroError`）⇒ 页面照样渲染出可读的降级态。
+- **客户端取用点**：`src/client/route-source.ts` 把响应映射成 `PortsSource`；HTTP 失败 ⇒ `error.code`（或兜底 `http-<status>`）+ 可读 message；环境无 `fetch` ⇒ `no-fetch`。**取不到源时右栏页不注册**（`ports-source-missing`，即 T6.8 存在的原因）。
+- ⚠️ **状态：在制品**（T6.8 未收口）。以上字面量取自 **2026-10-09 12:00 的源码直读**（非代理转述）；代理回报若与本节不符，**以本节为准**并追加订正条目（§P 系列的既定口径：较新的 P 覆盖较早的）。
+
 ---
 
 **研究方式（可复现）**：只读遍历本机检出 + 用 `node -e` 在内存里 gunzip/解 tar 读官方 tarball（**未落任何文件**）；官方包在 `node_modules` 下是悬空 junction（读不到），故以第三方实物 + 官方 tarball 的 `.d.ts` 为证据源。第二轮增量补丁的 4 条覆盖见 §P。
