@@ -83,3 +83,12 @@
 > 003 的计数型断言已**如实同步**（2 条路由 ⇒ `host.effects` 3 条、`pending` 2 次注入、路由表 2 条 prefix）。
 > ⚠️ 仍**未接真实现读**（缺省是保守降级面：零 IO、eth0 未知 ⇒ 计划恒被拦成 `eth0-unknown`）：
 > 真机现读事实面 + `POST /write/plan` 端到端留到下一轮（探针 profile，动手前先问主人）。
+> **Phase 2 增量（2026-10-09）**：新增 `src/transport/real-facts.ts` + `tests/unit/transport-real-facts.test.ts`
+> （3 条判据 ✓）。固化的是**失败语义**：现读失败 ⇒ **抛** ⇒ `plan.ts` 回 `rules-unavailable` 503；
+> 「确实没有规则」才回空数组；`eth0` / `localhostForwarding` 取不到 ⇒ `null`（不可判定 ⇒ 零动作 / 不猜 false）。
+> `elevation().policy` 只反映配置档（缺省 `'unknown'`），**按触发方降级仍在执行层**（005 `resolvePolicy`）。
+> 🔴 **已知缺口（不假装覆盖）**：`firewallNames` 未接 —— 本包没有防火墙规则读取件（005 的
+> `existingFirewallNames` 是入参）⇒ **REQ-2.6「同名防火墙规则冲突」目前在计划阶段查不出来**；
+> `portState` 亦未接（少过一道门 ⇒ 偏保守，宁可说「需要修」）。两项都待 Phase 2 后续补。
+> ⚠️ 尚未接进 `plugin.ts`（`degradedPlanFacts()` 仍是现役缺省）；`plugin.ts` 只剩 1 行余量 ⇒ 接线时
+> 需先外移 2 行注释腾额度。
