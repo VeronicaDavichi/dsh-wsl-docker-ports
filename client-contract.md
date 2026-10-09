@@ -212,6 +212,8 @@ register(definition: SidebarRightTabDefinition): () => void;   // 幂等 dispose
 
 ---
 
+- 🔁 **2026-10-09 12:01 复跑（T6.7 改过 003 清单之后 + Phase 6 改过 002 bundle 之后）**：**002 = 5/5** ✓；**003 = 4/5**，红在 **①**（`exports["./client"]` 解析出 `./lib/client.js` 但**文件不存在**），**⑤** 也因此扫到 0 个产物。⚠️ **这不是缺陷、是构建中间态**：`packages/wsl-docker-ports/lib/` 在 **11:57:04** 被清理（顶层只剩 `index.js` / `plugin.js`），而该包代理此刻（**12:01:09–12:01:21**）仍在改 `src/`。⇒ **本轮结论：002 通过；003 待其收工后复跑**（这是本仓第三次因「代理在飞时测产物」得到假结论 —— 已升格为硬规矩：**产物类判据一律在代理 `inactive` 后跑**）。
+
 ### P7 📋 **官方客户端插件的清单参照物**（2026-10-09 六次取证：`dsh-client-ui-sidebar-terminal` 的 package.json）
 
 **证据源**：官方 `deepseek-ai-dsh-client-ui-sidebar-terminal-0.1.7-rc.2.tgz :: package/package.json`（逐字）。这是**唯一一个「官方自己写的浏览器客户端插件」清单**，可直接当我们的比对基准。
