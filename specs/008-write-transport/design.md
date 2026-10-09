@@ -152,3 +152,17 @@
 若要求字面做到「调用方无法写宽集合」⇒ 改走 **(c)**：host 读 `ctx.settings` 优先、请求声明回落。
 
 **判据**：`tests/unit/transport-plan.test.ts` 共 8 条 ✔（含变异自证：把缺省退化成空集 ⇒ 声明用例必红）。
+
+## 13. Phase 2 侦察：现读件的接口契约（2026-10-09 实测导出面）
+
+接 `deps.writeFacts` 前必须照单对接（全部已在 003/005 存在，**不新写探针**）：
+
+| 事实 | 来源 | 签名/形状（实测） |
+| --- | --- | --- |
+| `rules(port)` | `read/netsh-probe.ts` | `PortproxyOutcome = PortproxySuccess \| ProbeFailure<NetshProbeReason>`；`NetshProbeReason = 'netsh-missing'\|'timeout'\|'non-zero-exit'\|'parse-error'\|'unexpected'`；`NetshProbeOptions{timeoutMs?}` |
+| `eth0Ip()` | `read/eth0-source.ts` | `createEth0Source(executor, distro, distros, options) ⇒ Eth0Source`（另有 `Eth0ProbeOverride` / `Eth0SourceOptions`） |
+| `localhostForwarding` | `read/localhost-forwarding.ts` | `LocalhostForwardingOutcome = LocalhostForwarding \| ProbeFailure<'config-unreadable'>`；`LocalhostForwardingSource = 'default'\|'explicit'\|'fallback'` |
+| `elevation()` | `elevate/backend.ts` | 🔴 `ElevationAvailability = { available: boolean; backend: ElevationBackend \| null; reason: string }` —— **没有 `policy`** ✗；策略要向 `resolvePolicy(policy: ElevationPolicy, source: RequestSource)` 要（`ElevationPolicy = 'none'\|'ask'\|'passby'`，`RequestSource = 'user'\|'agent'`）⇒ 🔴 **写通道必须按触发方算策略**（Agent 触发一律降级 `ask`，REQ-4.5） |
+| 计划入参 | `write/types.ts` | `WritePlanInput { action, port, scope, managedPorts, eth0Ip: string\|null, rules: readonly PortproxyRule[], portState?, fromScope?, localhostForwarding?, existingFirewallNames? }`（**复核通过**；`eth0Ip=null` ⇒ 不产生任何动作） |
+
+🔴 **陷阱留痕**：`elevation()` 里**不能**自己造 `policy` —— 必须走 `resolvePolicy`，否则 Agent 触发会拿到用户档策略而**绕过降级**。
