@@ -21,43 +21,57 @@
 
 ## Phase 1：所有权与写操作
 
-- [ ] T1.1 [REQ-1.1][REQ-1.2][REQ-1.3] 所有权匹配算法
+- [x] T1.1 [REQ-1.1][REQ-1.2][REQ-1.3] 所有权匹配算法
   - 验证：`vitest` —— 匹配「本插件规则」/ 拒绝「他人规则」/ `connectPort` 不符即 conflict；断言 conflict **无**任何写动作产生；集合外端口**零参与**（动作产生数 = 0）
+  - ✅ 2026-10-09 完成：`src/write/ownership.ts`（`isDeletableRule` = REQ-1.2 的字面谓词；`classifyRuleOwnership` 四态 owned/conflict/not-owned/unmanaged；conflict 只报告不改动）+ `src/write/plan.ts` 的闸门。用例 `tests/unit/write-ownership.test.ts`（10 条：含「同端口既有他人规则 ⇒ 零动作」「集合外端口四种动作全 0 动作」「`eth0` 取不到 ⇒ 连本插件规则也不可删」）
+  - 🔧 2026-10-09 集成期订正：本文件的 `OUR_LISTEN_ADDRESSES` **复制件已删除**，改为 `import { expectedListenAddress, OUR_LISTEN_ADDRESSES } from '../diff/engine.ts'`（该常量由 003 侧开出口，全仓唯一一份；脚本模板与 `plan.ts` 的地址字面量也一并收敛到同一来源）
 
-- [ ] T1.2 [REQ-2.3][REQ-2.6] 防火墙参数生成
+- [x] T1.2 [REQ-2.3][REQ-2.6] 防火墙参数生成
   - 内容：`New-NetFirewallRule -DisplayName dsh-wsl-docker-ports-<port> -Direction Inbound -Action Allow -Protocol TCP -LocalPort <port>`
   - 验证：`vitest` —— 断言**无**通配端口、**无**全量放行；同名已存在 → 报错（不覆盖）
+  - ✅ 2026-10-09 完成：`src/write/firewall.ts`（`localPort` 类型是 `number`，模块内不存在「按范围/通配放行」的实现痕；`looksLikeWildcardAllow` 是反向判据）。用例 `tests/unit/write-firewall.test.ts`（10 条：参数逐项、`-LocalPort 5000` 且生成文本里只有这一个端口号、同名已存在 ⇒ `firewall-rule-exists` 零动作、删除只按 `DisplayName`）
 
-- [ ] T1.3 [REQ-2.1][REQ-2.2][REQ-2.4] scope 切换序列
+- [x] T1.3 [REQ-2.1][REQ-2.2][REQ-2.4] scope 切换序列
   - 验证：`vitest` —— loopback→lan 产生「portproxy add + 防火墙 add」顺序；lan→loopback 产生「两条 delete」；默认值为 loopback；断言切 lan 不是隐式批量
+  - ✅ 2026-10-09 完成：`src/write/plan.ts`（`planSwitchScope`：loopback→lan = **恰好两步** `[portproxy-add, firewall-add]`；lan→loopback = `[portproxy-delete, firewall-delete]`；`resolveScope` 缺省 `loopback`）+ `src/write/scope-note.ts`。用例 `tests/unit/write-scope.test.ts`（11 条：顺序逐字比对、声明集合里另两个端口**一个动作都没有**、已是目标作用域 ⇒ 拦下零动作）
+  - 🔧 2026-10-09 实现留痕：「一个端口恰好一条规则」的收尾放在**脚本内部**（`Add-Portproxy` 先清同端口另一 `listenaddress` 的残留，只可能命中本插件会写的两个地址之一），这样「切 lan」仍是一次 UAC、且与 T1.3 的两步顺序一致；若同端口存在**无法证明归属**的规则 ⇒ 切换动作在闸门处被拦下（`rule-not-owned`）
 
-- [ ] T1.4 [REQ-1.5][NFR-1] 前后快照与任务日志
+- [x] T1.4 [REQ-1.5][NFR-1] 前后快照与任务日志
   - 内容：每次写操作记录 `{ before, after, exitCode, stdout }`
   - 验证：`vitest` —— 日志含四项且 `before/after` 为完整实际集（不是 diff 摘要）
+  - ✅ 2026-10-09 完成：`src/write/snapshot.ts`（复用 003 的只读探针，一条解析逻辑都不复制）+ `src/write/log.ts`（`createWriteLogEntry` 对**非完整集形态**抛 `TypeError` ⇒ diff 摘要进不来；`compareOthers` 提供 C-3 的「他人条目不变」判据）。用例 `tests/unit/write-log.test.ts`（9 条：以真机 fixture 的 **19 条**为基准、拒收 diff 摘要、`exitCode: null` 与 `0` 可区分、他人条目内容变了也判得出）+ 红线静态守卫 3 条
 
-- [ ] T1.5 [REQ-2.5] `localhostForwarding = false` 的差异说明
+- [x] T1.5 [REQ-2.5] `localhostForwarding = false` 的差异说明
   - 验证：`vitest` —— 该键为 false 时 `loopback` 也生成显式规则，且 UI 文案含差异说明（**不静默**）
+  - ✅ 2026-10-09 完成：`src/write/scope-note.ts`（`needsExplicitRule` 与文案同一判据；`true` ⇒ 零规则 + 说明；`false` ⇒ 显式规则 + 警示；`null` ⇒ 保守按「需要规则」并警示）。用例在 `tests/unit/write-scope.test.ts`：断言文案含 `localhostForwarding=false`、`与 NAT 缺省时相反`
 
 ---
 
 ## Phase 2：提权辅助进程
 
-- [ ] T2.1 [REQ-3.4][REQ-3.7] 脚本生成与参数结构
+- [x] T2.1 [REQ-3.4][REQ-3.7] 脚本生成与参数结构
   - 内容：生成 `%TEMP%\dsh-ppp-<rand>.ps1`，参数 `-Action/-Port/-Address/-Scope`；**不接受任意命令文本**
   - 验证：`vitest` —— 生成内容只含白名单动作与数字端口；对含 `;`/`&`/反引号的输入断言被拒（不拼接）
+  - ✅ 2026-10-09 完成：`src/elevate/script.ts`（模板固定、`param()` 带 `[ValidateSet('add','remove','fix')]` + `[ValidateRange(1,65535)]`；调用方数据**只走 argv**，正文里连端口数字都不出现；`assertScriptParams` 在**任何 IO 之前**校验）。用例 `tests/unit/elevate-script.test.ts`（12 条：`;` / `&` / 反引号 / 非 IPv4 / 端口越界 / 非本插件临时文件名逐项被拒；`$Address` 只允许出现在参数声明与 `connectaddress=` 两处）
+  - 🔧 模板里唯一被插值的两个值是**模块常量**（`expectedListenAddress('lan'|'loopback')`）—— 与 T1.1 的订正同源，不是调用方数据
 
-- [ ] T2.2 [REQ-3.3][REQ-3.4] `Start-Process -Verb RunAs` 调用与回传解析
+- [x] T2.2 [REQ-3.3][REQ-3.4] `Start-Process -Verb RunAs` 调用与回传解析
   - 验证：`vitest` + fake —— 退出码 `0/2/3/1` 四种映射；输出 JSON 解析；`ok:false` 时 steps 列表可展示
+  - ✅ 2026-10-09 完成：`src/elevate/invoke.ts`（native 载荷 `Start-Process -Verb RunAs -Wait -PassThru; exit $p.ExitCode`；gsudo 走绝对路径 + stdio）+ `src/elevate/outcome.ts`（退出码表：`0` 成功 / `2` 部分失败 / `3` 前置不满足 / `1` 异常 / `999` 提权失败；`0` 但回传 `ok:false` ⇒ **按失败**，不做「非 0 的成功」）。用例 `tests/unit/elevate-outcome.test.ts`（9 条）+ `tests/unit/elevate-exec.test.ts`（10 条，含「`ok:false` 时 steps 逐条可展示且 hint 直接点出失败步骤」）
 
-- [ ] T2.3 [REQ-3.5] 拒绝 UAC 的失败分支
+- [x] T2.3 [REQ-3.5] 拒绝 UAC 的失败分支
   - 验证：`vitest` —— fake `Start-Process` 抛错（用户点「否」）→ 报「已取消」、**未**尝试任何回滚、**未**留文件
+  - ✅ 2026-10-09 完成：`src/elevate/runner.ts` —— 判据是「**没有任何回传 JSON** 且退出码非 0 / 命中取消文案」；**有回传就绝不判取消**（脚本跑到了终点，归退出码表管）。用例 `tests/unit/elevate-exec.test.ts`：被拒时 `executor` 调用数 `= 1`、那次调用里**不含** `portproxy delete`（无回滚）、两个临时文件都已删；另一条指纹（无文案、仅非 0 退出 + 零回传）同样判 `cancelled`；「退出码 1 + 完整回传」判 `failure` 而非 `cancelled`
 
-- [ ] T2.4 [REQ-3.1][REQ-3.2][REQ-3.6][NFR-2] 策略与临时文件清理
+- [x] T2.4 [REQ-3.1][REQ-3.2][REQ-3.6][NFR-2] 策略与临时文件清理
   - 验证：`vitest` —— `none` 时**未**调用 `Start-Process`（断言调用数 0）；`ask` 时先出确认且命令原文可见；成功 / 失败 / 超时三条路径的临时文件删除各有断言
+  - ✅ 2026-10-09 完成：`src/elevate/backend.ts`（策略解析 + 后端探测）+ `src/elevate/runner.ts`（策略门 → 确认 → 探测 → 前快照 → 写脚本 → 执行 → 解析 → **`finally` 里删两个临时文件** → 后快照 → 四项日志）。用例 `tests/unit/elevate-runner.test.ts`（18 条）+ `tests/unit/elevate-exec.test.ts`：`none` ⇒ `executor` 调用数 `0` 且**零快照零写文件**；`ask` 的确认请求带命令原文与两步动作；成功 / 部分失败 / 前置不满足 / 超时四条路径都断言 `cleanup = { scriptRemoved: true, outRemoved: true }`；默认超时 `90_000`；`ask` 但无确认通道 ⇒ 按拒绝处理（保守）
 
-- [ ] T2.5 [REQ-4.1][REQ-4.2] 来源约束（Agent）
+- [x] T2.5 [REQ-4.1][REQ-4.2] 来源约束（Agent）
   - 内容：服务层区分调用来源；**本期不注册任何模型工具**（REQ-4.2）；Agent 来源在 `passby` 下降级为 `ask`（**A-1 已于 2026-10-08 定案 = 方案 A**，切换成本极小）
   - 验证：`vitest` —— 同一动作分别以 `user` / `agent` 来源调用，断言 agent 路径**未**直接进入提权（先确认或拒绝）
+  - ✅ 2026-10-09 完成：`src/elevate/backend.ts` 的 `resolvePolicy(policy, source)`（`agent` + `passby` ⇒ `ask`；`none` 不被任何来源提升）+ `runner.ts` 的确认闸门（`reason: 'agent-passby-downgraded'`）。用例在 `tests/unit/elevate-runner.test.ts`：`user`+`passby` ⇒ 确认调用数 `0`、直接执行一次；`agent`+`passby` ⇒ 确认调用数 `1` 且**确认事件在提权之前**；被拒 ⇒ `executor` 调用数 `0`；`none`/`ask` 下 `agent` 与 `user` 同权（不额外放行、不额外拦截）
+  - ✅ REQ-4.2 自证：本期 `src/` 内**不存在** `defineTool`（写入路径只提供 `runElevate` 这一层服务函数），登记在 T3.6 的红线断言里
 
 ---
 
@@ -65,6 +79,7 @@
 
 - [ ] T3.1 [REQ-1.4] 红线断言：不存在 `portproxy reset`
   - 验证：`grep -rn "portproxy reset" src/` 命中 **0**；`grep -rn "netsh" src/` 的每一处都带 `listenport` 参数（人工复核 + 断言脚本）
+  - 🔵 **2026-10-09 D 交付时的口径警告（已归口此处）**：上面第二条 grep 的**朴素写法会误报** —— `src/read/` 与 `src/diff/` 里有**只读**的 `netsh interface portproxy show v4tov4` 散文/提示语（无 `listenport`，合法）。D 已在 `tests/unit/write-log.test.ts` 把它做成**三条可执行断言**：① 写路径内 `portproxy`+`reset` 零命中；② 每一处**可执行**的 `portproxy add|delete` 都带 `listenport`；③ 可执行 netsh 只有 `add`/`delete` 两个动词。⚠️ **这些守卫目前只覆盖 `src/write` + `src/elevate`；把等价断言扩到整个 `src/` 是 T3.1 的活**（别用 naive grep 交差）。
 
 - [ ] T3.2 [REQ-1.5][NFR-1][C-3] 真机自证：他人规则条数不变
   - 内容：真机上对一条 `managedPorts` 内端口做 add / remove / fix 各一次，前后各存 `netsh show v4tov4` 快照
@@ -85,6 +100,7 @@
   - 内容：探测**用户自装**的 `gsudo`（用 `where.exe gsudo`，**不认 `sudo` 别名** —— gsudo 安装器会造同名别名）；有则走其 **stdio 回传**，并把 **exit code 999** 判为「提权失败」；`gsudo status` 显示**缓存活跃** ⇒ 回落 `Start-Process -Verb RunAs` + 临时文件；**不安装 / 不改 PATH / 不动 gsudo 配置**（尤其 `CacheMode`）。Windows 自带 `sudo` 仅 `elevationBackend: winsudo` 时启用（本机 23H2 无法验证 ⇒ 登记为未验证项）
   - 🔴 **「不认 `sudo` 别名」已由本机实测坐实（2026-10-09，只读）**：`Get-Command sudo -All` 在本机**只有一条**，指向 `D:\Program Files\gsudo\Current\sudo.exe`（`CompanyName = Gerardo Grignoli`、`ProductName = gsudo`、`FileVersion = 2.6.1.0`），而 **`%SystemRoot%\System32\sudo.exe` 不存在**（`Test-Path` = False，23H2 符合预期）⇒ **凡按命令名 `sudo` 探测者，在本机必然误判「Windows 自带 sudo 可用」并走进 winsudo 分支**（实际执行的还是 gsudo，语义完全不同）。本规则不是预防性洁癖，而是本机**真实陷阱**；探测必须走 `where.exe gsudo` / 按**路径 + 产品名**判定
   - 验证：真机各跑一次 —— ① `gsudo` 路径下 stdout / stderr / exit code 三样都拿得到（含故意失败 → **999**）② 造一个活跃缓存 → 回落 native 且**无临时文件残留** ③ `elevationBackend: native`（或未装 gsudo）仍成功
+  - 🔵 **离线面已实现（2026-10-09，零真机）**：`src/elevate/backend.ts`（按**路径**认 `gsudo`、读 `gsudo status`、`winsudo` 仅显式配置且固定路径存在才用、其余一律回落 native）+ `src/elevate/invoke.ts` 的三条调用形态 + `runner.ts` 的 `999 ⇒ elevation-failed`。用例 `tests/unit/elevate-backend.test.ts`（10 条，含**反向断言**：任何一次探测都不许以 `sudo` 为命令名）+ `tests/unit/elevate-exec.test.ts` 的 gsudo 两组。**本项仍未完成**：真机弹窗 / 真缓存 / 真实 999 未验（每次都要人工点 UAC）
 
 - [ ] T3.6 [REQ-4.3] 红线断言：未注册 Agent 工具（来源约束的门禁）
   - 内容：本期**不注册任何 Agent 可调工具**；将来若注册，**必须先**补齐 REQ-4 的完整口径（错误语义、审批、日志）再放行，不得以「先能用」为由先行放行
