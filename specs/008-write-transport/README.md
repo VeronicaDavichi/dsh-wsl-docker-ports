@@ -1,5 +1,5 @@
 ---
-status: planned
+status: in-progress
 created: 2026-10-09
 priority: high
 tags:
@@ -15,9 +15,11 @@ depends_on:
 - 005-elevation-write-path
 - 003-wsl-docker-ports
 created_at: 2026-10-09T06:27:29.300072900Z
-updated_at: 2026-10-09T06:27:29.300072900Z
+updated_at: 2026-10-09T06:37:34.724527300Z
+transitions:
+- status: in-progress
+  at: 2026-10-09T06:37:34.724527300Z
 ---
-
 # 写入通道：动作计划 → 变更预览 → 提权执行 → 审计留痕
 
 > **Status**: planned · **Priority**: high · **Created**: 2026-10-09
