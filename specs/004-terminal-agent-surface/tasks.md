@@ -90,3 +90,50 @@
 | 7 | `read-only` 沙箱下 Agent `write` | 被拒绝 + 原因；页面键盘输入仍可用 | 工具输出 |
 | 8 | Agent `kill` 后再 `list` | 实例消失、无孤儿 PTY | 工具调用记录 |
 | 9 | 禁用插件再启用 | 工具注册无重复（注册数 = 6 而非 12）| 日志 + 工具列表 |
+
+---
+
+## 收口后修复（2026-10-09 集成方，**本条是本 Spec 唯一一次「已标 complete 之后仍被真模块证伪」的记录**）
+
+**发现**：把真 `@deepseek-ai/dsh-tools@0.2.0-rc.2`（先前只作为注入缝存在）接到本 Spec 的工具面上，
+**6 个工具全部注册失败**：`unsupported JSON schema: … is not supported by the value schema DSL`。
+逐工具命中键：`new`/`resize`/`kill` = `schema.oneOf[0].required`、`list` = `schema.required`、
+`read` = `parameters.sinceSeq.minimum`、`write` = `parameters.data.minLength`。
+
+**根因**（读真源码，非推断）：`defineTool` 把 `output.schema` 交给 `valueSchemaSpecToJsonSchema`、
+把 `parameters` 交给 `parameterSchemaSpecToJsonSchema`（`dsh-tools/lib/types/schema.js` L228-247），
+两者都走**值 schema DSL** 的作者键白名单（同文件 L126-192）：
+- 必填 = **属性节点上写 `required: true`**（只能是字面 `true`）；**顶层 `required: [...]` 数组不被承认**；
+- 白名单**没有** `minimum` / `minLength` / `pattern` / `format`；
+- `object` 节点必须显式给 `additionalProperties: boolean`；
+- `oneOf` 分支节点不得再带 `required`（分支内 `properties` 的子节点可以）。
+
+**为什么单测没抓住**：本 Spec 的工具单测跑的是**注入的** fake `defineTool`（零宿主依赖的设计使然），
+而那个 fake **比真宿主宽松**（照 JSON Schema 习惯支持了顶层 `required` 数组与 `minimum`/`minLength`）
+⇒ 「fake 全绿、真模块全拒」。这是本项目第一例「假宿主比真宿主宽松」造成的假绿。
+
+**修复**（四处，均为契约对齐、非放宽判据）：
+1. `src/tools/schemas.ts`：全部输出 schema 由 JSON Schema 写法改成值 DSL —— 顶层 `required: [...]`
+   下沉为**属性节点 `required: true`**（`read` 的三个 `oneOf` 分支同样处理）；
+2. `src/tools/register.ts`：删 `minimum: 0` / `minLength: 1`；两条判据改由**运行期**兑现
+   （`read` 的负数 `sinceSeq` ⇒ 运行期拒并**照抄 `invalid arguments` 措辞**；`write` 的空串 ⇒
+   既有 `unknown-key` 路径），**判据一条没丢**；
+3. `src/tools/host.ts`：`ParamNode` / `ValueNode` 的类型按真白名单校订（删两个不存在的键，
+   `required` 改成属性节点上的 `true`）—— A-1 的「推断」升级为「读源码所得」；
+4. `tests/helpers/tools-define.ts`：**假宿主跟着改严**（删 `minimum`/`minLength`、对象必填改为读属性节点）
+   —— 不让假宿主继续当假绿的温床。
+
+**证据**：
+- 新增 `tests/unit/tools-real-define.test.ts`（3 条）：① 真模块接受全部 6 个工具（注册不抛 + 名字齐全）；
+  ② 编译产物是宿主认的形状（`new` 的 `parameters.required = ['profile']`、
+  `output.schema.oneOf[0].required = ['id','profile','rows','cols']` ⇒ 证明 `required: true` **真被编译**）；
+  ③ **负向对照**：故意把顶层 `required: [...]` 写回 ⇒ 真模块必须抛 `/value schema DSL/`（反恒真）。
+- **变异自证**：把 `new.profile` 改成 `required: false` ⇒ 该文件 **2 条红**（① ②）；
+  还原后 SHA256 **逐字节相同**（`BD433D94…F273`）并复绿 3/3。
+- 全包门禁：`typecheck` exit 0 · `vitest` **23 files / 282 tests 全绿**（原 22/279）· `build` exit 0 ·
+  单文件最大 **394 行**。
+
+**对「complete」的影响（如实）**：本 Spec 的 `complete` 是在**修复前**记录的；修复后工具面在真模块下
+才第一次真正可用。故真实机清单第 9 条（禁用再启用 ⇒ 注册数 6 而非 12）此前**根本无法执行**
+（注册数恒为 0），现在才有意义 —— 真机项仍未跑（需主人在场）。
+

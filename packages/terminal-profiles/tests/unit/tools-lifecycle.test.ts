@@ -203,13 +203,18 @@ describe('T1.3 REQ-1.8 / REQ-4.4 参数校验与半成品检查', () => {
     h.dispose();
   });
 
-  it('异常：write 的 data 是空串 ⇒ schema 的 minLength 拦下（不写 0 字节）', async () => {
+  it('异常：write 的 data 是空串 ⇒ **运行期**键名解析拒收（不写 0 字节）', async () => {
+    // 🔴 2026-10-09 改判据：本条原先断言「schema 层的 minLength 拦下」。集成时读真源码发现值 schema DSL
+    // **没有** `minLength` 键（写了就是作者错：`dsh-tools/lib/types/schema.js` 的白名单），所以空串
+    // 现在走**运行期**：`decodeWritePayload('') === ''` ⇒ `unknown-key`（附已支持键名清单）。
+    // 判据仍然是「不写 0 字节」，只是拦下的层从 schema 换到了运行期 —— 端到端真模块证据见
+    // `tests/unit/tools-real-define.test.ts`。
     const h = createToolsHarness();
     await h.start('pwsh');
     const handle = handleOf(h.fake);
 
     await expect(h.tool('write').execute({ id: 'term-1', data: '' }, { callId: 'c1' })).rejects.toThrow(
-      /invalid arguments/,
+      /unknown-key/,
     );
     expect(handle.writeCalls).toStrictEqual([]);
     h.dispose();

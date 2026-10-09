@@ -209,8 +209,11 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
         },
         sinceSeq: {
           type: 'integer',
-          minimum: 0,
-          description: 'Only for mode=incremental: return chunks after this seq. Omit for everything still buffered.',
+          description:
+            'Only for mode=incremental: return chunks after this seq. Omit for everything still buffered. '
+            + 'Out-of-range values (0/negative, or older than the buffer) are reported through 002\'s own '
+            + 'lost+snapshot semantics instead of a schema rejection — the value schema DSL has no '
+            + '`minimum` key (2026-10-09, read from dsh-tools/lib/types/schema.js).',
         },
       },
       output: {
@@ -235,6 +238,17 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
       },
       async execute(args: { id: string; mode?: 'snapshot' | 'incremental'; sinceSeq?: number }, exec: ToolRunContext) {
         void exec;
+        // 🔴 运行期补位（2026-10-09 集成方）：值 schema DSL **没有** `minimum` 键（写它就是作者错），原先
+        // 由 schema 拦下的「负数 sinceSeq」改在这里判 —— 判据与原 schema **完全一致**（`< 0` ⇒ 拒），
+        // 且照抄 schema 的措辞 `invalid arguments`，模型看到的仍是同一种错。0 与正数**不**在这里判：
+        // 它们照 002 `read-model` 自己的 lost/快照口径走（不另立第二套语义）。
+        if (args.sinceSeq !== undefined && args.sinceSeq < 0) {
+          fail(
+            'invalid-args',
+            `invalid arguments: sinceSeq 必须 ≥ 0（收到 ${args.sinceSeq}）`,
+            '值 schema DSL 无 minimum 键 ⇒ 该范围判据在运行期；0/正数照 002 的 lost+快照口径。',
+          );
+        }
         // `mode` 缺省 = snapshot（design §2）；`sinceSeq` 只在 incremental 下有义，snapshot 下**忽略**（不静默改成增量）
         return readViaSession(manager, args.id, {
           mode: args.mode ?? 'snapshot',
@@ -256,8 +270,10 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
         data: {
           type: 'string',
           required: true,
-          minLength: 1,
-          description: 'Key name or literal text. Known key names are listed in the unknown-key error.',
+          description:
+            'Key name or literal text. Known key names are listed in the unknown-key error. An EMPTY string is '
+            + 'refused at runtime (unknown-key failure), not by the schema — the value schema DSL has no '
+            + '`minLength` key (2026-10-09, read from dsh-tools/lib/types/schema.js).',
         },
       },
       output: {

@@ -60,17 +60,20 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * 参数节点 → 值节点的**形状适配**（只丢 `required`：它是属性节点的注解，不是值约束）。
+ * 参数节点 → 值节点的**形状适配**（保 `required`：它在真 DSL 里就是属性节点自己的注解，值校验层也要读它）。
  * 参数 DSL 与值 schema 在本包是两个类型（`ParamNode` / `ValueNode`），但校验关键字同源，
  * ⇒ 各自声明一次、共用同一个 `validateValue`。**不**用 `as` 断言：多一个字段就会被这里挡住。
+ *
+ * 🔴 2026-10-09 集成方：原先这里还搬 `minimum` / `minLength`。集成时读真源码发现值 schema DSL
+ * **没有**这两个键（`dsh-tools/lib/types/schema.js` 的作者键白名单）⇒ 已删。**这个删除比它看起来重要**：
+ * 假宿主比真宿主宽松，正是「6 个工具在 fake 下全绿、在真模块下全部被拒」那类假绿的温床。
  */
 function asValueNode(node: ParamNode): ValueNode {
   return {
     type: node.type,
     ...(node.description === undefined ? {} : { description: node.description }),
     ...(node.enum === undefined ? {} : { enum: node.enum }),
-    ...(node.minimum === undefined ? {} : { minimum: node.minimum }),
-    ...(node.minLength === undefined ? {} : { minLength: node.minLength }),
+    ...(node.required === undefined ? {} : { required: node.required }),
     ...(node.items === undefined ? {} : { items: asValueNode(node.items) }),
     ...(node.properties === undefined
       ? {}
@@ -107,7 +110,13 @@ export function validateParams(spec: ParamSpec, args: unknown): string[] {
   return violations;
 }
 
-/** 值节点校验（**只**实现本 Spec 用到的关键字：type/enum/minimum/minLength/items/properties/oneOf） */
+/**
+ * 值节点校验（**只**实现本 Spec 用到的关键字：type/enum/items/properties/oneOf）
+ *
+ * 🔴 2026-10-09：`minimum` / `minLength` 已删（真 DSL 没有这两个键）。相应地，本 Spec 里
+ * 「负数 `sinceSeq` 拒收」「空串 `data` 拒收」两条判据分别改由 `register.ts` 的**运行期**判断承担
+ * （见其 `read` / `write` 的 execute），而不是靠假 schema 拦 —— 假宿主不该比真宿主更严或更宽。
+ */
 export function validateValue(node: ValueNode | undefined, value: unknown, path: string): string[] {
   if (node === undefined) return [];
   const violations: string[] = [];
@@ -120,27 +129,25 @@ export function validateValue(node: ValueNode | undefined, value: unknown, path:
   if (node.enum !== undefined && !node.enum.includes(value as never)) {
     violations.push(`${path}: value not in enum`);
   }
-  if (typeof value === 'number' && node.minimum !== undefined && value < node.minimum) {
-    violations.push(`${path}: below minimum ${node.minimum}`);
-  }
-  if (typeof value === 'string' && node.minLength !== undefined && value.length < node.minLength) {
-    violations.push(`${path}: shorter than minLength ${node.minLength}`);
-  }
   if (node.type === 'array' && Array.isArray(value) && node.items !== undefined) {
     value.forEach((item, index) => violations.push(...validateValue(node.items, item, `${path}[${index}]`)));
   }
   if (node.type === 'object' && isPlainObject(value)) {
     const properties = node.properties ?? {};
-    const required = new Set(node.required ?? []);
     for (const key of Object.keys(value)) {
-      if (properties[key] === undefined) {
+      const property = properties[key];
+      if (property === undefined) {
         if (node.additionalProperties === false) violations.push(`${path}.${key}: undeclared property`);
         continue;
       }
-      violations.push(...validateValue(properties[key], value[key], `${path}.${key}`));
+      violations.push(...validateValue(property, value[key], `${path}.${key}`));
     }
-    for (const key of required) {
-      if (!Object.prototype.hasOwnProperty.call(value, key)) violations.push(`${path}.${key}: required property is missing`);
+    // 🔴 必填来自**属性节点自己的 `required: true`**（真 DSL 的口径，2026-10-09 改）：原来的写法读
+    // 对象节点上的顶层 `required` 数组 —— 那正是真宿主**不认**的形状，假宿主跟着错就会把真缺陷藏起来。
+    for (const [key, property] of Object.entries(properties)) {
+      if (property.required === true && !Object.prototype.hasOwnProperty.call(value, key)) {
+        violations.push(`${path}.${key}: required property is missing`);
+      }
     }
   }
   if (node.oneOf !== undefined) {

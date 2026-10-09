@@ -36,14 +36,22 @@ export interface ToolTextBlock {
 /** 一条内容块的最小结构面（宿主的 `ContentBlock` 有更多变体，本 Spec 只产出/消费文本） */
 export type ToolContent = readonly ToolTextBlock[];
 
-/** 参数属性节点（`required` 写在**属性节点内** —— A-1 的 ①） */
+/**
+ * 参数属性节点（`required` 写在**属性节点内**）
+ *
+ * 🔴 2026-10-09 集成方**读真源码**校订（`@deepseek-ai/dsh-tools@0.2.0-rc.2` 的
+ * `lib/types/schema.js` L126-192 = `assertAuthorKeys` 白名单）：本 DSL **没有** `minimum` /
+ * `minLength` / `pattern` / `format` / `maximum` 这些 JSON Schema 数值键 —— 写了就是**作者错**
+ * （`… is not supported by the value schema DSL`）。原先那两字段是按「宿主 JSON Schema 子集
+ * 支持它」的**推断**加的，实测被推翻 ⇒ 删除；相关约束改由**运行期**兑现。
+ * 标量节点允许的键 = `type` + `enum` + `const`（另加 `description`/`title`/`default`/`examples`）。
+ */
 export interface ParamNode {
   readonly type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
   readonly required?: true;
   readonly description?: string;
   readonly enum?: readonly (string | number | boolean)[];
-  readonly minimum?: number;
-  readonly minLength?: number;
+  readonly const?: string | number | boolean | null;
   readonly items?: ParamNode;
   readonly properties?: Record<string, ParamNode>;
   readonly additionalProperties?: boolean;
@@ -52,21 +60,26 @@ export interface ParamNode {
 /** 隐式参数根（每属性一个节点；编译成顶层 `required`） */
 export type ParamSpec = Record<string, ParamNode>;
 
-/** 值 schema 节点（`output.schema` 用；`json` 节点是作者侧的不受限壳） */
+/**
+ * 值 schema 节点（`output.schema` 用；`json` 节点是作者侧的不受限壳）
+ *
+ * 🔴 校订点（同上，读真源码所得）：`required` **不是**顶层数组，而是**属性节点上的 `true`**；
+ * 顶层写 `required: [...]` 会被 `…schema.required is not supported by the value schema DSL` 拒收
+ * —— 这正是 6 个工具初次注册**全被拒**的头号原因。`object` 节点的 `additionalProperties`
+ * **必须显式给 boolean**（否则 `… must be explicitly true or false`）。
+ */
 export interface ValueNode {
   readonly type?: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | 'json' | 'null';
   readonly description?: string;
   readonly properties?: Record<string, ValueNode>;
   readonly additionalProperties?: boolean;
   readonly items?: ValueNode;
-  readonly required?: readonly string[];
-  /** 判别联合（`read` 的两模式、`kill` 的告警分支都靠它） */
+  /** 属性节点上的必填标记（**只有** `properties` 的直接子节点可以写） */
+  readonly required?: true;
+  /** 判别联合（`read` 的两模式、`write` 的取消分支都靠它）；分支节点**不得**再带 `required` */
   readonly oneOf?: readonly ValueNode[];
   readonly enum?: readonly (string | number | boolean | null)[];
-  /** 数值下界（参数与值节点共用；宿主的 JSON Schema 子集支持它） */
-  readonly minimum?: number;
-  /** 字符串长度下界（参数与值节点共用） */
-  readonly minLength?: number;
+  readonly const?: string | number | boolean | null;
 }
 
 /** `defineTool` 的入参面（**只列本 Spec 用到的字段**；`output:{schema,render}` 必填 —— A-1） */

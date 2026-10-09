@@ -140,8 +140,14 @@ export function looksLikeKeyName(data: string): boolean {
 /**
  * `data` → 真正写进 PTY 的字节（`''` 表示**未识别的按键名**，REQ-4.2）。
  *
- * 返回空串作为失败信号是安全的：`write` 的 `data` 在 schema 层已经有 `minLength: 1`，
- * 所以「空串」不可能是合法输入 —— 这条不变式让调用方不必处理第二个返回值。
+ * 返回空串作为失败信号是安全的：**调用方（`register.ts` 的 `write`）在进体前就把空串判掉**
+ * （`bytes === ''` ⇒ `unknown-key`，REQ-4.2 的「不猜、不丢弃」）—— 这条不变式让本函数不必引入
+ * 第二个返回值。
+ *
+ * 🔴 2026-10-09 订正：原注释的理由是「schema 层有 `minLength: 1`」，而集成时读真源码发现值 schema
+ * DSL **没有** `minLength` 键（`dsh-tools/lib/types/schema.js` 的作者键白名单）⇒ 该键已删、不变式
+ * 改由**运行期**第一道判断承担；判据（空串绝不写出去）没变，证据见
+ * `tests/unit/tools-real-define.test.ts` 与 `tools-lifecycle.test.ts` 的空串用例。
  */
 export function decodeWritePayload(data: string): string {
   const byName = decodeKeyName(data);
