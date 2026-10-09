@@ -112,6 +112,19 @@
 | 信息泄露 | 原始输出展示前脱敏；日志内容不落盘（REQ-11.3）|
 | 配置写入 | live 字段只经 `settings` 三写操作（不重挂载）；`configEditor.edit()` 是完整配置路径（会重挂载），不用它；不手写 YAML（REQ-12.1）|
 
+### 9.1 四条禁止性需求的可执行红线（REQ-2.4 / 9.3 / 10.2 / 10.4，2026-10-09 落地）
+
+`tests/unit/p0-redlines.test.ts`（7 条）+ 共享脚手架 `tests/helpers/src-scan.ts`（同一份「走 `src/` 全树 + 剥注释」，复用 001 的 `strip-comments.mjs`，不各写正则）。复算命令：`pnpm -C packages/wsl-docker-ports exec node --test tests/unit/p0-redlines.test.ts` ⇒ **7/7 pass**。**变异自证 4 组**（加 docker 写动作 const / 换一个 P0 文件加 docker 调用点 / 注入 `socat` + `['docker','exec']` / 注入 `'dsh-terminal-profiles'` ⇒ 各自变红，改回后哈希一致复绿）。
+
+| 红线 | 判据（可二值）| 证据 |
+|---|---|---|
+| ① P0 只读（REQ-2.4）| `DOCKER_PS_ARGV` deepEqual `['docker','ps','--format','{{json .}}']`；P0 内**带引号的** docker 写子命令命中 `[]`；P0 的 docker 调用点白名单 = `['src/read/docker-probe.ts']` | 三条断言 |
+| ② 不代偿 UDP（REQ-9.3）| `v6tov6` / `socat` / `wsl2host` / `netsh2ip` 命中 `[]`；唯一 netsh argv 不含 `udp` / `listenprotocol` / `protocol` | 两条断言 |
+| ③ 不建包边（REQ-10.2）| `dependencies` 白名单**恰好** `['dsh-wsl-shared']`、四个依赖字段均无 `dsh-terminal-profiles`、源码零命中 | 一条断言（⚠️ `package.json` 那半边**未做**变异自证，理由见 tasks.md T6.6）|
+| ④ 不实现 exec（REQ-10.4）| `'exec'` / `docker exec` / `execInContainer` / `containerExec` 全树命中 `[]` | 一条断言 |
+
+🔴 **① 的范围口径（本 Spec 最容易误写的一条）**：「P0 只读」的扫描范围**钉死在 `src/read/**` + `src/diff/**`**，**不是**整个 `src/` —— 若照字面写成「`src/` 里不许出现 `docker start`」，**Phase 7 的 T7.1（P1 容器启停/重启，REQ-11.1 明文允许）一落地就假红**。④ **没有**这个例外（容器 exec 属「下一期」）故扫全树。判据刻意精确到「**带引号的 argv 元素**」⇒ `execInDistro`（001 的 API 名）与 `'running'`（状态值）不误伤。
+
 ---
 
 ## 10. 错误处理
