@@ -10,7 +10,7 @@
 
 - [x] T0.1 从真机捕获 fixture 并入库（脱敏）— ✅ **2026-10-08 完成**
   - 内容：`wsl -l -v` **原始字节**（不是截图/不是手抄）、`wsl -d Ubuntu2204 -- ip -4 -o addr show dev eth0`、`%USERPROFILE%\.wslconfig` 原文、`wsl --version`；存 `tests/contract/fixtures/`
-  - ✅ **A-1 定案**：`wsl -l -v` = **UTF-16LE**（前 12 字节 `20 00 20 00 4E 00 41 00 4D 00 45 00`，NUL 占比 **50%**），行尾 **LF**（无 CRLF）⇒ 必须剥 BOM 与 NUL
+  - ✅ **A-1 定案**：`wsl -l -v` = **UTF-16LE**（前 12 字节 `20 00 20 00 4E 00 41 00 4D 00 45 00`，NUL 占比 **50%**）⇒ 必须剥 BOM 与 NUL。⚠️ **行尾 2026-10-09 订正**：原记「LF（无 CRLF）」，实测是 **CRLF**（尾部 `32 00 0d 00 0a 00`，CR 2 / LF 2，**有尾换行**）—— 见 [Phase 6 完成记录](#-phase-6-完成记录2026-10-09-收口--1-个真缺陷)
   - ✅ **A-2 定案（比假设更细）**：`wsl -l -v` 表头**英文** `NAME STATE VERSION`，而同一 exe 的 `wsl --version` 是**中文**「WSL 版本」⇒ **同工具不同子命令本地化行为不一致** ⇒ 解析器**不得**依赖任何表头字面量（本实现靠「末列必须是 1 或 2」判数据行，表头自然被跳过）
   - ✅ **A-3 定案**：`netsh` 在本机是**纯 ASCII**（高位字节 0%）⇒ **不存在** OEM/GBK 中文表头问题（fixture 与判定在 003 侧，结论回写其 A-2）
   - ✅ 附带定案：`.wslconfig` 仅 `[wsl2] localhostForwarding=true` ⇒ **NAT 缺省**（组件②硬前提成立）；eth0 = `172.20.201.152`（与 19 条规则 connectaddress 一致 = **未漂移**）
@@ -158,21 +158,25 @@
 
 ---
 
-## Phase 6：收口
+## Phase 6：收口 — ✅ **已完成（2026-10-09）**，逐项证据见下 + 完成记录
 
-- [ ] T6.1 [REQ-6.4] 公开面收缩
-  - 内容：`src/index.ts` 只导出消费方真正需要的符号与类型
-  - 验证：自检脚本断言**运行时**导出数 ≤ 12（类型导出单独打印，超软阈值 **25** 需说明，见 REQ-6.4 的两次订正留痕）；`grep -n "export" src/index.ts` 人工复核一遍。✅ **Phase 4 实测：运行时 7/12 ✅、类型 15（合计 22 ≤ 25 ✅）** —— 曾报 ⚠️「合计 22 > 20」，**未静默放过**，由主人拍板把类型软阈值提到 **25**（理由：包从 3 个模块长到 7 个，15 个类型逐个都有消费方；运行时 SHALL 与判定逻辑不变）。✅ **Phase 5 实测：运行时 8/12、类型 17（合计 25 = 阈值，不告警）** —— 本轮**没抬阈值**，而是把 `NetworkingModeKind`/`NetworkingModeResolution` 两个别名留在模块内（消费方用 `NetworkingMode['mode']` 即可）。
+- [x] T6.1 [REQ-6.4] 公开面收缩 · ✅ 运行时 **8/12**、类型 **17**（合计 **25 = 软阈值**，不告警）。**逐个复核消费方**：`createExecutor`（003/005 跑 netsh/docker）、`listDistros`（002 校验发行版名 / 003 目标解析）、`resolveDistro`（003 D-4）、`execInDistro`（003 读层）、`probeEth0`（003 REQ-6）、`winToWsl`/`wslToWin`（002/004）、`readNetworkingMode`（003 硬前提）—— **无一是投机导出**。**主动不导出**（连同理由，供复核）：`isWslFailure`（消费方用字面判别式 `.ok` 即可收窄，导出等于给公开面加一个**零新能力**的名字；包内与测试仍用）、`parseEth0Address`/`guardDistroExists`/`parseDistroTable`（内部件，已被 `probeEth0`/`execInDistro` 包装）、`DistroExecResult`/`ExecOutcome`/`Eth0ProbeOptions`/`SpawnLike`/`TreeKillLike`/`FailureExtra`、三个超时常量（调用方按需传 `timeoutMs`）。**第三次也没抬阈值**。历史：Phase 4 = 运行时 7/12 + 类型 15（曾报 ⚠️「22 > 20」，**未静默放过**，由主人拍板把类型软阈值提到 **25**）；Phase 5 = 8/12 + 17（把两个模式别名留在模块内守住阈值）。
 
-- [ ] T6.2 [REQ-6.1] 准入标准回归（防杂物袋）
-  - 验证（**判据已订正，原判据是坏门**）：原写法「命中只允许出现在 `exec.ts` 注释里」—— 2026-10-08 预检出 **7 处命中全在注释**（`index.ts` 的 `dsh-wsl-docker-ports` 是**包名**、`net.ts`/`distro-exec.ts` 的 `portproxy`/`dockerd`/`docker ps` 是**领域词汇**），按原判据**无论如何都过不去**。改判据：**剥注释后**源码里 `netsh|portproxy|docker|RunAs|taskkill /PID` 命中 **0**（= 001 不含这些解析/提权逻辑，应留 003/005）；建议做成 `scripts/check-scope.mjs`（复用 check-size 的剥注释逻辑，**待 Phase 6 落**）。
+- [x] T6.2 [REQ-6.1] 准入标准回归（防杂物袋）· ✅ **`scripts/check-scope.mjs`** 落地（根 `pnpm check:scope` 已接线）。**定稿判据 = 逐词条 + 文件级白名单**：`netsh`/`portproxy`（003）、`docker`（003）、`RunAs`/`gsudo`/`Start-Process`（005）**任何源文件都不得出现**；**`taskkill` 仅允许 `exec.ts`**。⚠️ **原判据是第二道坏门**：「剥注释后 `taskkill /PID` 命中 0」**跑不过** —— `exec.ts:113` 的 `treeKill('taskkill', ['/PID',…])` 是 **REQ-5.3 的进程树兜底杀**，属 001 自己（不是 005 的提权），禁掉它等于要求放弃「超时必杀干净」；**两道坏门的修订史已写进脚本头部**。**四道防呆**（正控必须被命中 / 注释里的词必须不命中 / `keepLines` 保行号 / 源文件非空）+ **实测负控**（植入越界文件 → **exit 1** 且报出 `__scope-probe.ts:1`，随后清理、无残留）。副产：抽出 **`scripts/strip-comments.mjs`** 供体积门共用（体积口径**逐字节不变 25,859**）。⚠️ **本项额外加了两条断言**（`REQ-6.2` 非插件包形态：无 `cordis.patch.yml`、`package.json` 无 `dsh` 字段；`NFR-1` 零运行时依赖）—— 超出原任务字面范围，**请主人复核是否保留**。
 
-- [ ] T6.3 [NFR-1][NFR-2][NFR-3][NFR-5] 质量门
-  - 验证：`pnpm -C packages/wsl-shared typecheck` + `test`（vitest）+ `test:contract`（node --test）三项全绿，并记录用例数；`package.json` 的 `dependencies` 为空（零运行时依赖）；`check:size`（去注释代码 ≤ **40KB** 软指标 + 单文件 ≤ 400 行 NFR-5）
+- [x] T6.3 [NFR-1][NFR-2][NFR-3][NFR-5] 质量门 · ✅ **六道全绿**：`typecheck` **exit 0** · `vitest` **220/220**（7 文件）· 契约 **17/17** · `check:exports` **运行时 8/12 + 类型 17 = 25** · `check:size` **25,859 / 40,960 字节（余 15,101）** · `check:scope` **越界 0 + 形态 ✓ + 零依赖 ✓**。另：`package.json` 的 `dependencies` 为空（零运行时依赖）；单文件最高 **262 行**（NFR-5 限 400）。
 
-- [ ] T6.4 把结论回写文档
-  - 内容：T0.1 的编码/表头结论、T1.4 的 `taskkill` 结论 → 更新 design.md §4/§8 与 requirements 的 A-1/A-2/A-3 状态（假设 → 已确认/已推翻）
-  - 验证：`grep -n "A-1\|A-2\|A-3" specs/001-wsl-shared/*.md` 能看到结论落地；`leanspec validate` 无新增告警
+- [x] T6.4 把结论回写文档 · ✅ **A-1/A-2/A-3 早在 Phase 0/2/3 已落地**（本轮逐条复核确认，无需再动）；**本轮新增 1 处订正**：**A-1 的「行尾 LF」实为 CRLF**（探针抓出，**无功能缺陷**）⇒ 订正 **8 处** + 新增字节事实契约用例。`A-6`（「缺省即 NAT」）**仍是假设**，如实保留 —— 探针只能给**本机**证据。
+
+### ✅ Phase 6 完成记录（2026-10-09）— 收口 + 1 个真缺陷（由探针抓出）
+
+- **新增/改动**：`scripts/check-scope.mjs`（第六道门）· `scripts/strip-comments.mjs`（双门共用）· `scripts/probe.mjs`（真机探针）· `tests/contract/distros.test.ts`（+1 字节事实用例）· 两个 `package.json`（`check:scope` / `probe` 接线）。
+- 🔴 **探针抓到的真缺陷（本轮最有价值的发现）**：A-1 的「`wsl -l -v` 行尾 **LF**（无 CRLF）」**是错的** —— fixture 尾部即 `32 00 0d 00 0a 00`（**CRLF**，CR 2 / LF 2，**有尾换行**），三次实时捕获 **3/3** 一致。**无功能缺陷**（REQ-1.2 明写 SHALL 容忍 CRLF；实现是 `split(/\r?\n/)` + 逐行 `trim()`），但**契约层原本没钉行尾** ⇒ 这条错事实**无人能拦**。**根因**：把同批捕获的 `ip-eth0.raw`（那个**确实**是 LF，`net.test.ts` 用 `includes(0x0d) === false` 钉着）的性质误写到了发行版表上。**教训：同一阶段捕获的多个 fixture，性质必须逐个用字节断言钉住**，不能靠「同批所以同性质」。
+- **订正 8 处**（全部带日期与证据，不静默改写）：本 Spec 的 `requirements.md` A-1 · `tasks.md` T0.1 · `design.md` §8-1 · `README.md` · `tests/contract/fixtures/README.md`（+「订正留痕」小节）· **SSoT `stack-decision.md`**（第 401 行口径 + Phase 0 历史记录加指向 + 追加 2026-10-09 变更记录）· `AGENTS.md` 真机事实表；并把该事实**钉成可复算断言**（契约 **16 → 17**）。
+- **真机探针实测（只读、零副作用，主人预批「不唤醒」）**：`wsl -l -v` **152 字节 / NUL 50% / 无 BOM / CRLF** ⇒ UTF-16LE ✓ 与 A-1 一致 · `listDistros` **117ms** → `* Ubuntu2204 Stopped v2` · `resolveDistro`（不传配置）→ 来源 **`wslDefault`**（**未阻塞提问**，符合 D-4）· `readNetworkingMode` → `C:\Users\EDY\.wslconfig` / `mode=default` / **`resolved=nat`**（组件② 硬前提**在本机成立**）· `probeEth0` → **`DistroNotRunning`**（Stopped 时**不执行** `wsl -d`）· **副作用断言 `Stopped → Stopped`** ⇒ **REQ-2.4「自动路径绝不唤醒」真机成立**。
+- **探针顺带修掉自己的显示缺陷**：管道里 ANSI ESC 被渲染成 `[32m` 噪声 ⇒ 改为仅 `isTTY` 上色（`pnpm probe | tee` 现在可读）。
+- **A-6 不粉饰**：`mode=default ⇒ resolved=nat` 只说明**这台机器**（Win11 23H2 / WSL 2.7.3.0）如此，**证不了**「WSL 缺省网络模式恒为 NAT」；真正的「规则通不通」留给 003 的转发自检。
+- **无遗留副作用**：越界负控文件已清理（`git status` 无残留）；探针与一次性脚本**不入库**（沿用 Phase 5 先例）。
 
 ---
 
@@ -183,5 +187,5 @@
 | vitest 单元 | ✅ | 纯函数与执行器（fake）|
 | `node:test` 离线契约 | ✅ | 真机 fixture 驱动 |
 | chrome-devtools MCP 真机 | ❌ **不适用** | 本包**无 UI**；真机层由 002（终端页）与 003（docker/端口页）承担 |
-| 人工目视 | ✅（轻量）| `scripts/probe.mjs` 在真机打印 5 项事实，与 `.wslconfig` / `wsl -l -v` 人工输出的肉眼比对 —— ⏳ **仍未创建**，顺延到 Phase 6（Phase 5 的真机事实已由 `%TEMP%` 一次性探针实测，见「Phase 5 完成记录」） |
+| 人工目视 | ✅（轻量）| **`scripts/probe.mjs` 已落地并真机跑过**（`pnpm -C packages/wsl-shared probe`，2026-10-09）：打印 5 项事实（`wsl -l -v` 字节指纹 / `listDistros` / `resolveDistro` / `readNetworkingMode` / `probeEth0`）+ **副作用断言**（探测前后状态必须不变，Stopped 被唤醒即 `exit 1`）—— 当次结论见「Phase 6 完成记录」。**只读、不唤醒**（Stopped 时守卫直接返回 `DistroNotRunning`）；探针**不入库**（沿用 Phase 5 先例）|
 | 真机探测（只读 + 写入） | ✅ **Phase 2/3 已做** | 2026-10-08：真 `wsl.exe` → `listDistros` **115ms**、`Ubuntu2204 / Stopped / 2 / isDefault`、`resolveDistro` 四条路径全对且**未唤醒**；`wsl -d Ubuntu2204 -- ip …` 冷启动 **12,637ms** / 热 **192–237ms**、输出 **UTF-8**（NUL 0%）；`taskkill /T` A/B 对照（结论见 design §8 第 12 条）。探针在 `%TEMP%`，**不入库**（fixture 除外） |

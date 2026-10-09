@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-10-08
 priority: high
 tags:
@@ -8,17 +8,20 @@ tags:
 - base
 - dsh-plugin
 created_at: 2026-10-08T09:42:12.335682700Z
-updated_at: 2026-10-08T13:25:44.483516200Z
+updated_at: 2026-10-09T01:55:09.491309800Z
+completed_at: 2026-10-09T01:55:09.491309800Z
 transitions:
 - status: planned
   at: 2026-10-08T13:22:41.226365600Z
 - status: in-progress
   at: 2026-10-08T13:25:44.483516200Z
+- status: complete
+  at: 2026-10-09T01:55:09.491309800Z
 ---
 # 共享底座：WSL 发行版发现 · eth0 IP · NAT 判定（路径翻译 → 006）
 
 **类型**: 需求驱动（requirements-first）
-**状态**: in-progress（2026-10-08 主人拍板开工；Phase 0 的 T0.1 / T0.2 **已完成**、Phase 1（错误模型+执行器）与 Phase 2（发行版发现）**已实现并全绿**，B-1 / B-2 均已定案）
+**状态**: **complete**（2026-10-09 收口 —— Phase 0–6 全部完成，**22/22 任务**勾完；六道门全绿：`typecheck` / `vitest` **220** / 契约 **17** / `check:exports` **8/12 + 类型 17** / `check:size` **25,859 / 40,960 字节** / `check:scope` **越界 0**。Phase 1–2 于 2026-10-08 实现并全绿，B-1 / B-2 均已定案）
 **优先级**: high
 **包名**: `dsh-wsl-shared` —— **非插件包**（无 cordis 行、无 UI、无配置页、无 PTY）
 **位置**: `packages/wsl-shared/`
@@ -135,7 +138,7 @@ handover 已拍板「三包 —— 两个插件包 + 一个非插件共享包」
 | B-1 | `z.array(...).volatile()` 在数组路径上是否生效 | **002**（本 Spec 不受阻）| 🟡 **机制已由源码定案（成立）**，剩真机行为链；见 [002/tasks.md](../002-terminal-profiles/tasks.md) 的 T0.1 |
 | ~~B-2~~ | ~~6 项 `backend.*` 的 `confirmed: implied` 待主人逐条点头~~ | 全线 | ✅ **2026-10-08 已确认全为 `none`，本项清除**（结论不影响本包 —— 本包不注册后端能力）|
 
-**本 Spec 自身的开工前置**（T0.1）**已于 2026-10-08 完成**：真机 fixture 已入库（`packages/wsl-shared/tests/contract/fixtures/`，字节级溯源见该目录 README），**编码与表头形态已实测定案** —— `wsl -l -v` = **UTF-16LE + 行尾 LF + 英文表头**（而 `wsl --version` 是中文表头）⇒ 解析器不依赖任何表头字面量。详见 [tasks.md](./tasks.md) 的 T0.1。
+**本 Spec 自身的开工前置**（T0.1）**已于 2026-10-08 完成**：真机 fixture 已入库（`packages/wsl-shared/tests/contract/fixtures/`，字节级溯源见该目录 README），**编码与表头形态已实测定案** —— `wsl -l -v` = **UTF-16LE + 行尾 CRLF + 英文表头**（而 `wsl --version` 是中文表头）⇒ 解析器不依赖任何表头字面量。详见 [tasks.md](./tasks.md) 的 T0.1。⚠️ **2026-10-09 订正**：行尾原记为「LF（无 CRLF）」，实测是 **CRLF**（**无功能缺陷** —— 解析层本就容忍；已由字节断言钉死）。
 
 ## 下一步
 
@@ -145,4 +148,4 @@ handover 已拍板「三包 —— 两个插件包 + 一个非插件共享包」
 4. ✅ **Phase 3 已完成**（T3.1–T3.4 + fixture `ip-eth0.raw`）。**关键收获**：① `wsl -d X -- ip …` 的输出是 **UTF-8**，与 `wsl -l -v` 的 **UTF-16LE** 不同 —— 猜错就是「eth0 没有 IPv4」的假阴性；② **T1.4 结案**：A/B 实测只杀 `wsl.exe` 也能回收发行版侧进程，`taskkill /T` 是保险而非必需；③ **T3.4**：守卫与执行抽成 `execInDistro` 单份实现，003 读层直接复用（避免 REQ-2.4 被重犯）。
 5. ✅ **Phase 4 已拆出为 [006-path-translation](../006-path-translation/README.md)**（2026-10-09）：`src/pathmap.ts` **206 行 / 4.5 KB 代码** + **87 条**单测仍在**本包**交付，但**需求 / 设计 / 任务与验收边界**整体迁到 006（**编号保持** REQ-3.x / T4.x，保代码与测试里 20+ 处追溯引用）。四条关键收获（① 先测再写抓到 `node:path` 四条咬人语义；② 自审 3 个真缺陷；③ 被实测**推翻**的「疑似缺陷」；④ 属性化不变量固化成常驻用例）见 006 的 `tasks.md`。
 6. ✅ **Phase 5 已完成**（T5.1–T5.3，`src/wslconfig.ts`；`vitest` **220** / 契约 **16** / `check:exports` **运行时 8/12**（类型 17 ⇒ 合计 **25 = 阈值**，不告警）/ `check:size` **25,859 / 40,960 字节（余 15,101）**）。**关键收获**：① 真机实测 `%USERPROFILE%\.wslconfig` = **32 字节、无 BOM、CRLF、无尾换行**，缺键 ⇒ **NAT 缺省**，组件②的硬前提**成立** ✅；② **「先测再写」又救一次** —— `USERPROFILE=''` 时 `??` 不回落，而 `path.join('', '.wslconfig')` 是**相对路径**（会去读**工作目录**下的同名文件 = 静默错答），且该情形下 `os.homedir()` **自己会抛** `ERR_SYSTEM_ERROR` ⇒ 补三道防线（`?.trim() ||` + try/catch + 绝对路径校验）各配用例；③ 真机抓到文案缺陷：errno **重复两次**（`EISDIR: EISDIR: …`，会被 003 **原样显示**）⇒ 已修 + 回归 + 复验；④ 类型数 15→19 会破软阈值 ⇒ **没抬阈值**，把两个模式别名留在模块内。
-7. 下一步：**Phase 6 收口**（T6.1 公开面复核 · T6.2 的 `scripts/check-scope.mjs` · T6.3 质量门 · T6.4 回写 A-1/A-2/A-3 · `scripts/probe.mjs` 的 5 项真机事实 + 复盘）。**真正的约束回到「单文件 ≤ 400 行 + 文档 ≤ 200 行」**（体积余 **15.1 KB**）。
+7. ✅ **Phase 6 收口已完成**（2026-10-09）—— 详见 [tasks.md](./tasks.md) 的 Phase 6 完成记录。要点：**T6.2 的判据修了第二道坏门**（原判据要求剥注释后 `taskkill /PID` 命中 0，但 `exec.ts` 的 REQ-5.3 进程树兜底**就是**真的 `taskkill`）⇒ 改为「逐词条 + 文件级白名单」；**探针 `scripts/probe.mjs` 抓到 1 个文档真缺陷**（A-1 的「行尾 LF」实为 **CRLF**，**无功能缺陷**，已订正 8 处并钉成字节断言）。**真正的约束回到「单文件 ≤ 400 行 + 文档 ≤ 200 行」**（体积余 **15.1 KB**）。
