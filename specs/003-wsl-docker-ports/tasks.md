@@ -244,3 +244,17 @@ T4.1–T4.5 **已整体迁至 [005-elevation-write-path](../005-elevation-write-
 - ⚠️ **顺带发现（本包范围外，未修）**：`packages/terminal-profiles/src/ws/routes.ts` 有**同一个**「在 apply 里同步 `ctx.get('webServer')` 决定注册」的缺陷（同一类 A）⇒ 002 的 WS 端点在真机上**很可能同样静默不注册**，已另派修复。
 - ⚠️ **环境级抖动（非断言失败，已钉住门禁）**：Node **v24.15.0** 的 `node --test` 在**默认并行**下偶发 `Unable to deserialize cloned data … test_runner/runner:410 #processRawBuffer`（**掉文件、零 AssertionError**）；实测默认并行 **2/2 红**（`tests 316/319`、`pass 315/318`、`fail 1`），`--test-concurrency=1` 与 `=2` 均 **318/318 绿**（本机 14 个常驻 node = MCP server，非残留子进程）⇒ 已把本包 `scripts.test` 钉成 `--test-concurrency=1`（慢到 ~4.6 s，换稳定；Node 修好后可回退）。
 
+### ✅ 2026-10-09 真机复验（修复后，第二次装载）：四个缺陷全部真修好
+
+- **路由端到端 200（上次拿不到的那条）**：GET /dsh-wsl-docker-ports/snapshot?managedPorts=8080&managedPorts=5432&distro=Ubuntu2204 → 200 / application/json; charset=utf-8 / 4280 B / 0.243s + Content-Length + Cache-Control: no-store。WSL 停止时如实 docker.ok:false, reason:"distro-not-running"（**没有任何东西去启动它** ⇒ 语义正确）。
+- **冷启动链**：allowColdStart=1 → 200 / 4559 B / 20.714s、docker.ok:false, reason:"timeout"（10 s 硬超时如实回报）；5 s 后重试 → 200 / 7323 B / 1.574s、docker.ok:true、containers=6、counts={ok:2,missing:0,drift:0,conflict:0,extra:0}、expected=2 / external=17 / unsupported=0 ⇒ **17 + 2 受管 = 19**，eth0 仍未漂移 ✅。
+- **反例全部走插件自己的 URL**：GET /nope → 404 + JSON（not-found，含可读 message）；POST /snapshot → **405 可达** ✅（method-not-allowed，82 B）；PUT 同 405。
+- **卸载态（首次验证 disposer）**：运行时关掉插件 → 4 s 后同 URL = **宿主兜底 404**（无 Content-Type、无 body）⇒ disposer 真把路由摘了；再开回 → 5 s 后 200 / 4458 B / 0.221s ⇒ **attach 幂等、无重复 (kind,path) 抛错**；纯重启对照亦 200 ✅。
+- **浏览器半边（C 的三条间接硬证）**：① 页面内 GET /dsh-wsl-docker-ports/snapshot => 200（上次**零请求**）② 右栏 tablist 出现 tab "WSL Docker 端口" [selected] ③ 面板 DOM .wdp-page + **28 个 testid 齐全**、正文含「外部规则（只读，19 条）」（与真机 19 条吻合）、发行版面板、NAT 门如实显示「取不到 eth0：期望地址不可判定」。⚠️ 未读到 apply() 返回值（无观测点）⇒ C 是**间接三证**，不是直接读状态。
+
+### 🔴 真机复验新发现（两处，均非本次修复回归；已派修）
+
+- **① sidebar-right-pending 的 warn 打在正常路径上**：探针实测宿主服务 **约 240 ms 后**（APPLY @1051ms 两服务 undefined → INNER-INJECT-FIRED @1317ms 均为 object）就到齐并完成注册，但那条 warn 每次启动都打 ⇒ **会训练人忽略真告警**。判据：pending 超过 grace（如 2 s）才 warn，或降为 info/debug；正常启动应**零 warn**，真缺服务仍要有可见告警。
+- **② 页类型缺 guide 入口 ⇒ 页存在但用户在 UI 里点不到**：真机复现 —— 未程序化 openTab("wslDockerPorts") 之前，右栏空态只列「工作区文件」/「新建终端」（官方各家都注册了 guide chip）。判据：照官方 tabs.register({ …, guide }) 形状补入口，并从 UI 点进去能到 .wdp-page。
+- ③（建议，非缺陷）客户端模块级 inject 可补上两个服务名（官方 6 家都写）；A 探针证明与官方同款声明照样 fire ⇒ **不是必须**，当前写法功能无误。
+- ⚠️ 仍未修的老问题：冷启动那份响应内部不自洽（diff 已取到 eth0、同响应 distro.state 仍是 Stopped）；elevationAvailable=false / iphlpsvcRunning=null 仍是占位（复验确认行为未变）。
