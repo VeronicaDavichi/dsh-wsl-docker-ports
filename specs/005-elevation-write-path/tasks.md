@@ -88,8 +88,15 @@
   - 验证：**19 条既有规则（他人条目）条数与内容不变**；任务日志四项齐全；结论写入 tasks 与 README
   - ⚠️ 每次写操作**必须人工点 UAC**
 
-- [ ] T3.3 [REQ-5.1][REQ-5.2][REQ-5.3][REQ-5.4] 卸载语义与清理清单
+- [x] T3.3 [REQ-5.1][REQ-5.2][REQ-5.3][REQ-5.4] 卸载语义与清理清单
   - 验证：`vitest` —— 卸载**未**产生任何 delete 调用；清理清单含端口/规则名/地址且可复制；临时文件归零
+  - ✅ **2026-10-09 完成（子代理 I，离线零真机 / 零提权）**：`src/write/cleanup.ts`（118 行，纯函数：结构化清单 + 可复制文本 + 显式清理步骤；判定复用 REQ-1.2 的 `isDeletableRule`，命令文本复用写路径既有渲染器 ⇒ 清单与真机执行的命令**逐字同源**）+ `src/write/uninstall.ts`（254 行：`dispose()` 零写调用 + 临时文件**二次扫描**归零 + `runExplicitCleanup()` 显式入口）+ `tests/unit/uninstall-cleanup.test.ts`（279 行，7 条用例）。
+  - 证据逐条：① **REQ-5.1** = 注入 fake 执行器（写通道）后 `dispose()` 的 `calls.length === 0`、`report.systemStateTouched === false`（类型层写死 `false`），且同一次 dispose 仍交付清单；② **REQ-5.2** = 清单逐项断言端口 / 规则名（`firewallRuleName`）/ 地址，`text` **逐字等于** 4 行命令（`v4tov4 … listenport=<p> listenaddress=<addr>` + `Remove-NetFirewallRule -DisplayName "<规则名>"`），并断言 `text` 每一行都是命令、不含「请手工清理」空话；③ **REQ-5.3 / NFR-2** = 两个崩溃残留（`<TEMP_PREFIX>-<rand>.ps1` 与 `-out.json`，即 runner 三条路径没来得及删的两种产物）删 2 个 / 残留 0（**二次扫描**得出，不靠本地账），同前缀非产物只 `skipped` 报告不删；④ **REQ-5.4** = 显式清理恰好 4 步（2 条转发删除 + 2 条防火墙删除），`listenPort ∈ managedPorts` 但 `connectAddress ≠ 期望 eth0` 的 6001 与集合外的 5432 **零动作**。**分界留痕**：显式清理**不**挂在 `dispose()` 上，两个入口在 `uninstall.ts` 文件头注释里写明。
+  - **变异自证**：① 让 `dispose` 多发一次写调用（`await writeChannel([])`）⇒ 「T3.3 ①」**红**（1 fail）；② `targets.slice(0,1)` 漏删一个残留 ⇒ 「T3.3 ①/③ + 稳健性」**红**（3 fail）；两次回滚后三文件 SHA256 **与改前一致**、225/225 复绿。`typecheck` exit 0；`test` **218（基线）→ 225（+7）全绿**（同包 `tests/unit/managed-ports-*.test.ts` 由另一代理并行，本次未触碰）。
+
+> 🔵 **2026-10-09 T3.3 交付时的两处集成缺口（子代理只报不改 ⇒ 登记在案，接线前必须处置）**
+> ① 🔴 **「显式清理」与提权请求形状不匹配**：`ElevateRequest.plan` 是**单端口**形状（`action` / `port` / `scope` / `eth0Ip` / `steps`）、`WriteAction` **没有 cleanup 取值**，而清理步骤天然**跨端口**（本机 19 条 ⇒ 直接循环就是 **19 次 UAC**，不可接受）。**集成方裁定：一次用户动作 = 一次提权 = 一个批量 plan**（`steps` 本来就是数组），在 `write/plan.ts`（**T3.1 落点白名单内的文件**）里生成清理 plan、给 `WriteAction` 增一个取值并明确 `port` 语义。**安全边界不放宽**：每个 step 仍是 `portproxyDeleteStep(rule)` 的输出、**逐条带 `listenport`** ⇒ T3.1 守卫②（写动作必须带 listenport）与动词白名单 `{add, delete}` 原样成立；「批量」不得成为绕过精确四元组的借口。本项**不改任何栈维度**，落地时机 = Phase 5 清理按钮接线 / 收口。
+> ② ⚠️ **eth0 漂移 × 本插件自己写过的规则（需主人裁决）**：严格照 REQ-1.2 字面，`connectAddress ≠ 当前 eth0` 的规则**既不在清理清单、显式清理也不删**（保守 = 少删）。后果：漂移后又换过地址时，用户拿不到那几条的命令。三选项：**保持现状**（现状） / 按「历史 eth0」放宽 / 清单里单列「疑似本插件旧规则（仅展示、不删）」一节。这与「005 REQ-1.2 的 `connectAddress` 前置条件」是**同一处口径** ⇒ 与该项**一并请主人裁决**；当前保持现状。
 
 - [ ] T3.4 [NFR-3][NFR-4] 质量门
   - 验证：`pnpm -C packages/wsl-docker-ports typecheck` + `test` + `build` 三绿并记录用例数；单文件 ≤ 400 行
