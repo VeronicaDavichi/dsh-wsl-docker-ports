@@ -67,22 +67,27 @@
 
 ## Phase 2：Host PTY 与屏幕模型
 
-- [ ] T2.1 [REQ-3.1][REQ-3.2][REQ-3.4] session-manager 起实例
+- [x] T2.1 [REQ-3.1][REQ-3.2][REQ-3.4] session-manager 起实例
   - 内容：`spawnTerminal({ argv:[command,...args], cwd: cwdLinux ?? cwd, env, rows, cols, terminalType })`；每次启动新实例
   - 验证：`vitest` + fake spawnTerminal —— spec 字段逐项断言（含 WSL profile 用 `cwdLinux`）；同 profile 两次启动 → 两个不同 id
+  - ✅ **2026-10-09 落地**：`src/session/{types,errors,spawn-spec,manager}.ts`。spec 六字段 `toStrictEqual` 逐项断言，另钉两条 design §11 陷阱：`'shellActivity' in spec === false`（Windows 上反效果）、`typeof spec.cwd === 'string'`（`cwd: undefined` 会落到宿主进程 cwd）。WSL 取 `cwdLinux`、只填 `cwd` 时经 001 推导（断言**与真 `winToWsl` 的结论对齐**，不抄字面量 ⇒ 翻译口径漂移会一起红）；非 WSL 取 `cwd`。id = `term-N` 单调计数 ⇒ 同 profile 两次启动得两个 id + 两个不同 handle，`list()` 按创建序。fake `ctx.subprocess` + fake handle（输出用真 `PassThrough`，与宿主传输形状一致）见 `tests/helpers/fake-pty.ts`
 
-- [ ] T2.2 [REQ-3.3][REQ-3.5] 失败路径
+- [x] T2.2 [REQ-3.3][REQ-3.5] 失败路径
   - 验证：`vitest` —— cwd 不存在（fake 抛错）→ 错误含该路径且**未**回落工作区/`$HOME`；spawnTerminal 抛错 → UI 文案含原因且无幽灵实例
+  - ✅ **2026-10-09 落地**：四条失败路径全绿（`session-manager.test.ts` / `session-resize-kill.test.ts`）——① cwd 不存在 ⇒ `spawn-failed`、message 含**该路径**与「未回落」，且 `spawnCalls[0].cwd` 就是那个坏路径（≠ `process.cwd()`、≠ `homedir()`，这是「不回落」的二值判据）② 程序不可解析 ③ 宿主以 **rejected promise** 失败（与同步抛同码同形状）④ 宿主返回空 handle ⇒ 全部收成可读错误且 `list()` 为空 —— **无幽灵实例**靠顺序保证：只有拿到 handle 才 `instances.set`。另证两条拒绝发生在**调宿主之前**（`spawnCalls.length === 0`）：WSL 无可用 cwd ⇒ `cwd-missing`、`needsFix` 条目 ⇒ `not-startable`（透传 001 错误码）。**夹紧自实现**：`resize(id, 30, 100)` ⇒ 宿主收到 `resize(cols=100, rows=30)`，断言**按位置**复查 `[cols, rows]` 且刻意用 `rows ≠ cols`（行列转置在 80×24 上看不出来）；**变异测试实证**：把 `manager.ts` 那一行的换序写反 ⇒ 3 条红（`expected [[30,100]] to strictly equal [[100,30]]`），改回 ⇒ 全绿
 
-- [ ] T2.3 [REQ-6.1][REQ-6.2][REQ-6.4] 屏幕模型与有界缓冲
+- [x] T2.3 [REQ-6.1][REQ-6.2][REQ-6.4] 屏幕模型与有界缓冲
   - 内容：`@xterm/headless` + serializer；`seq` 单调；双上限（块数/字节）FIFO 丢弃 + `dropped`
   - 验证：`vitest` —— 写入后快照含期望文本；超上限后 `dropped > 0` 且内存不随写入线性增长（块数 ≤ 常量）
+  - ✅ **2026-10-09 落地**：`src/screen/{buffer,screen-model}.ts`，`@xterm/headless` **6.0.0** + `@xterm/addon-serialize` **0.14.0** 已写进本包 `dependencies`（宿主 `createLazyRequire` 按调用方解析 ⇒ 必须自声明；根 `pnpm-lock.yaml` 未动）。快照含期望文本 + 尺寸；TUI `\e[2J\e[H` 重画后**旧内容消失**（证明快照是 serializer 当前帧而非历史拼接）；`seq` = 下一号、从 1 起单调。**两条上限各自压到边界**：块数 `createTermBuffer(3,∞)` + 10 次 push ⇒ `blocks=3`/`dropped=7`/`oldestSeq=8`（不随写入线性增长）；字节 `(∞,10B)` + 4B×3 ⇒ `dropped=1`/`bytes=8`；单块本身超字节上限 ⇒ 它**自己**也被丢（有界优先）。⚠️ 实测订正：serializer **不传 `scrollback` 时吐出全部 scrollback** ⇒ 本包快照**永远显式**传该选项（REQ-6.2 的「有界」全靠它，默认 200 行、上限 1000）。另有 `tests/unit/session-utf8.test.ts`（3 条）钉住**跨块 UTF-8 解码**：把「中」（E4 B8 AD）切成两块发 ⇒ 快照仍是「中」；**变异测试**：把有状态 `StringDecoder` 换成逐块 `toString` ⇒ `'ok中!'` 变 `'ok\ufffd\ufffd!'`、2 条红
 
-- [ ] T2.4 [REQ-6.3] `lost` 语义
+- [x] T2.4 [REQ-6.3] `lost` 语义
   - 验证：`vitest` —— `sinceSeq` 早于下界 → 返回 `lost: true` + 快照；`sinceSeq` 合法 → 只回增量块
+  - ✅ **2026-10-09 落地**：`sinceSeq` 早于下界 ⇒ `lost: true` **并附快照**，且 `lost` 分支**没有 `chunks` 字段**（字面判据 `'chunks' in read === false`）⇒ 结构上不可能退化成「看起来像成功的空数组」；`sinceSeq` 合法 ⇒ 只回该序号起的块（`[2,3]`，不重复不遗漏）；`sinceSeq = nextSeq` ⇒ `lost:false` 且 **0 块**（「没有新输出」≠ 丢失）；缓冲被丢空后**下界 = 下一号** ⇒ 旧序号仍是 `lost`（不会把「空」当「没丢」）；`NaN` ⇒ 按下界处理、不崩。`ScreenIncrementalLost` 也带 `seq` ⇒ 消费方统一 `next = read.seq` 推进（否则丢失那一次没有推进值，两套写法迟早漂移）
 
-- [ ] T2.5 [REQ-6.5][REQ-5.4] 只读性
+- [x] T2.5 [REQ-6.5][REQ-5.4] 只读性
   - 验证：`vitest` —— 连续 `read` 后 PTY 的写入调用计数为 0（读不注入输入）
+  - ✅ **2026-10-09 落地**：结构上保证 —— `read` 只调 `screen.snapshot()/incremental()`，本包不存在「读时写 PTY」的代码路径（`TerminalPtyHandle.write` 只在 `manager.write` 里被调）。行为上钉死：fake handle 计数，连续 5×(snapshot + incremental) + 缺省增量 + `scrollbackLines: 0` 之后 `writeCalls === []` **且** `resizeCalls === []`（读也不改尺寸），读后文本仍含期望内容；**对照组**证明 `write` 路径**会**调 `handle.write`（`['echo hi\r']`）⇒ 那个 0 不是「永远不会写」的假绿
 
 ---
 
@@ -167,6 +172,8 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 - [ ] T7.4 文档回写
   - 内容：T0.1（B-1 结论）、T0.3（前缀）、体积基线、REQ-7.4 的顶掉策略 → 回写 README/design
   - 验证：`grep -n "B-1\|B-3\|superseded" specs/002-terminal-profiles/*.md` 可见结论；`leanspec validate` 无新增告警
+
+> 🔵 **2026-10-09 Phase 2 交付时的越界发现（E 只报不改 ⇒ 归口到本阶段处理）**：① 🔴 **`build` 缺口**：本包 T4.2 / T7.3 与 003 T6.4 / 004 T3.2 / 005 T3.4 都引用 `pnpm … build`，而**全仓没有 `build` 脚本**（跨 4 个 Spec 共 **5 处**）⇒ 收口前必须先交付 esbuild 构建，否则那些门当场红。② `tsconfig` 是 `erasableSyntaxOnly` + `exactOptionalPropertyTypes` ⇒ 可选参数必须显式写 `?: T | undefined` 才能在调用点传 `undefined`（Phase 2 唯一的类型噪音源，建议进编码约定）。③ `@xterm/addon-serialize` 的 `.d.ts` import 了**未安装**的 `@xterm/xterm`，靠 `skipLibCheck: true` 掩盖 ⇒ 关掉它立刻炸；本阶段需定「装 `@xterm/xterm` 作 devDependency」还是打 patch。④ 依赖变更会经 **pnpm 11 `verify-deps-before-run`** 自动写回 lockfile（Phase 2 实测）⇒ 见 `AGENTS.md` 的对应条。
 
 ---
 

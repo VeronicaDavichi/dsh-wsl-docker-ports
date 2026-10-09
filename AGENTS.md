@@ -52,6 +52,7 @@
 | Leave status as "planned"           | Update to `in-progress` before coding       |
 | Edit frontmatter manually           | Use `update` tool                           |
 | Complete spec without documentation | Document progress, prompts, learnings first |
+| 以为装了依赖用 `--lockfile=false` 就能不动 `pnpm-lock.yaml` | **依赖变更后必须跑 `pnpm install` 并复验 `pnpm install --frozen-lockfile` exit 0**（2026-10-09 实测：pnpm 11 `verify-deps-before-run` **默认开启**，任何一次 `pnpm run <script>` 前都会自动 install 并写回 lockfile ⇒ 只改 `package.json` 就必然改 lockfile；回滚 lockfile 反而制造不一致，`--frozen-lockfile` 会直接失败）|
 
 ## 📋 SDD Workflow
 
