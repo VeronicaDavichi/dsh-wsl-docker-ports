@@ -32,6 +32,31 @@ test('T2.1 负例：同一批字节按 UTF-8 硬解会得到乱码（编码指�
   assert.equal(wrong.includes('\u0000'), true, '应看到残留 NUL —— 这就是指纹的依据');
 });
 
+/**
+ * ⚠️ **订正留痕（2026-10-09，Phase 6 收口时由 `scripts/probe.mjs` 抓出）**：
+ * A-1 原先写「行尾 **LF**（无 CRLF）」，**是错的** —— fixture 自身（尾部 `32 00 0d 00 0a 00`）
+ * 与三次实时捕获都是 **CRLF**。当初多半把同批捕获的 `ip-eth0.raw`（那个**确实是** LF，
+ * 见 `net.test.ts` 的 `includes(0x0d) === false`）的性质写到了发行版表上。
+ * 解析器一直用 `split(/\r?\n/)` ⇒ **无功能缺陷**，但这条文档事实错了整整一天且无人能拦
+ * （契约层原本没钉行尾）⇒ 本用例把字节事实变成**可复算**的断言，不再依赖人眼读文档。
+ */
+test('T0.1 真机 fixture 字节事实：CRLF 行尾 · NUL 50% · 无 BOM · 有尾换行', () => {
+  const cr = raw.filter((b) => b === 0x0d).length;
+  const lf = raw.filter((b) => b === 0x0a).length;
+  const nul = raw.filter((b) => b === 0).length;
+
+  assert.equal(cr, 2, '两行文本 ⇒ 2 个 CR（CRLF 行尾）');
+  assert.equal(lf, 2, '两行文本 ⇒ 2 个 LF');
+  assert.equal(cr, lf, 'CR 与 LF 数量相等 ⇒ 行尾是 CRLF，不是混合行尾');
+  assert.equal(nul / raw.byteLength, 0.5, 'UTF-16LE 指纹：NUL 占比恰为 50%（ASCII 内容夹交错 NUL）');
+  assert.equal(raw[0], 0x20, '无 BOM：首字节是空格 U+0020 的低位字节');
+  assert.equal(raw[1], 0x00, '无 BOM：第二字节是 U+0020 的高位字节 0x00');
+
+  const text = decodeWslOutput(raw);
+  assert.equal(text.endsWith('\r\n'), true, '输出**带**尾换行且是 CRLF —— 不要假定「无尾换行」');
+  assert.equal(text.includes('\r'), true, '解码后仍带 CR（解码器不归一化行尾，靠解析层容忍）');
+});
+
 test('T0.1/T2.2 真机 fixture：解析出 Ubuntu2204 / Stopped / 2 / isDefault', () => {
   const distros = parseDistroTable(raw);
   assert.equal(distros.length, 1, '本机 fixture 只有 1 个发行版');
