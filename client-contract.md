@@ -195,6 +195,23 @@ register(definition: SidebarRightTabDefinition): () => void;   // 幂等 dispose
 - ⇒ **判据改口**：可证的只有「**0.1.7-rc.2 有 9 个，且 `managedTerminal` 未被任何官方包占用 ⇒ 仍安全**」；「官方恰好 6 个」**无实物支撑**，该数字从规格里撤下（真机 `sidebarRightTabs.entries()` 打印后再写死）。
 - ⚠️ 注意第 6 项：官方**已经有一个 `terminal` kind**（`dsh-client-ui-sidebar-terminal`）⇒ 我们选 `managedTerminal` 是对的（**不抢占**官方 kind），且应在设计里写明「与官方 `terminal` 区分」的理由。
 
+### P8 ✅ **可复算的「清单预检」**（把官方准入逻辑搬来离线跑，2026-10-09 实测两包全过）
+
+**做法**：把官方宿主侧 `clientExportOf` 与 `CLIENT_CHUNK` **逐字**搬进一段 node 片段，对自己包的 `package.json` 跑一遍 —— 等于**提前走一遍宿主的准入**，比「看代码猜」可靠。五个判定：
+
+| # | 判定 | 依据 |
+| --- | --- | --- |
+| ① | `clientExportOf(pkg.name, pkg.exports)` 能解析出 `./lib/client.js` | §P3/P7 的官方函数（形状错会 **throw**） |
+| ② | 主产物**文件名恰好 `client.js`** | §P3 `chunkUrl()` 的 `<rowId>/client.js` 断言（不匹配 **throw**） |
+| ③ | `dsh.client.platform === 'web'`，`inject`/`external` 若存在则必须是 `string[]` | §P5 权威 schema |
+| ④ | `dsh.bundle.patch` 是字符串**且实物存在** | §P7 清单四件套 |
+| ⑤ | `lib/` 里除主产物外的 `client.*` 文件名**匹配** `/^client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js$/` | §P3 宿主按需路由准入正则 |
+
+**2026-10-09 实测结果**：`dsh-terminal-profiles`（`inject: []`、`external: []`）与 `dsh-wsl-docker-ports`（`inject: ["@deepseek-ai/dsh-client-ui-sidebar-right"]`）**五项全过**；⑤ 当时两包尚未构建（`lib/` 为空），构后需复跑。
+**注意**：`inject` 是**信息性**的（§P5），声明了不 require 的包**不会**被 composition 拒绝；会被拒绝的是 **`external` 里声明的非基线请求缺供给方**。
+
+---
+
 ### P7 📋 **官方客户端插件的清单参照物**（2026-10-09 六次取证：`dsh-client-ui-sidebar-terminal` 的 package.json）
 
 **证据源**：官方 `deepseek-ai-dsh-client-ui-sidebar-terminal-0.1.7-rc.2.tgz :: package/package.json`（逐字）。这是**唯一一个「官方自己写的浏览器客户端插件」清单**，可直接当我们的比对基准。
