@@ -27,6 +27,16 @@
     "@deepseek-ai/cordis": "~4.0.4",
     "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
     "@deepseek-ai/schemastery": "^3.18.4",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "esbuild": "0.28.2",
+    "jsdom": "^25.0.1",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
     "vitest": "^5.0.3"
   },
   "peerDependencies": {
