@@ -1,5 +1,5 @@
 ---
-status: planned
+status: in-progress
 created: 2026-10-08
 priority: high
 tags:
@@ -10,10 +10,12 @@ tags:
 depends_on:
 - 003-wsl-docker-ports
 created_at: 2026-10-08T10:35:07.728372800Z
-updated_at: 2026-10-08T13:23:04.841303700Z
+updated_at: 2026-10-09T02:20:55.172792200Z
 transitions:
 - status: planned
   at: 2026-10-08T13:23:04.841303700Z
+- status: in-progress
+  at: 2026-10-09T02:20:55.172792200Z
 ---
 # 提权写路径：UAC 辅助进程 · 声明式所有权 · 防火墙最小放行
 

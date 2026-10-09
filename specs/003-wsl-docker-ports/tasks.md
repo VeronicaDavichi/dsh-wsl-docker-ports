@@ -137,6 +137,8 @@ T4.1–T4.5 **已整体迁至 [005-elevation-write-path](../005-elevation-write-
 
 - [ ] T6.4 [NFR-4..NFR-7] 质量门
   - 验证：`pnpm -C packages/wsl-docker-ports typecheck` + `test` + `build` 三绿并记录用例数；单文件 ≤ 400 行；UI 零硬编码 hex
+  - 🔴 **2026-10-09 预检（插件清单缺口 ⇒ T0.5 安装接入前必须补）**：对照 4 个真第三方插件的 `package.json`，本包**缺** `dsh` 字段（`dsh.bundle.patch: ./cordis.patch.yml` + `dsh.client` + `dsh.compatibility`）、缺 `cordis.patch.yml` 实物、`exports` 只有 `"."`、且**入口是 `./src/index.ts`**（栈已冻结 **esbuild → CJS**，宿主 ModuleLoader 要的是构建产物 `lib/index.js`）⇒ **本任务里的 `pnpm -C packages/wsl-docker-ports build` 今天会当场失败**（脚本不存在，显式调用**不会**像 `--if-present` 那样跳过）。**处置**：Phase 5 交付插件入口时一并补齐「清单四件套 + `build` 脚本」再跑本门；证据见 [stack-decision.md](../../stack-decision.md) 的 2026-10-09「插件清单契约审计」行
+  - 🔵 **2026-10-09 预检（公开面审计；⚠️ 待主人拍板后再动手，本波**未**改动）**：本包 `src/index.ts` 现有 **27 个运行时导出**，而**包外消费方 = 0** —— ① 全仓**无人**按包名 `dsh-wsl-docker-ports` import（该字符串仅出现在本包 `package.json` 与一句注释里）；② 003 自己的 10 个测试文件**全走相对模块路径**（`../../src/read/netsh.ts` / `../../src/diff/engine.ts` 等，走 barrel `src/index.ts` 的次数 = **0**）；③ 005（写路径）与本 Spec 的 Phase 5 UI 都在**同一个包**里 ⇒ 亦走相对路径。⇒ 今天这个 barrel 是**零消费者的「公开面」**，正是 001 REQ-6.4（导出必须有具名消费方）所防的**投机导出**形态，且文件头自称「公开面」与事实不符。**两条出路**（集成方**推荐 ①**）：① 待 Phase 5 插件入口落地时，把 `src/index.ts` 收敛成**插件入口**（只导出入口所需），同包内部件继续相对路径引用；② 保留现状，但本任务必须**逐条列出消费方**并订正「公开面」措辞。**集成方明确不动手**（第二波有代理在同包写 `write/`，此刻收缩会砸掉它的构建）⇒ 按主人裁定在 Phase 6 执行
 
 - [ ] T6.5 文档回写
   - 内容：T0.1（编码）、T0.2（`--format`、漂移复现）→ 回写 README/design；**并记 D-2（外部规则只读清单）与 D-3（端口声明提到 P0）的最终口径**；提权相关真机结论（005 的 T0.1 / T3.2）由 **005** 回写
