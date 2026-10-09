@@ -9,7 +9,7 @@
  * 会抢走 `.test.ts`（`node:test` 里 import vitest 直接失败）。扩展名就是隔离手段。
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import * as entry from '../../src/client/index.ts';
 import type { ClientContextLike } from '../../src/client/host.ts';
@@ -154,6 +154,78 @@ describe('T5.1 降级：缺什么就报什么，且一律不抛异常', () => {
       expect(loads.count).toBe(0);
       console.log(`  · 缺 ${missing} ⇒ missing=${JSON.stringify(result.registered ? [] : result.missing)}`);
     }
+  });
+});
+
+describe('缺陷 C（2026-10-09 真机）：右栏服务**晚到**时也必须在服务到位后注册页', () => {
+  /**
+   * 真机时序：本包模块级 `inject` 只有 `['slots']` ⇒ 本插件 fiber 早早启动；而 `sidebarRightTabs` /
+   * `sidebarRight` 由官方 `dsh-client-ui-sidebar-right` 提供（那家自己 inject 了 7 个服务、在 apply
+   * **中段**才 provide）⇒ 我们 apply 的时刻它们还没到。
+   *
+   * 旧写法在这一步同步 `softGet` 一次就 `return` ⇒ 紧随其后的 `ctx.inject` 永远执行不到
+   * ⇒ 页不出现、零请求、零告警。本用例在旧代码上**红**（`pending` 长度为 0）。
+   */
+  it('apply 时服务未到 ⇒ 登记惰性注入 + pending（不是「缺失」），服务到位 ⇒ 页与两个 seat 自动注册', () => {
+    const tabRegistrations: unknown[] = [];
+    const slotRegistrations: { readonly options: Record<string, unknown>; readonly component: unknown }[] = [];
+    const services: Record<string, unknown> = {
+      slots: {
+        register: (options: Record<string, unknown>, component: unknown) => {
+          slotRegistrations.push({ options, component });
+          return () => undefined;
+        },
+        inject: (_name: string, callback: () => (() => void) | void) => {
+          callback();
+          return () => undefined;
+        },
+      },
+    };
+    const pending: { readonly names: readonly string[]; readonly callback: (scope: ClientContextLike) => void }[] = [];
+    const ctx: ClientContextLike = {
+      get: (name: string) => services[name],
+      inject: (names: readonly string[], callback: (scope: ClientContextLike) => void) => {
+        pending.push({ names, callback });
+        return () => undefined;
+      },
+      effect: (callback: () => (() => void) | void) => {
+        callback();
+        return () => undefined;
+      },
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const result = entry.apply(ctx, { source: source({ count: 0 }) });
+
+    // ① 必须登记了惰性注入 —— 旧代码在同步判空那一步就 return，这里 `pending` 是空的 ⇒ 红
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.names).toEqual(['sidebarRightTabs', 'sidebarRight']);
+    expect(tabRegistrations).toHaveLength(0);
+    // ② 此刻没注册就如实说「还没注册」（不是「缺失」）
+    expect(result.registered).toBe(false);
+    if (!result.registered) {
+      expect(result.reason).toBe('sidebar-right-pending');
+      expect(result.deferred).toBe(true);
+      expect(result.missing).toEqual([]);
+    }
+    // ③ 可见性：真机那次是 0 warning，缺陷因此查无可查
+    expect(warn.mock.calls.length).toBeGreaterThan(0);
+
+    // ④ `+755ms`：两个服务到位 ⇒ 注入回调跑 ⇒ 页定义 + 两个 keyed seat 都注册
+    services['sidebarRightTabs'] = {
+      register: (definition: unknown) => {
+        tabRegistrations.push(definition);
+        return () => undefined;
+      },
+    };
+    services['sidebarRight'] = { open: () => undefined };
+    pending[0]?.callback(ctx);
+
+    expect(tabRegistrations).toHaveLength(1);
+    expect(slotRegistrations.map((registration) => registration.options['name'])).toEqual([TAB_SLOT, TAB_TITLE_SLOT]);
+    expect((tabRegistrations[0] as Record<string, unknown>)['id']).toBe(PAGE_ID);
+    warn.mockRestore();
+    console.log(`  · 晚到时序扫了 ${String(pending.length)} 次注入登记 / ${String(tabRegistrations.length)} 个页定义 / ${String(slotRegistrations.length)} 个 seat；apply 时返回 ${JSON.stringify(result.registered ? 'registered' : result.reason)}`);
   });
 });
 

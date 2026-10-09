@@ -26,7 +26,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node scripts/build-client.mjs && tsc -p tsconfig.client.json",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --test \"tests/**/*.test.ts\" && vitest run",
+    "test": "node --test --test-concurrency=1 \"tests/**/*.test.ts\" && vitest run",
     "test:client": "vitest run",
     "check:client": "node scripts/verify-client-loader.mjs",
     "check:host": "node scripts/verify-host-entry.mjs"

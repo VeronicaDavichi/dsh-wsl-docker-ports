@@ -23,8 +23,10 @@
  *    `read/localhost-forwarding.ts` / `diff/engine.ts` 的纯判决；
  * 2. **T6.8 快照装配**（`./snapshot.ts`）：把上面这些探针 + 001 的 `.wslconfig` 读法拼成
  *    传输契约 `PortsSnapshot`，**没有新的进程调用、没有新的解析、没有新的命令文本**；
- * 3. **T6.8 快照路由**（`./route.ts`）：自建 `ctx.webServer` 独占前缀 `/dsh-wsl-docker-ports/`，
- *    `GET /dsh-wsl-docker-ports/snapshot` 返回 `{ok:true,snapshot}`。
+ * 3. **T6.8 快照路由**（`./route.ts`）：自建 `ctx.webServer` 独占前缀 `/dsh-wsl-docker-ports`（**不带尾斜杠**），
+ *    `GET /dsh-wsl-docker-ports/snapshot` 返回 `{ok:true,snapshot}`。🔴 注册走 `ctx.inject(['webServer'], …)`
+ *    （真机实测：`apply` 时刻 `ctx.get('webServer')` 是 `undefined`，服务要到 `+755ms` 才到 —— 同步取一次
+ *    就下结论会让路由**永不注册且零报错**，即缺陷 A）。
  *
  * ## 为什么没有 `Config`（与 002 的**刻意**差异）
  *
@@ -80,12 +82,16 @@ export interface PluginGap {
 /**
  * 本插件用到的宿主上下文面（窄接口，只列真用到的成员）。
  *
- * `get` / `provide` / `effect` 都写成**可选**：测试与降级路径都要能在没有它们的 ctx 上跑完，
+ * `get` / `provide` / `inject` / `effect` 都写成**可选**：测试与降级路径都要能在没有它们的 ctx 上跑完，
  * 而「宿主没有 `provide`」应当是一个**可见的 gap**，不是一个 `TypeError`。
+ *
+ * 🔴 `inject` 是**缺陷 A 的修法入口**：`ctx.inject(['webServer'], cb)` 的回调在服务可用时才跑
+ * （已在 ⇒ 同步跑；后到 ⇒ 后到就跑），这就是「宿主可用时机」。有它就不该再用同步 `ctx.get` 定生死。
  */
 export interface PluginContextLike {
   readonly get?: (serviceName: string) => unknown;
   readonly provide?: (serviceName: string, value: unknown) => unknown;
+  readonly inject?: ((names: readonly string[], callback: (scope: PluginContextLike) => void) => unknown) | undefined;
   readonly effect?: (callback: () => (() => void) | void, label?: string) => unknown;
 }
 
@@ -141,9 +147,13 @@ export interface WslDockerPortsPluginHandle {
   readonly service: PortsHostService;
   /** T6.8 的快照装配器（路由的处理器就是调它；也可被集成方直接复用） */
   readonly snapshotBuilder: SnapshotBuilder;
-  /** T6.8 的快照路由注册结果（`registered:false` ⇒ 见 `gaps` 里的 `webServer` 条） */
+  /** T6.8 的快照路由注册结果（`registered:false` ⇒ 看 `state`：`pending` = 等服务，`missing` = 确实缺） */
   readonly route: PortsRouteRegistration;
-  /** 本次装载的降级原因（空数组 = 一切齐备） */
+  /**
+   * 本次装载的降级原因（空数组 = 一切齐备）。
+   * ⚠️ **活视图**：`webServer` 那条按 `route` 的当前状态现算 —— 惰性注入的回调后到并注册成功后，
+   * 再读 `gaps` 就不会有这一条（`pending` 与 `missing` 的文案不同，见 `webServerGap`）。
+   */
   readonly gaps: readonly PluginGap[];
   /** `ctx.provide` 是否真的调用成功 */
   readonly provided: boolean;
@@ -173,7 +183,6 @@ export function applyWslDockerPorts(
   config?: PortsPluginConfigLike | undefined,
   deps: PortsHostDeps = {},
 ): WslDockerPortsPluginHandle {
-  const gaps: PluginGap[] = [];
   const executor = deps.executor ?? createExecutor();
   const configured = config?.distro;
 
@@ -219,14 +228,14 @@ export function applyWslDockerPorts(
   };
 
   const provided = provideService(ctx, PORTS_SERVICE, service);
-  if (!provided) {
-    gaps.push({
-      what: 'provide',
-      reason:
-        '宿主 ctx 上没有 provide() ⇒ 只读服务面未导出；服务导出缺口只影响宿主侧消费方，' +
-        '右栏页的数据通道另见下面的 gaps 条目（REQ-10.3 的降级，不是错误）。',
-    });
-  }
+  const provideGap: PluginGap | null = provided
+    ? null
+    : {
+        what: 'provide',
+        reason:
+          '宿主 ctx 上没有 provide() ⇒ 只读服务面未导出；服务导出缺口只影响宿主侧消费方，' +
+          '右栏页的数据通道另见下面的 gaps 条目（REQ-10.3 的降级，不是错误）。',
+      };
 
   // ── T6.8：宿主侧快照装配 + 自建路由（右栏页的数据通道） ──────────────────────
   // ① 装配器：**只构造，不执行**（探针在请求处理里才跑 ⇒ 装载期零外部命令）
@@ -245,25 +254,41 @@ export function applyWslDockerPorts(
   };
   const builder: SnapshotBuilder = deps.snapshotBuilder ?? createSnapshotBuilder(snapshotDeps);
 
-  // ② 路由：缺 webServer ⇒ 不注册 + 记 gap（客户端半随后按 ports-source-missing 降级）
+  // ② 路由：**注册发生在宿主可用时机**（`ctx.inject(['webServer'])`），此处不再同步 `ctx.get` 定生死
   const route: PortsRouteRegistration = registerPortsRoute(ctx, builder);
-  if (!route.registered) {
-    gaps.push({
+
+  /**
+   * webServer 缺口：**每次读都按 `route` 的当前状态算**。
+   *
+   * 🔴 这是缺陷 A 的第二半：惰性注入的回调可能在本函数返回**之后**才跑（真机 +755ms），
+   * 所以缺口不能是「装载那一刻拍下的一张照片」—— 否则路由都注册好了，`gaps` 里还挂着一句
+   * 「未注册」的过期谎话。`pending`（等服务，不是失败）与 `missing`（确实缺）也必须分开说。
+   */
+  const webServerGap = (): PluginGap | null => {
+    if (route.registered) return null;
+    const why = route.reason ?? '宿主未提供 webServer';
+    if (route.state === 'pending') {
+      return { what: 'webServer', reason: `${why} ⇒ 快照端点 ${PORTS_SNAPSHOT_PATH} 尚未注册；注册到位后本条自动消失。` };
+    }
+    return {
       what: 'webServer',
-      reason: `${route.reason ?? '宿主未提供 webServer'} ⇒ 快照端点 ${PORTS_SNAPSHOT_PATH} 未注册；` +
+      reason:
+        `${why} ⇒ 快照端点 ${PORTS_SNAPSHOT_PATH} 未注册；` +
         '客户端半会按 ports-source-missing 降级（不注册页面、不抛异常），只读服务面仍可用。',
-    });
-  }
+    };
+  };
 
   // ③ 提权写路径：**执行器已实现**（005 的 `runElevate`），未接线的是「计划装配 + 浏览器→宿主传输」
-  gaps.push({
-    what: 'ElevationInvoker',
-    reason:
-      '提权执行器**已实现**（005 的 `elevate/runner.ts` `runElevate` + `defaultElevationDeps`）' +
-      '⇒ 本入口的职责只是接线，不是实现。未接线的原因：`ElevateRequest.plan` 需要一份**带 ownership ' +
-      '判定的写计划**，而「浏览器点击 → 宿主执行」的传输（本波只做了 GET 只读路由）尚未开；' +
-      '在没有它之前接线，只会得到一个「按钮可点但拿不到合法计划」的假入口 —— 故不接，也不造假实现。',
-  });
+  const tailGaps: PluginGap[] = [
+    {
+      what: 'ElevationInvoker',
+      reason:
+        '提权执行器**已实现**（005 的 `elevate/runner.ts` `runElevate` + `defaultElevationDeps`）' +
+        '⇒ 本入口的职责只是接线，不是实现。未接线的原因：`ElevateRequest.plan` 需要一份**带 ownership ' +
+        '判定的写计划**，而「浏览器点击 → 宿主执行」的传输（本波只做了 GET 只读路由）尚未开；' +
+        '在没有它之前接线，只会得到一个「按钮可点但拿不到合法计划」的假入口 —— 故不接，也不造假实现。',
+    },
+  ];
 
   let effectCount = 0;
   let disposed = false;
@@ -279,13 +304,36 @@ export function applyWslDockerPorts(
       return dispose;
     });
   } else {
-    gaps.push({
+    tailGaps.push({
       what: 'effect',
       reason: '宿主 ctx 上没有 effect() ⇒ 卸载钩子未登记（路由的 disposer 只能在手动 dispose() 时生效）。',
     });
   }
 
-  return { service, snapshotBuilder: builder, route, gaps, provided, effectCount: () => effectCount, dispose };
+  /**
+   * 装载结果。
+   *
+   * ⚠️ `gaps` 是 **getter**（不是那一刻的快照）：`webServer` 那条按 `route` 的当前状态现算，
+   * 于是「惰性注入后到 ⇒ 路由注册成功」时它会**自己消失**（见 `webServerGap`）。
+   * 顺序保持既有口径：`provide` → `webServer` → `ElevationInvoker` → `effect`。
+   */
+  const handle: WslDockerPortsPluginHandle = {
+    service,
+    snapshotBuilder: builder,
+    route,
+    get gaps(): readonly PluginGap[] {
+      const out: PluginGap[] = [];
+      if (provideGap !== null) out.push(provideGap);
+      const web = webServerGap();
+      if (web !== null) out.push(web);
+      out.push(...tailGaps);
+      return out;
+    },
+    provided,
+    effectCount: () => effectCount,
+    dispose,
+  };
+  return handle;
 }
 
 /* ────────────────────────── 内部的窄适配 ────────────────────────── */

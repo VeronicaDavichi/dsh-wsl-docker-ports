@@ -101,11 +101,14 @@ test('T6.7 服务导出：provide 一次、服务名对、卸载幂等', () => {
   assert.equal(host.provided[0]?.value, handle.service, '导出的必须就是那个服务对象（不是副本）');
   assert.equal(handle.provided, true);
   assert.deepEqual(handle.gaps.filter((gap) => gap.what === 'provide'), [], 'provide 成功时不该有 provide 缺口');
-  assert.equal(host.effects.length, 1);
-  host.effects[0]?.();
-  host.effects[0]?.();
-  assert.equal(handle.effectCount(), 1);
-  console.log(`  · provide 扫了 ${String(host.provided.length)} 次（${PORTS_SERVICE}）；disposer 调 2 次仍幂等；gaps=${JSON.stringify(handle.gaps.map((gap) => gap.what))}`);
+  // 两条卸载钩子：插件自己的 `dispose` + 路由的 disposer（`route.ts` **无条件**登记，
+  // 于是「服务晚到 / 从没到」都不存在漏卸载 —— 这正是缺陷 A 修复的附带要求）
+  assert.equal(host.effects.length, 2, `卸载钩子应恰好 2 条，实际 ${String(host.effects.length)}`);
+  for (const disposer of host.effects) disposer();
+  for (const disposer of host.effects) disposer();
+  assert.equal(handle.effectCount(), 1, '插件自己只登记 1 条 effect');
+  assert.equal(handle.route.registrationCount(), 0, '卸载后路由必须归零');
+  console.log(`  · provide 扫了 ${String(host.provided.length)} 次（${PORTS_SERVICE}）；2 条 disposer 各调 2 次仍幂等；gaps=${JSON.stringify(handle.gaps.map((gap) => gap.what))}`);
 });
 
 test('T6.8 降级：空 ctx（无 provide / webServer / effect）不抛异常，四条缺口如实列出', () => {
@@ -140,7 +143,7 @@ test('T6.8 有 webServer ⇒ 路由真注册（prefix + 独占前缀），卸载
 
   assert.equal(handle.route.registered, true);
   assert.equal(handle.route.registrationCount(), 1);
-  assert.deepEqual(routes, [{ kind: 'prefix', path: '/dsh-wsl-docker-ports/' }], '必须独占前缀（不蹭 002 的 /dsh-managed-terminal/）');
+  assert.deepEqual(routes, [{ kind: 'prefix', path: '/dsh-wsl-docker-ports' }], '必须独占前缀且**不带尾斜杠**（宿主判据是 `${prefix}/` 拼接；不蹭 002 的 /dsh-managed-terminal）');
   assert.equal(handle.gaps.some((gap) => gap.what === 'webServer'), false, '注册成功就不该有 webServer 缺口');
   assert.equal(fake.calls.length, 0, `装载期零外部命令，实际 ${String(fake.calls.length)} 条`);
   assert.equal(handle.route.requestCount(), 0, '装载期零请求');
@@ -151,6 +154,58 @@ test('T6.8 有 webServer ⇒ 路由真注册（prefix + 独占前缀），卸载
   assert.equal(handle.route.registrationCount(), 0);
   assert.deepEqual(routes, []);
   console.log(`  · 注册扫了 ${String(routes.length)} 条路由（卸载后）；缺口 ${JSON.stringify(handle.gaps.map((gap) => gap.what))}`);
+});
+
+test('T6.8-修A 装载期服务晚到（真机时序）⇒ 缺口是 pending、且注册到位后**自己消失**', () => {
+  // 真机时序：`apply` 时刻 `ctx.get('webServer') === undefined`，服务要到后续 tick 才进注入作用域
+  const routes: { kind: string; path: string }[] = [];
+  const surface = {
+    register: (route: { kind: 'exact' | 'prefix'; path: string }) => {
+      if (routes.some((item) => item.kind === route.kind && item.path === route.path)) throw new Error('重复 (kind,path) 注册');
+      routes.push({ kind: route.kind, path: route.path });
+      return () => {
+        routes.splice(0);
+      };
+    },
+  };
+  const host = fakeCtx();
+  const pending: ((scope: PluginContextLike) => void)[] = [];
+  const ctx: PluginContextLike = {
+    ...host.ctx,
+    get: () => undefined,
+    inject: (_names, callback) => {
+      pending.push(callback);
+      return undefined;
+    },
+  };
+  const handle = applyWslDockerPorts(ctx, undefined, { executor: routingExecutor().executor });
+
+  // ① 此刻：诚实的 pending（不是「缺失」，也不是已注册）
+  assert.equal(handle.route.registered, false);
+  assert.equal(handle.route.state, 'pending');
+  assert.deepEqual(routes, [], '服务没到 ⇒ 一条路由都没注册');
+  const before = handle.gaps.find((gap) => gap.what === 'webServer');
+  assert.ok(before !== undefined, 'pending 也必须在 gaps 里可见（不静默）');
+  assert.match(String(before?.reason), /inject/u, '文案要写清「已登记注入」');
+  assert.equal(/未注册；.*ports-source-missing/u.test(String(before?.reason)), false, 'pending 不是缺失，不许套缺失的后果文案');
+  assert.equal(pending.length, 1, '必须登记了 ctx.inject（旧代码：0 次 ⇒ 路由永不注册）');
+
+  // ② `+755ms`：服务到位 ⇒ 注入回调跑 ⇒ 注册
+  pending[0]?.({ get: (name: string) => (name === 'webServer' ? surface : undefined) });
+  assert.equal(handle.route.registered, true);
+  assert.equal(handle.route.state, 'registered');
+  assert.deepEqual(routes, [{ kind: 'prefix', path: '/dsh-wsl-docker-ports' }]);
+  assert.equal(
+    handle.gaps.some((gap) => gap.what === 'webServer'),
+    false,
+    '🔴 缺口是**活视图**：注册成功后必须自己消失（旧代码在装载那一刻拍下照片 ⇒ 会留一句过期的话）',
+  );
+
+  // ③ 卸载后注册数归零（`ctx.effect` 收编的 disposer）
+  host.effects[0]?.();
+  assert.equal(handle.route.registrationCount(), 0);
+  assert.deepEqual(routes, []);
+  console.log(`  · 晚到时序扫了 ${String(pending.length)} 次 inject：pending → registered，缺口从有到无，卸载后 routes=${String(routes.length)}`);
 });
 
 test('T6.8 仍然不做的事被如实记成缺口（不造假 ElevationInvoker：执行器已实现，缺的是计划装配 + 写传输）', () => {

@@ -25,11 +25,27 @@ import type { WslDistro, WslDistroState } from 'dsh-wsl-shared';
 import type { DiffFailure, DiffResult, Scope } from './diff/types.ts';
 import type { DockerContainer } from './read/docker.ts';
 
-/** 具名 HTTP 路由的**独占前缀**（不蹭 002 的 `/dsh-managed-terminal/`） */
-export const PORTS_HTTP_PREFIX = '/dsh-wsl-docker-ports/';
+/**
+ * 具名 HTTP 路由的**独占前缀**（不蹭 002 的 `/dsh-managed-terminal/`）。
+ *
+ * 🔴 **不带尾斜杠** —— 这不是审美，是匹配判据：宿主 `dsh-host-webserver/lib/index.js:328`
+ * 的分派是 `if (pathname !== prefix && !pathname.startsWith(`${prefix}/`)) continue;`
+ * ⇒ 前缀写成 `/dsh-wsl-docker-ports/` 时，实际要求的是 `startsWith('/dsh-wsl-docker-ports//')`，
+ * 于是 `/dsh-wsl-docker-ports/snapshot` **永远不匹配**（真机实测：请求被宿主兜底 404 吃掉，
+ * 无 `Content-Type`、无 body；只有 `pathname` 正好等于前缀或写成双斜杠才轮到我们）。
+ */
+export const PORTS_HTTP_PREFIX = '/dsh-wsl-docker-ports';
 
-/** 快照端点（本前缀下**唯一**的路径；前缀内其它路径一律 404） */
-export const PORTS_SNAPSHOT_PATH = '/dsh-wsl-docker-ports/snapshot';
+/** 快照端点在**前缀内**的那一段（拼接一律 `PORTS_HTTP_PREFIX + PORTS_SNAPSHOT_SEGMENT`；模块内部即可） */
+const PORTS_SNAPSHOT_SEGMENT = '/snapshot';
+
+/**
+ * 快照端点（本前缀下**唯一**的路径；前缀内其它路径一律 404）。
+ *
+ * ⚠️ **对外 URL 与修复前逐字相同**（`/dsh-wsl-docker-ports/snapshot`）⇒ 客户端 fetch、
+ * `client-contract.md` §P9 的契约、既有 404/405 语义都不用改。
+ */
+export const PORTS_SNAPSHOT_PATH = `${PORTS_HTTP_PREFIX}${PORTS_SNAPSHOT_SEGMENT}`;
 
 /** 唯一接受的方法 */
 export const PORTS_SNAPSHOT_METHOD = 'GET';

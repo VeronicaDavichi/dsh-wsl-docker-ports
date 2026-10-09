@@ -235,3 +235,12 @@ T4.1–T4.5 **已整体迁至 [005-elevation-write-path](../005-elevation-write-
 | 7 | 禁插件再启用 | 无重复页/无临时文件残留；规则零变化 | 日志 + `%TEMP%` + 快照 |
 
 > **写路径与 UAC 的真机行（原第 3–8 行：加转发 loopback/lan、移除、漂移修复、拒绝 UAC、策略 `none`）已迁至 [005-elevation-write-path 的真机清单](../005-elevation-write-path/tasks.md)**（2026-10-08 拆分）—— 那里每行都需**人工点 UAC**。本清单只保留**不触发提权**的只读与门禁场景。
+
+### ✅ 2026-10-09 缺陷 A/B/B2/C 修复交付（已独立复验）
+
+- **改动**：`src/wire.ts`（前缀去尾斜杠、快照路径由前缀派生，对外 URL 逐字不变）· `src/route.ts`（注册改走 `ctx.inject(['webServer'], …)`；状态改活 getter `registered/state/reason`；attach 幂等 + disposed 挡后到回调 + disposer 无条件进 `ctx.effect`；handler 改为**先认路径、已知路径才谈方法**）· `src/plugin.ts`（`gaps` 改 getter：注册到位后缺口自己消失）· `src/client/index.ts`（删掉注入前同步判空早退，一律惰性注入；`sidebar-right-pending`(deferred) ≠ `unavailable`；降级写 `console.warn`）· 新增 `tests/unit/route-fakes.ts`（逐字复刻宿主分派判据）+ `route-timing.test.ts`（4 条对抗性回归）。
+- **我的独立复验**：`typecheck` exit 0 · `vitest` 2 文件 26 通过 · `build` `lib/client.js = 85,199 B` · `check:client` 24 断言 0 失败 · `check:host` 18 断言 0 失败 · `node --test` **318/318**（串行）。
+- **我自己的变异测试**（不采信代理自证）：把 `PORTS_HTTP_PREFIX` 改回带尾斜杠 ⇒ `route-timing.test.ts` **B 与 B2 两条真红**；还原后 hash 逐字节一致、4/4 全绿 ⇒ 对抗性用例**确实能抓这个缺陷**。
+- ⚠️ **顺带发现（本包范围外，未修）**：`packages/terminal-profiles/src/ws/routes.ts` 有**同一个**「在 apply 里同步 `ctx.get('webServer')` 决定注册」的缺陷（同一类 A）⇒ 002 的 WS 端点在真机上**很可能同样静默不注册**，已另派修复。
+- ⚠️ **环境级抖动（非断言失败，已钉住门禁）**：Node **v24.15.0** 的 `node --test` 在**默认并行**下偶发 `Unable to deserialize cloned data … test_runner/runner:410 #processRawBuffer`（**掉文件、零 AssertionError**）；实测默认并行 **2/2 红**（`tests 316/319`、`pass 315/318`、`fail 1`），`--test-concurrency=1` 与 `=2` 均 **318/318 绿**（本机 14 个常驻 node = MCP server，非残留子进程）⇒ 已把本包 `scripts.test` 钉成 `--test-concurrency=1`（慢到 ~4.6 s，换稳定；Node 修好后可回退）。
+
