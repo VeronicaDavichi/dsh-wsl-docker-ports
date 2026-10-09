@@ -19,13 +19,13 @@
   - 判据：构造含中文与 emoji 的响应体，断言 `Content-Length` == `Buffer.byteLength(body)`；**先判路径后判方法**（错路径 + 错方法 ⇒ 404 而非 405）。
 - [x] T1.3 [REQ-2.1] `src/transport/plan.ts`：声明式目标 → 动作清单（逐条作用域/监听地址/端口/连接地址/是否伴随防火墙规则/**命令原文** + 条数与影响面）。
   - 判据：`scope:'lan'` 的计划里每条 `commandText` 含具体端口且**不含通配符**；条数 == 端口数（范围内逐端口 1 条）。
-- [ ] T1.4 [REQ-2.2] 计划路径**零副作用**：不调提权、不写盘、不动 `netsh`。
+- [x] T1.4 [REQ-2.2] 计划路径**零副作用**：不调提权、不写盘、不动 `netsh`。
   - 判据：注入的提权/执行器 spy **全 0**；`apply` 未被调用；真机复验计划前后 `netsh` 逐字节相同（并进 T1.7）。
 - [x] T1.5 [REQ-2.3–2.4] 非法输入与集合外端口：返回空计划 + 可读原因，零动作。
   - 判据：`ports:[0]` / `ports:[70000]` / `scope:'wan'` / 集合外 `5173` ⇒ `steps: []` 且 `notes` 非空；**不是** 400。
 - [x] T1.6 [REQ-5] `src/transport/audit.ts`：内存环形（N=100）+ 单行人类可读日志；`GET …/write/audit` 返回尾部。
   - 判据：**不产生任何文件**（用临时目录快照断言零新增文件）；敏感词扫描零命中。
-- [ ] T1.7 [REQ-6.1] 真机复验 P1：探针 profile（**白名单：不得用 `desktop` / `web`**）起实例，打 `plan` 与 `audit`。
+- [x] T1.7 [REQ-6.1] 真机复验 P1：探针 profile（**白名单：不得用 `desktop` / `web`**）起实例，打 `plan` 与 `audit`。
   - 判据：① `plan` 前后 `netsh … show v4tov4` **逐字节相同**（G1）；② 未知路径/错方法真机返回**我们的 JSON**（不是宿主兜底 404）（G4）；③ 跑完逐字节还原 profile。
 
 ## Phase 2（P2）：**执行**（G2/G5/G6）
@@ -72,3 +72,14 @@
 > 另一并如实同步 003 的**计数型**断言（`tests/unit/plugin-entry.test.ts`）：本插件现在拥有 **2 条路由**
 > ⇒ `ctx.inject(['webServer'])` **2 次**、`effectCount` **3 条**（2 路由 + 1 卸载钩）、路由表 2 条 prefix。
 > 这些是**如实更新**（断言的是数量，行为由各自用例守着），不是放宽阈值。
+
+> **T1.4/T1.7 完成留痕（2026-10-09）**：`plugin.ts` **399/400 行** —— 🔴 **只剩 1 行余量**，此后任何新增
+> 一律进独立文件（`transport/wire-plugin.ts` 即范例），**绝不再往 `plugin.ts` 里塞**；下次若必须动它，
+> 先把既有段落外移腾额度（400 行是 SHALL）。
+> 判据（`tests/unit/plugin-entry.test.ts` 新增用例 + 全包 **349/349** 绿）：写通道路由 `registered=true`、
+> `registrationCount()=1`、两条独占前缀（`/dsh-wsl-docker-ports` + `/dsh-wsl-docker-ports/write`）、
+> **装载期 `fake.calls.length === 0`（T1.4 的零外部命令判据）**、`requestCount()=0`、卸载后两路由注册数归零。
+> 变异自证：把 `attachWriteChannel` 换成假对象 ⇒ 该用例必红；还原 hash 一致 ⇒ 绿。
+> 003 的计数型断言已**如实同步**（2 条路由 ⇒ `host.effects` 3 条、`pending` 2 次注入、路由表 2 条 prefix）。
+> ⚠️ 仍**未接真实现读**（缺省是保守降级面：零 IO、eth0 未知 ⇒ 计划恒被拦成 `eth0-unknown`）：
+> 真机现读事实面 + `POST /write/plan` 端到端留到下一轮（探针 profile，动手前先问主人）。

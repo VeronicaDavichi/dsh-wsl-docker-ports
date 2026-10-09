@@ -61,6 +61,9 @@ import type { LocalhostForwardingDeps, LocalhostForwardingOutcome } from './read
 import { probePortproxyRules } from './read/netsh-probe.ts';
 import type { NetshProbeOptions, PortproxyOutcome } from './read/netsh-probe.ts';
 import { registerPortsRoute } from './route.ts';
+import type { PlanFacts } from './transport/plan.ts';
+import { attachWriteChannel } from './transport/wire-plugin.ts';
+import type { WriteRouteRegistration } from './transport/routes.ts';
 import type { PortsRouteRegistration } from './route.ts';
 import { createSnapshotBuilder } from './snapshot.ts';
 import type { SnapshotBuilder, SnapshotDeps } from './snapshot.ts';
@@ -118,6 +121,8 @@ export interface PortsHostDeps {
   readonly probeBackend?: (() => Promise<BackendChoice>) | undefined;
   /** 整体替换装配器（集成方/测试；缺省用 `createSnapshotBuilder(…)`） */
   readonly snapshotBuilder?: SnapshotBuilder | undefined;
+  /** 写通道现读事实（008；缺省 = 保守降级面：零 IO、eth0 未知 ⇒ 计划恒被拦下） */
+  readonly writeFacts?: PlanFacts | undefined;
 }
 
 /** 目标发行版（解析结果 + 全量列表；每个探针都要它，故只解析一次） */
@@ -154,6 +159,8 @@ export interface WslDockerPortsPluginHandle {
   readonly snapshotBuilder: SnapshotBuilder;
   /** T6.8 的快照路由注册结果（`registered:false` ⇒ 看 `state`：`pending` = 等服务，`missing` = 确实缺） */
   readonly route: PortsRouteRegistration;
+  /** 008 写通道路由注册结果（pending 不是失败，与 oute 同理） */
+  readonly writeRoute: WriteRouteRegistration;
   /**
    * 本次装载的降级原因（空数组 = 一切齐备）。
    * ⚠️ **活视图**：`webServer` 那条按 `route` 的当前状态现算 —— 惰性注入的回调后到并注册成功后，
@@ -279,6 +286,8 @@ export function applyWslDockerPorts(
 
   // ② 路由：**注册发生在宿主可用时机**（`ctx.inject(['webServer'])`），此处不再同步 `ctx.get` 定生死
   const route: PortsRouteRegistration = registerPortsRoute(ctx, builder);
+  // ③ 写通道（008 T1.7）：接线在独立文件里（wire-plugin.ts），此处只留一行调用 ⇒ 不挤爆 400 行 SHALL
+  const writeChannel = attachWriteChannel(ctx, deps.writeFacts);
 
   /**
    * webServer 缺口：**每次读都按 `route` 的当前状态算**。
@@ -354,6 +363,7 @@ export function applyWslDockerPorts(
   const handle: WslDockerPortsPluginHandle = {
     service,
     snapshotBuilder: builder,
+    writeRoute: writeChannel.writeRoute,
     route,
     get gaps(): readonly PluginGap[] {
       const out: PluginGap[] = [];

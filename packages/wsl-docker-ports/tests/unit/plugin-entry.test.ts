@@ -103,7 +103,8 @@ test('T6.7 服务导出：provide 一次、服务名对、卸载幂等', () => {
   assert.deepEqual(handle.gaps.filter((gap) => gap.what === 'provide'), [], 'provide 成功时不该有 provide 缺口');
   // 两条卸载钩子：插件自己的 `dispose` + 路由的 disposer（`route.ts` **无条件**登记，
   // 于是「服务晚到 / 从没到」都不存在漏卸载 —— 这正是缺陷 A 修复的附带要求）
-  assert.equal(host.effects.length, 2, `卸载钩子应恰好 2 条，实际 ${String(host.effects.length)}`);
+  // 008 起本插件拥有 2 条路由（只读 + 写通道）⇒ 卸载钩子 = 插件 dispose + 2 路由 disposer = 3 条
+  assert.equal(host.effects.length, 3, '卸载钩子应恰好 3 条（插件 dispose + 只读路由 + 写通道路由），实际 ' + String(host.effects.length));
   for (const disposer of host.effects) disposer();
   for (const disposer of host.effects) disposer();
   assert.equal(handle.effectCount(), 1, '插件自己只登记 1 条 effect');
@@ -143,14 +144,15 @@ test('T6.8 有 webServer ⇒ 路由真注册（prefix + 独占前缀），卸载
 
   assert.equal(handle.route.registered, true);
   assert.equal(handle.route.registrationCount(), 1);
-  assert.deepEqual(routes, [{ kind: 'prefix', path: '/dsh-wsl-docker-ports' }], '必须独占前缀且**不带尾斜杠**（宿主判据是 `${prefix}/` 拼接；不蹭 002 的 /dsh-managed-terminal）');
+  assert.deepEqual(routes.map((item) => item.path).sort(), ['/dsh-wsl-docker-ports', '/dsh-wsl-docker-ports/write'], '两条路由都必须独占前缀且不带尾斜杠（宿主判据是 prefix + / 拼接；不蹭 002 的 /dsh-managed-terminal）');
   assert.equal(handle.gaps.some((gap) => gap.what === 'webServer'), false, '注册成功就不该有 webServer 缺口');
   assert.equal(fake.calls.length, 0, `装载期零外部命令，实际 ${String(fake.calls.length)} 条`);
   assert.equal(handle.route.requestCount(), 0, '装载期零请求');
   assert.equal(typeof handle.snapshotBuilder.build, 'function', '装配器必须能被集成方直接复用');
 
   // 卸载：`ctx.effect` 收编的 disposer 一调，注册数归零（漏登记会让再次挂载直接抛重复 (kind,path)）
-  host.effects[0]?.();
+  for (const disposer of host.effects) disposer();
+  assert.equal(handle.writeRoute.registrationCount(), 0, '卸载后写通道注册数也必须归零');
   assert.equal(handle.route.registrationCount(), 0);
   assert.deepEqual(routes, []);
   console.log(`  · 注册扫了 ${String(routes.length)} 条路由（卸载后）；缺口 ${JSON.stringify(handle.gaps.map((gap) => gap.what))}`);
@@ -188,7 +190,8 @@ test('T6.8-修A 装载期服务晚到（真机时序）⇒ 缺口是 pending、�
   assert.ok(before !== undefined, 'pending 也必须在 gaps 里可见（不静默）');
   assert.match(String(before?.reason), /inject/u, '文案要写清「已登记注入」');
   assert.equal(/未注册；.*ports-source-missing/u.test(String(before?.reason)), false, 'pending 不是缺失，不许套缺失的后果文案');
-  assert.equal(pending.length, 1, '必须登记了 ctx.inject（旧代码：0 次 ⇒ 路由永不注册）');
+  // 008 起两条路由各登记一次注入
+  assert.equal(pending.length, 2, '必须登记了 ctx.inject（旧代码：0 次 ⇒ 路由永不注册）');
 
   // ② `+755ms`：服务到位 ⇒ 注入回调跑 ⇒ 注册
   pending[0]?.({ get: (name: string) => (name === 'webServer' ? surface : undefined) });
@@ -202,7 +205,8 @@ test('T6.8-修A 装载期服务晚到（真机时序）⇒ 缺口是 pending、�
   );
 
   // ③ 卸载后注册数归零（`ctx.effect` 收编的 disposer）
-  host.effects[0]?.();
+  for (const disposer of host.effects) disposer();
+  assert.equal(handle.writeRoute.registrationCount(), 0, '卸载后写通道注册数也必须归零');
   assert.equal(handle.route.registrationCount(), 0);
   assert.deepEqual(routes, []);
   console.log(`  · 晚到时序扫了 ${String(pending.length)} 次 inject：pending → registered，缺口从有到无，卸载后 routes=${String(routes.length)}`);
@@ -312,4 +316,32 @@ test('T6.7 服务面自述：serviceName 可断言（消费方不用猜拿到的
   const methods = Object.keys(handle.service).sort();
   assert.deepEqual(methods, ['classify', 'probeEth0', 'readContainers', 'readLocalhostForwarding', 'readRules', 'resolveTarget', 'serviceName']);
   console.log(`  · 服务面扫了 ${String(methods.length)} 个成员：${JSON.stringify(methods)}`);
+});
+test('T1.7/T1.4 写通道路由：装载期零外部命令、两条独占前缀、卸载归零（008）', () => {
+  const routes: { kind: string; path: string }[] = [];
+  const surface = {
+    register: (route: { kind: 'exact' | 'prefix'; path: string }) => {
+      if (routes.some((item) => item.kind === route.kind && item.path === route.path)) throw new Error('重复 (kind,path) 注册');
+      routes.push({ kind: route.kind, path: route.path });
+      return () => {
+        const index = routes.findIndex((item) => item.kind === route.kind && item.path === route.path);
+        if (index >= 0) routes.splice(index, 1);
+      };
+    },
+  };
+  const host = fakeCtx();
+  const ctx: PluginContextLike = { ...host.ctx, get: (serviceName: string) => (serviceName === 'webServer' ? surface : undefined) };
+  const fake = routingExecutor();
+  const handle = applyWslDockerPorts(ctx, undefined, { executor: fake.executor });
+
+  assert.equal(handle.writeRoute.registered, true, '写通道路由必须真注册（不是留个缺口）');
+  assert.equal(handle.writeRoute.registrationCount(), 1);
+  assert.deepEqual(routes.map((item) => item.path).sort(), ['/dsh-wsl-docker-ports', '/dsh-wsl-docker-ports/write']);
+  assert.equal(fake.calls.length, 0, '装载期零外部命令（T1.4 判据），实际 ' + String(fake.calls.length) + ' 条');
+  assert.equal(handle.writeRoute.requestCount(), 0, '装载期零请求（现读只在请求处理里发生）');
+
+  for (const disposer of host.effects) disposer();
+  assert.equal(handle.writeRoute.registrationCount(), 0, '卸载后写通道注册数必须归零');
+  assert.equal(handle.route.registrationCount(), 0);
+  assert.deepEqual(routes, []);
 });
