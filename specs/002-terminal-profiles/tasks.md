@@ -180,7 +180,7 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 
 - [ ] T7.3 [NFR-1..NFR-6] 质量门
   - 验证：`pnpm -C packages/terminal-profiles typecheck` + `test` + `build` 三项全绿；记录用例数、主 bundle 与 xterm chunk 体积；`package.json` 的 `peerDependencies.react` = `^18.2.0` 且**不在** `dependencies`；单文件 ≤ 400 行
-
+  - 🔵 **2026-10-09 集成方提示（体积基线必须用冻结后的数）**：T7.4 已写入 README 的基线 **11,037 B** 是 **Phase 4 交付时**的主 bundle 数；**Phase 6 配置页进 bundle 后**实测已变为 **41,757 B**（`lib/client.js`；chunk `client.terminal.js` 仍 447,255 B）⇒ 本门记录**以构建冻结后的复算值为准**，并**由集成方**同步更新 README 那一行（代理**不要**改 README，那是集成方的文件）。同时记录对照：官方终端页主 bundle **19,887 B** ⇒ 本包主 bundle 现为它的 **2.1×**（配置页 + 标签壳都在主 bundle）；若主人要压，**可选**把配置页改为懒加载 chunk（§E 允许），但**不是**本门的硬要求 —— 记数、说明、不擅自改架构。
 - [x] T7.4 文档回写（2026-10-09 完成）
   - 内容：T0.1（B-1 结论）、T0.3（前缀）、体积基线、REQ-7.4 的顶掉策略 → 回写 README/design
   - 验证：`grep -n "B-1\|B-3\|superseded" specs/002-terminal-profiles/*.md` 可见结论；`leanspec validate` 无新增告警
