@@ -22,6 +22,8 @@
 import type { RoutePluginContextLike } from '../route.ts';
 import { createAuditLog } from './audit.ts';
 import type { AuditLog } from './audit.ts';
+import { probePortproxyRules } from '../read/netsh-probe.ts';
+import { createPlanFacts } from './real-facts.ts';
 import { createPlanChannel } from './plan.ts';
 import type { PlanFacts } from './plan.ts';
 import { registerWriteRoute } from './routes.ts';
@@ -63,4 +65,37 @@ export function attachWriteChannel(ctx: RoutePluginContextLike, facts?: PlanFact
     }),
   });
   return { writeRoute, audit, facts: effective };
+}
+
+/** 现读部件的**结构化**入参（用 `Parameters<>` 取真实签名 ⇒ 不猜、不复制类型） */
+export interface PluginReadParts {
+  readonly executor: Parameters<typeof probePortproxyRules>[0];
+  readonly netsh?: Parameters<typeof probePortproxyRules>[1] | undefined;
+  /** 现读 eth0（`service.probeEth0(false)`）；`ok:false` 或没有 `ip` ⇒ `null` */
+  readonly probeEth0: () => Promise<{ readonly ok: boolean; readonly ip?: string | undefined }>;
+  /** 提权可用性（005 的单飞 + 一次缓存探测的 `peek()`）；没跑过 ⇒ `null` */
+  readonly elevation: () => { readonly available: boolean; readonly backend: string | null } | null;
+  readonly elevationPolicy?: string | undefined;
+}
+
+/**
+ * 用 003/005 的**既有现读件**造真事实面（`plugin.ts` 只需一行调用 ⇒ 不挤爆 400 行 SHALL）。
+ *
+ * 🔴 `rules` 读失败**必须抛**（`message` 原样带上去）⇒ `plan.ts` 回 `rules-unavailable` 503；
+ * 只有「确实没有规则」才回空数组。按端口过滤用实测字段 `PortproxyRule.listenPort`（`read/netsh.ts:17`）。
+ */
+export function createPluginFacts(parts: PluginReadParts): PlanFacts {
+  return createPlanFacts({
+    rules: async (port: number) => {
+      const outcome = await probePortproxyRules(parts.executor, parts.netsh);
+      if (!outcome.ok) throw new Error(`netsh 读失败：${outcome.message}`);
+      return outcome.rules.filter((rule) => rule.listenPort === port);
+    },
+    eth0Ip: async (): Promise<string | null> => {
+      const outcome = await parts.probeEth0();
+      return outcome.ok === true && typeof outcome.ip === 'string' ? outcome.ip : null;
+    },
+    elevation: () => parts.elevation() ?? { available: false, backend: null },
+    ...(parts.elevationPolicy === undefined ? {} : { elevationPolicy: parts.elevationPolicy }),
+  });
 }
