@@ -116,28 +116,29 @@
 
 ## Phase 4：客户端渲染与页类型
 
-- [ ] T4.1 [REQ-4.1][REQ-4.2][REQ-4.4][REQ-4.5] 页类型与 seat 注册
+- [x] T4.1 [REQ-4.1][REQ-4.2][REQ-4.4][REQ-4.5] 页类型与 seat 注册（2026-10-09 完成）
   - 📌 **2026-10-09 实物契约（照抄，已不是设计口径）**：客户端入口 = `export const inject = ['slots']`（**只放稳定服务** —— 声明了却缺失会让**整个客户端插件 load 失败**）+ `{ apply, inject, name? }`、**没有默认导出**；注册 = `ctx.inject(['sidebarRightTabs','sidebarRight'], scope => scope.sidebarRightTabs.register({ id: 'dsh-terminal-profiles', kind: 'managedTerminal', multiple: true, title, keepMounted: true }))`，`priority` **留空**（= 默认 `extension` 档；官方 `terminal` 页自己用 `"builtin"`）；两个 **keyed seat** = `sidebar.right.pane.tab` / `sidebar.right.pane.tab.title`，**key = `definition.id`**；`register` 返回**幂等 disposer**；**同 band 重复注册、或 `id` 重复 ⇒ 抛错**（⇒ 判据含「重复注册必须报错、不是静默」）。官方 d.ts 签名与真实调用点见 [`client-contract.md`](../../client-contract.md) §C9/C10。**宿主半零改动**（页类型/页体/标题全在客户端注册）。
   - 内容：kind `managedTerminal` + 标题 seat，走 extension 档；作用域注入 + disposer 收集；缺能力降级
   - 验证：`vitest` + fake ctx —— 注册 2 个 seat、缺 `sidebarRight` 时不注册且给原因、卸载后归零；断言 kind 不是官方 6 个中的任何一个
 
-- [ ] T4.2 [REQ-5.1][REQ-5.2] 打包形态 + 样式作用域
+- [x] T4.2 [REQ-5.1][REQ-5.2] 打包形态 + 样式作用域（2026-10-09 完成）
   - 判据（**2026-10-09 二次订正，末次为准**）：客户端半 = **小主 bundle + 独立懒加载 chunk**。主 bundle 用 `await require.async("./client.terminal.js")` 在**终端视图首次挂载时**取 chunk；chunk 自身以 `window.__ModuleLoader__.load({ id: 'dsh-terminal-profiles', chunk: 'client.terminal.js', factory })` 自注册；**xterm 内联在 chunk 里**（不进主 bundle、也不作宿主 external）；chunk 文件**不进 `exports`**（按包内相对路径取）。`react` / `react-dom*` / `@deepseek-ai/*` **必须 external**（未声明的 `require` 会**静默崩** ⇒ 照 `dsh-community-market\scripts\verify-client-externals.mjs` 加自检），并按官方终端页的做法**全部声明为 `devDependencies`**。可断言判据：① 主 bundle **不含** xterm 代码且产物 << chunk；② 未挂载终端视图前 `require.async` **零调用**；③ chunk 头部含 `chunk:` 字段。证据（官方 `dsh-client-ui-sidebar-terminal`：主 19,887 B + chunk 685,949 B，逐字）见 [`client-contract.md`](../../client-contract.md) §P2。
   - 📌 **chunk 命名硬约束（2026-10-09 二次取证，宿主按需路由）**：主产物文件名**必须恰好 `client.js`**（宿主 `chunkUrl()` 断言主 bundle URL 的资源段 = `<rowId>/client.js`，不匹配**直接 throw**，不是静默）；chunk **必须与它同目录**（兄弟文件）且文件名匹配 **`/^client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js$/`** ⇒ `lib/client.terminal.js` ✅ 合规；chunk **不进 `exports`**（宿主按 `<base>/<rowId>/<fileName>?rev=<rev>` 自己拼 URL）；`require.async` 的实参**解析后** = **兄弟文件名**（字面量**或其常量初值**；⚠️ **2026-10-09 实测**：源码写 `require.async(CHUNK_REQUEST)`（`CHUNK_REQUEST = \`./${CHUNK_FILE_NAME}\``）时 esbuild **把模板字面量保留成变量** ⇒ 静态抓字面量必得**空表**，断言须做**一层常量折叠**并打印走的是哪条路径；运行期语义不变，**不要为此把源码改成硬编码字面量**）。✅ **2026-10-09 集成方独立复算（不复用作者脚本）**：`lib/client.js` = **10,997 B**、`lib/client.terminal.js` = **447,255 B**；两者同步 `require` 均 = `["react","react/jsx-runtime"]`、**均无 `react-dom`、无非基线条目** ⇒ 清单 `dsh.client.external = []` **合法且无幽灵声明**；主产物含 `__ModuleLoader__.load({id, factory})` 且**无 `chunk` 字段**、chunk 含 `chunk:"client.terminal.js"`、chunk 文件名匹配宿主准入正则、主产物里 9 处 "xterm" 全是注释与函数名（**xterm 只内联在 chunk**）。逐字代码与推导见 [`client-contract.md`](../../client-contract.md) §P3。
   - ⚠️ **本条曾在同日被我误订正为「单产物」**（依据 = 另一个插件 `dsh-plugin-desktop` 的 `codeSplitting: false`），**随即被官方终端页实物推翻并撤回**。方法教训：否定性结论必须取自「做这件事的那个官方包」，不能从别的插件反推。
   - 内容：`import('@xterm/xterm')` 动态加载；`xterm.css` 局部作用域注入
   - 验证：`pnpm build` 产物中 xterm 落在**独立 chunk**（主 bundle 体积记账）；`grep` 断言无全局样式写入（无 `document.head` 全局注入路径）
 
-- [ ] T4.3 [REQ-5.3] fit 与尺寸同步
+- [x] T4.3 [REQ-5.3] fit 与尺寸同步（2026-10-09 完成）
   - 内容：容器 resize → `fit()` → 计算 `rows/cols` → 同步 PTY
   - 验证：`vitest` —— 尺寸变化时同步调用一次（节流断言）；夹具尺寸 → 期望 rows/cols
 
-- [ ] T4.4 [REQ-5.5] 主题 token
+- [x] T4.4 [REQ-5.5] 主题 token（2026-10-09 完成）
   - 验证：`vitest` 样式断言 —— 零硬编码 hex，只用 `--dsw-*`
 
-- [ ] T4.5 [REQ-12.3][REQ-4.3] tab 关闭后实例存活 + 重开恢复
+- [x] T4.5 [REQ-12.3][REQ-4.3] tab 关闭后实例存活 + 重开恢复（2026-10-09 完成）
   - 内容：tab `×` 只卸载视图；再开页从屏幕模型取快照重建；**每 tab 恰好承载一个实例，列表按创建序稳定**（REQ-4.3）
   - 验证：`vitest` + fake —— 卸载视图后实例表不变；重开走 `attached` 快照路径（**不**重放历史字节流）
+  - ✅ **2026-10-09 集成方复核（逐条对到真用例，不复用作者自述）**：**T4.1** ← `tests/unit/client-tab.test.ts`（形状恰 `{id,kind,multiple,keepMounted,title}` 且 `priority` 缺省；kind 与官方 **9** 个不重名**先证名单非空**；2 个 keyed seat `key=definition.id`；卸载后计数归零 + dispose 幂等；**页类型重复 id 必须抛出、不吞**；第二个 seat 失败 ⇒ 第一个 seat 与页类型的清理都跑、不留半注册）＋`tests/unit/client-entry.test.ts`（入口恰 `{apply,inject,name}`、**无 default**、`inject=['slots']`、缺 `sidebarRight` ⇒ 不注册 + 警告 + 不抛、无 `effect` 时降级注册）。**T4.2** ← `tests/unit/client-artifacts.test.ts`（主产物名恰 `client.js`、chunk 大两个数量级、**材质化期零 async 调用**、取块实参走常量折叠、id=包名、判据名唯一/条数达标防「门瞎了」）＋集成方独立复算产物：**主 11,037 B / chunk 447,255 B**，两者 `require` 均 = `["react","react/jsx-runtime"]`、**零 `react-dom`、零幽灵声明**，xterm 只在 chunk（主产物 3 处均为注释/函数名）。**T4.3** ← `tests/unit/client-xterm-body.test.tsx`（夹具 24×80 → 报给 `onResize`；尾沿节流窗口内多次触发只 fit 一次且到点前不同步）＋`tests/unit/service-surface.test.ts`/`session-resize-kill.test.ts`（`rows≠cols` 防转置、夹紧后的值才落宿主 `[cols, rows]`）。**T4.4** ← `tests/unit/client-styles.test.ts`（选择器全在 `.dtp-` 命名空间、**零硬编码 hex**、`var(--dsw-*)` 只出现在两个已实证 token **且两个都真被用到**——反空转）。**T4.5** ← `tests/unit/ws-resume.test.ts`（全新 attach ⇒ `attached` 带快照与尺寸；**续传成功 ⇒ `snapshot: null`，不重发快照**＝不重放历史）＋`client-xterm-body.test.tsx`（卸载 = 断连 + 退订 + dispose，仅视图卸载）。**方法备注（本轮实测）**：产物字节数必须在代理 `inactive` 后读 —— 11:51 前后曾读到一次**生产构建中间态**（主 126,358 B、字符串 `require` **0 处**，即 react-dom 被内联），11:51:39 重建后恢复 11,037 B ⇒ 构建期间读产物会得到假状态。
 
 ---
 
