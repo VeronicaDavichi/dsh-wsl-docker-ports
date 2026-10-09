@@ -163,12 +163,14 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 
 ## Phase 7：服务导出与收口
 
-- [ ] T7.1 [REQ-11.1][REQ-11.2][REQ-11.3] 导出 `managedTerminal` 服务
+- [x] T7.1 [REQ-11.1][REQ-11.2][REQ-11.3] 导出 `managedTerminal` 服务
   - 内容：`open/list/read/write/resize/kill/subscribe`；本包不 import 003，也不要求 003 import 本包
   - 验证：`vitest` + fake —— 服务面方法齐全；无消费方时**不**报错、不注册多余内容；契约测试断言服务名与 design.md §5 一致
+  - ✅ **2026-10-09 落地**：`src/service-export/{types,service,host-modules}.ts` + `src/plugin.ts`（`tests/unit/service-surface.test.ts` 24 条 + `tests/unit/plugin-entry.test.ts` 13 条）。服务面**恰好** 7 个方法（`Object.keys` 逐字断言 ⇒ 多一个就是第二份契约），全部转发到 `session/manager` —— **不另建实例表 / 不另建屏幕模型**，故 004 工具面、003 服务面、WS 通道看到**同一批实例**。**失败一律是结果、不是抛**：新增 `profile-not-found` / `sandbox-denied` / `internal` 三码（`Omit<SessionFailure,'code'>` 派生 ⇒ 字段跟会话层走、不漂移），会话层既有 7 码**原样透传**（NFR-3）；`internal` 只为兑现「端口抛错也不冒泡」。②「无消费方」两侧都钉：最小 ctx（无 webServer / subprocess / tools / 003）下 `apply` 不抛、服务照导出、`ctx.effect` **恰好 1 次**、页类型 **0 次**；服务面未订阅时 `listenerCount() === 0` 且 `tickerCount() === 0`（**惰性起表**）。③ 契约：`MANAGED_TERMINAL_SERVICE === 'managedTerminal'` 字面断言 + `ctx.provide` **恰好一次**且 `value` 就是那 7 方法对象。**resize 换序/夹紧的唯一入口仍是 `manager.ts:244`**（本层只同名字段转发、**不**二次夹紧）：`resize(id, rows=24, cols=100)` ⇒ 宿主收到 `[100,24]`，返回值 = 夹紧后的实际值（`rows=0`→1、`cols=1e9`→1000、`rows=501`→500、`cols=1`→2）；未知 id 时**零**宿主调用。`cwdOverride` 落 profile 本来就用的槽位（WSL ⇒ `cwdLinux`，其余 ⇒ `cwd`；空串 ⇒ `cwd-missing`），且**不**清 `needsFix`（REQ-1.4 不是后门）。`subscribe` 复用 `read` 的结果形状（零新词汇），失败也推送并自动注销。**变异自证 ×2**：① 转发写成 `(cols, rows)` ⇒ **3 条红**（`expected [ [ 24, 100 ] ] to strictly equal [ [ 100, 24 ] ]`），改回复绿；② `isSchemaFactory` 收紧成只认 `object` ⇒ 红 1 条（下方「可调用对象」回归条），改回复绿。**宿主模块取用缝（`host-modules.ts`）实测**：依赖落地后直读 `src/plugin.ts` ⇒ `Config !== undefined` 且 `Config['~standard'].vendor === 'schemastery'`（真 Schemastery ⇒ `.volatile()` 不会被静默降级）。🔴 该实测**抓到过一个真缺陷**：schemastery 的导出命名空间是**可调用对象**（`typeof z === 'function'`、挂 `any/array/object`、**无** `default`、**无** `Schema`）⇒ 初版只认 `object` 会把真实现判掉、`Config` 静默变 `undefined`（现已按 function 也收 + 回归条钉死）。残余真机项（并入 T0.5）：003 按**字符串键** `managedTerminal` 真机注入
 
-- [ ] T7.2 [REQ-12.1][REQ-12.2] 卸载清理
+- [x] T7.2 [REQ-12.1][REQ-12.2] 卸载清理
   - 验证：`vitest` + fake —— 卸载后 WS 连接数、路由数、页类型数、工具数、resize 监听数全部归零；**全部实例被终止**（PTY kill 调用数 = 实例数）
+  - ✅ **2026-10-09 落地（打底）**：`src/plugin.ts` 用**一个**幂等 `dispose()` 收全部 —— `channel.closeAll()`（WS 连接）→ `channel.dispose()`（路由）→ 工具面 `dispose()` → `serviceHost.dispose()`（清订阅 → 停定时器 → 逐个 `kill` 全部实例）；并收进 `ctx.effect`（宿主**不会**自动收编，design §11）。判据（`plugin-entry.test.ts`，卸载前后逐项）：WS 连接 `activeCount 1→0`、路由/升级 `liveCount 2→0`、`routeCount 2→0`、工具 `6→0`、订阅监听 `1→0`、定时器 `1→0`、`list() → []`、`terminateCount === [1,1]` 且 `terminated === true`（**kill 调用数 = 实例数**）、原 list 路由回落到官方行为（不是「注册着但答得动」）。**页类型数 = 0**：Phase 4 未实现 ⇒ fake ctx 装**计数版** `sidebarRightTabs`，真注册一次就变红（比「不写断言」强）；**resize 监听数 = 0** = 订阅监听 + 定时器，Phase 5 的 xterm fit 监听尚未实现 ⇒ 该项当前平凡为 0（已在测试头注写明代理口径）。另证**卸载后可重新装载**：同一 webServer 再 `apply` 一次仍 `registered === true` 且 `duplicateAttempts === 0`（REQ-7.6 的真实风险 = 残留路由撞「重复 `(kind,path)` 抛错」）。⚠️ 残余真机项并入 T0.5：真机装载 → 卸载后同样归零
 
 - [ ] T7.3 [NFR-1..NFR-6] 质量门
   - 验证：`pnpm -C packages/terminal-profiles typecheck` + `test` + `build` 三项全绿；记录用例数、主 bundle 与 xterm chunk 体积；`package.json` 的 `peerDependencies.react` = `^18.2.0` 且**不在** `dependencies`；单文件 ≤ 400 行
