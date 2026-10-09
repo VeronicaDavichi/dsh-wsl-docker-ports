@@ -98,3 +98,32 @@ export type {
 
 export { createTermBuffer } from './screen/buffer.ts';
 export type { TermBuffer, TermBufferHit, TermBufferLost, TermBufferRead, TermChunk } from './screen/buffer.ts';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 插件入口（宿主按**包根**解析）—— 2026-10-09 集成方落地
+//
+// 宿主（cordis loader）在**包根导出**里找 `name` / `inject` / `apply` / `Config`；本包
+// `package.json` 的 `exports["."]` 已切到**构建产物** `./lib/index.js`（与同族已装插件
+// `@xxxyz/dsh-mcp-manager` 同构：`build = tsc` → `lib/`、入口指 `lib/index.js`、`type: module`）。
+// 🔴 少了 `apply`，profile 里插了 patch 也**不会激活** —— 宿主只会 import 到一堆普通导出。
+//
+// **同时**提供默认对象形态 `{ name, inject, apply }`：那是宿主官方文档的三种形态之一
+// （函数 / 对象 `{name, inject, apply}` / `class extends Service`），且本机同族生产代码用的就是它
+// （`DeepSeekHarness-MCP-Manager/src/index.ts` 末尾 `export default { name, inject, apply }`，
+// 其编译产物 `lib/index.js` 同样是 `export default {`）⇒ 两种形态都给，免掉宿主侧解析差异。
+//
+// 📌 `patch` 行的 `name` 取值口径（据 `dsh-drop-caret/cordis.patch.yml` 的原文注释
+// 「The row name must match the npm package name and the host half's exported `name`」）：
+// 本包三者**逐字一致** = `dsh-terminal-profiles` ✓（同族 `@xxxyz/dsh-mcp-manager` 的宿主半
+// 导出的却是 `dsh-mcp-manager-host`，与包名不同 —— 两种写法在野都存在，本包选**注释明确的**那种）。
+// ─────────────────────────────────────────────────────────────────────────────
+import { Config, apply, inject, name } from './plugin.ts';
+
+export { Config, apply, inject, name };
+export type {
+  PluginDeps,
+  PluginGap,
+  ProfilesConfigLike,
+  TerminalProfilesPluginHandle,
+} from './plugin.ts';
+export default { name, inject, apply, Config };

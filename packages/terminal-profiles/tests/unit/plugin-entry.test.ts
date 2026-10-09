@@ -19,11 +19,10 @@ import {
   name,
   sandboxGuard,
 } from '../../src/plugin.ts';
-import type { PluginContextLike, ProfilesConfigLike } from '../../src/plugin.ts';
 import { defaultHostModulePort, resolveSchemaFactory } from '../../src/service-export/host-modules.ts';
 import { MANAGED_TERMINAL_SERVICE } from '../../src/service-export/types.ts';
 import { TERMINAL_TOOL_NAMES } from '../../src/tools/index.ts';
-import type { HostContextLike } from '../../src/tools/index.ts';
+import type { HostContextLike, ToolRegisterSurface } from '../../src/tools/index.ts';
 import {
   TERM_WS_HTTP_PREFIX,
   TERM_WS_LIST_PATH,
@@ -140,6 +139,26 @@ describe('T7.1 ② 无消费方时不报错、不注册多余内容（装载面�
     expect(handle.toolNames).toEqual([]);
     expect(handle.routeCount()).toBe(0);
     expect(handle.service.list()).toEqual([]);
+  });
+
+  it('工具面**半途**失败 ⇒ 记 gap + 回滚已注册项，且不拖垮整包（真机：宿主拒绝参数表）', () => {
+    const tools = createFakeTools();
+    let seen = 0;
+    const flaky: ToolRegisterSurface = {
+      register(definition) {
+        seen += 1;
+        if (seen === 3) throw new Error('unsupported JSON schema: schema.required …');
+        return tools.service.register(definition);
+      },
+    };
+    const fakeCtx = createFakePluginCtx({ tools: flaky, subprocess: createFakeSubprocess().surface });
+    const handle = applyTerminalProfiles(fakeCtx.ctx, CONFIG, { hostModules: createHostSpy().port });
+
+    expect(seen).toBe(3); // 前两个真注册上去了（所以回滚不是空跑）
+    expect(tools.names).toEqual([]); // 半途失败 ⇒ 全部撤回，不留残渣（REQ-12.2）
+    expect(handle.toolNames).toEqual([]);
+    expect(handle.gaps.map((gap) => gap.what)).toContain('tools');
+    expect(fakeCtx.provideCalls.map((call) => call.name)).toEqual(['managedTerminal']); // 其余面照常
   });
 
   it('缺什么就记什么（不静默降级）：subprocess / tools / webServer / allowedOrigins 各有 gap', () => {

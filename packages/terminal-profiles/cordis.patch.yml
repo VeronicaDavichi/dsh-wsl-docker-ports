@@ -13,7 +13,20 @@
 # ⚠️ 残余（故意留白、不猜）：本行 `name` 最终要经 `exports["."]` 解析到**构建产物**（宿主
 # ModuleLoader 契约），而当前 `exports["."]` 仍指向 `./src/index.ts`（纯函数 barrel，无 `apply`）。
 # 「插件入口 + build + 切换 exports/main」随 002 T7.1 一起交付 —— 见 stack-decision.md 的
-# 2026-10-09「`build` 缺口的准入条件」行。在此之前**不要**用本包做 T0.5 的装载验证。
+# 2026-10-09「`build` 缺口的准入条件」行。
+#
+# ✅ **2026-10-09 残余已消除（集成方）**：`exports["."]` 已切到**构建产物** `./lib/index.js`；
+#   `src/index.ts` 收敛为插件入口（再导出 `name`/`inject`/`apply`/`Config`，**并**给
+#   `export default { name, inject, apply, Config }` 对象形态）。**实测对象是编译产物、不是源码**：
+#   `import('.../lib/index.js')` ⇒ `name = 'dsh-terminal-profiles'`、`apply` 为函数、`Config` 为函数；
+#   **裸 ctx 调 `apply()` 不抛**、`ctx.provide('managedTerminal', …)` **真被调用**、注册 **1** 个
+#   `ctx.effect`；缺 `subprocess`/`tools`/`webServer` 时按 gap 降级不崩 ⇒ 本行现在**可以**用于
+#   T0.5 的**宿主半**装载验证（原先那句「不要用本包做 T0.5」已由本条取代）。
+#
+# ⚠️ **仍未完成**：`dsh.client` + `exports["./client"]` + 客户端 chunk（002 Phase 4）⇒ 右栏页面与
+#   配置页在真机上**还不会出现**；故 T0.5 此刻只能验「插件被装载 + 服务被导出 + **页类型 0 次**」。
+# 🔴 另有一条待修（不属本文件）：004 的 6 个工具 schema 用 JSON Schema 写法，被真 `defineTool`
+#   的**值 schema DSL** 全部拒收（见 stack-decision.md 2026-10-09 行）⇒ 修好之前工具面注册数为 0。
 - insert:
     - id: dsh-terminal-profiles
       name: dsh-terminal-profiles
