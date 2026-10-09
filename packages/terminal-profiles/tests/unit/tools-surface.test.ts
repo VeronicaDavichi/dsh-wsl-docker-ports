@@ -85,6 +85,40 @@ describe('T1.4 REQ-2.3 工具面不自建机制（结构断言）', () => {
     }
   });
 
+  it('🔴 工具面**零前端依赖**（`src/tools/**` 源码 + `package.json` 依赖表，双重断言）', () => {
+    // T3.2 的验收原文是「静态断言本 Spec 目录**无**前端依赖、无 002 逻辑复制」。此前只有
+    // 「无 002 逻辑复制」那一半落了断言 ⇒ **缺一半 = 门会静默放过前端依赖混入**（假绿），故补齐。
+    const frontend = [
+      "from 'react'",
+      'from "react"',
+      'react-dom',
+      'react/jsx-runtime',
+      '@deepseek-ai/dsh-client',
+      'dsh-client-store',
+      'ui-primitives',
+      'createRoot(',
+      'ReactDOM',
+      "from '@xterm/xterm'", // 浏览器侧 xterm：Host 侧只能用 `@xterm/headless`
+    ];
+    for (const name of SOURCES) {
+      const code = stripComments(readSource(name));
+      for (const token of frontend) {
+        expect(code.includes(token), `${name} 不应出现前端依赖「${token}」（NFR-1 / T3.2）`).toBe(false);
+      }
+    }
+
+    const pkg = JSON.parse(
+      readFileSync(fileURLToPath(new URL('../../package.json', import.meta.url)), 'utf8'),
+    ) as { dependencies?: Record<string, string> };
+    const deps = Object.keys(pkg.dependencies ?? {});
+    const banned = deps.filter((d) => /^(react|react-dom|@xterm\/xterm)$|^@deepseek-ai\/dsh-client/.test(d));
+    expect(banned, '`package.json` 的 `dependencies` 不应含前端包（NFR-1）').toEqual([]);
+
+    // 反假绿：断言必须**真的扫到了东西** —— 否则「文件列表为空」或「依赖表读不到」也会显示全绿
+    expect(SOURCES.length, '必须扫到 ≥ 8 个工具面源文件').toBeGreaterThanOrEqual(8);
+    expect(deps.length, '必须读到 `dependencies` 表（≥ 3 项）').toBeGreaterThanOrEqual(3);
+  });
+
   it('🔴 `src/tools/**` 里没有直接碰 PTY handle / spawn（薄适配层：只调 002 的模块接口）', () => {
     const forbidden = [
       'spawnTerminal',
