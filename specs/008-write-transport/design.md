@@ -166,3 +166,35 @@
 | 计划入参 | `write/types.ts` | `WritePlanInput { action, port, scope, managedPorts, eth0Ip: string\|null, rules: readonly PortproxyRule[], portState?, fromScope?, localhostForwarding?, existingFirewallNames? }`（**复核通过**；`eth0Ip=null` ⇒ 不产生任何动作） |
 
 🔴 **陷阱留痕**：`elevation()` 里**不能**自己造 `policy` —— 必须走 `resolvePolicy`，否则 Agent 触发会拿到用户档策略而**绕过降级**。
+
+## §14 T2.2/T2.3/T2.4 接线蓝图（2026-10-09 实测签名，落地时**无需再侦察**）
+
+**实测接口**（`elevate/types.ts:111/123/138`、`elevate/runner.ts:118/359`）：
+
+    ElevateRequest = { plan: { ok:true; action; port; scope:'loopback'|'lan'; eth0Ip; steps: WriteStep[]; commandText },
+                       policy: ElevationPolicy; source: RequestSource }
+    ElevationDeps  = { executor; snapshot?; probeBackend?;
+                       confirm?: (req: ConfirmRequest) => Promise<boolean>;   // 不注入 = 按拒绝处理
+                       writeFile?; readFile?; removeFile?; tempDir?; randomSuffix?; … }
+    defaultElevationDeps(executor) ⇒ { executor, snapshot }（已实现，勿重写）
+    ConfirmRequest = { action; port; commandText; steps; reason:'policy-ask'|'agent-passby-downgraded'; message }
+    runElevate(request, deps): Promise<ElevateResult>（policy='none' ⇒ SHALL NOT 提权；空 steps ⇒ no-actions）
+
+**票据坐在 `deps.confirm` 位上**：票据有效 ⇔ 「用户已确认命令原文」⇒ `confirm: async () => true`；
+无票/错票/过期 ⇒ **根本不到 `runElevate`**，或注入 `confirm: async () => false` ⇒ 005 按拒绝处理 ⇒ 零提权。
+
+**逐文件改法**
+1. `transport/plan.ts`：`PlanResponse` 增 `confirm:{ ticket: string; expiresAt: number }`（由 `createConfirmTickets` 签发，
+   绑定本响应的 `planId`；同一 `planId` 重复规划 ⇒ 旧票作废）；`confirm` 不进 `canonicalPlanText`（不参与 planId 计算）。
+2. `transport/routes.ts`：apply 依赖签名加 `ticket`（从请求体白名单取，**只加一个字段**，path-first/method-second 与 405/404 语义不动）。
+3. `transport/wire-plugin.ts`：`apply` = ① 重规划（同一 facts）⇒ 得 `planId`/`steps`/`eth0Ip`/`commandText`；
+   ② **票据门**：`consume(planId, ticket)` ⇒ `unknown`/`mismatch`/`expired` 各自错误码 + **零执行**；
+   ③ 通过 ⇒ `runElevate({ plan, policy: facts 的 policy, source: origin }, { ...defaultElevationDeps(executor), confirm: async () => true })`；
+   ④ 失败 ⇒ **回滚**刚加的 portproxy（红线：**他人规则条数不变**）⇒ 结果如实回传；
+   ⑤ **审计**只记**真正发生过的动作**（执行/回滚/结果）；**被拒绝的 apply 不记**（主人 2026-10-09 裁定）。
+4. 单测（离线、零真机）：票据门四种结果；无票 ⇒ **零提权零写入**；执行失败 ⇒ 回滚被调用；拒绝 ⇒ **不进审计环**。
+5. 双门 ⇒ 真机：`plan` ⇒ `apply` ⇒ 断言 `netsh` **19→20** ⇒ `remove` ⇒ 断言 **19**（**同一条命令内连做**，不留多余规则）
+   ⇒ 逐字节还原 `volatile-probe` + 红线段复核（`netsh`=19、防火墙=811、node 回基线、端口空闲、软链 0、frozen exit 0）。
+
+**已具备的前提**：T2.1 票据（`transport/confirm.ts`，5 条判据全绿）；plan 侧真机已验（`planId` 三语义、命令原文可见、所有权闸门）。
+**未接的既有缺口（不因本次而变）**：`firewallNames` / `portState` 无读取件 ⇒ 该两门未启用（偏保守）。
