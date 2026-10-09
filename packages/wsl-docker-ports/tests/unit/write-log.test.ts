@@ -15,10 +15,18 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { test } from 'node:test';
 
+// @ts-expect-error TS7016：001 的 `strip-comments.mjs` 是 dev 脚本、无类型声明；这里只借它的**口径**
+import { stripComments as stripCommentsUntyped } from '../../../wsl-shared/scripts/strip-comments.mjs';
 import { parsePortproxyTable, type PortproxyRule } from '../../src/read/netsh.ts';
 import { compareOthers, createWriteLogEntry, hasFourFields } from '../../src/write/log.ts';
 import { fixtureText } from '../helpers/fake-executor.ts';
 import { rule, ruleToEth0 } from '../helpers/factories.ts';
+
+/** 收窄类型：口径来自 001 的 SSoT 实现，形状在调用点自己声明（不为它新增 `.d.ts`） */
+const stripComments = stripCommentsUntyped as (
+  source: string,
+  options?: { readonly keepLines?: boolean },
+) => string;
 
 const ACTUAL_SET: readonly PortproxyRule[] = parsePortproxyTable(fixtureText('netsh-portproxy-v4tov4.raw'));
 
@@ -120,11 +128,6 @@ function writePathSources(): { readonly file: string; readonly content: string }
   return sources;
 }
 
-/** 剥掉 JS 的行注释与块注释：守卫②③判的是**可执行文本**，注释里的说明不算命令 */
-function stripComments(content: string): string {
-  return content.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-}
-
 test('T1.4 红线守卫①：写路径里不存在「全表清空」形态（拼接构造，避免守卫自己命中）', () => {
   const forbidden = `portproxy${' '}reset`;
   const hit = writePathSources().filter((source) => source.content.includes(forbidden));
@@ -133,7 +136,7 @@ test('T1.4 红线守卫①：写路径里不存在「全表清空」形态（拼
 
 test('T1.4 红线守卫②：每一处 portproxy add/delete 都带 listenport（逐行断言）', () => {
   for (const source of writePathSources()) {
-    const lines = stripComments(source.content).split(/\r?\n/);
+    const lines = stripComments(source.content, { keepLines: true }).split(/\r?\n/);
     lines.forEach((line, index) => {
       if (!/portproxy\s+(add|delete)\b/.test(line)) return;
       assert.match(
@@ -149,7 +152,7 @@ test('T1.4 红线守卫③：脚本里可执行的 netsh 调用只有 add/delete
   const executable = /&\s*netsh(?:\.exe)?\s+interface\s+portproxy\s+(\w+)/g;
   const verbs = new Set<string>();
   for (const source of writePathSources()) {
-    for (const match of stripComments(source.content).matchAll(executable)) {
+    for (const match of stripComments(source.content, { keepLines: true }).matchAll(executable)) {
       verbs.add((match[1] ?? '').toLowerCase());
     }
   }
