@@ -403,14 +403,19 @@ export interface DshPackageManifest {
 | Z9 | **新增** | `context.remote` 在 **0.2.0-rc.2** 的名字与形状（只有 0.1.7 系的三方用法，**无官方 d.ts**） |
 | Z1/Z2/Z3/Z6/Z7/Z8 | 不变 | 见 §Z 原表 |
 
-### P9 📌 003 的宿主↔客户端**数据通道**（2026-10-09 在制品实测：`packages/wsl-docker-ports/src/{wire,route,snapshot}.ts` + `src/client/route-source.ts`）
+### P9 📌 003 的宿主↔客户端**数据通道**（2026-10-09 两轮：源码直读 + **真机装载实测**）
 
-- **传输 = 自建 `ctx.webServer` 具名路由、HTTP-only**：`register({ kind: 'prefix' })`，**不用** `registerUpgrade`（快照是「一问一答的只读数据」，无服务端推送需求）。独占前缀字面量 `PORTS_HTTP_PREFIX = '/dsh-wsl-docker-ports/'`；快照端点 `PORTS_SNAPSHOT_PATH = '/dsh-wsl-docker-ports/snapshot'`、`PORTS_SNAPSHOT_METHOD = 'GET'`。**不蹭 002 的 `/dsh-managed-terminal/`**（源码注释里明写）。
-- 🔴 **disposer 必须登记进 `ctx.effect`** —— 宿主**不会**自动收编 `register()`/`registerUpgrade()` 的返回值；重复 `(kind,path)` 会抛错 ⇒ 漏登记 = 卸载后残留、重装必撞（与 002 同款陷阱，两包各自踩过一次）。
-- **查询参数是「声明」不是「事实」**：`managedPorts` / `scope` / `distro` / `elevationPolicy` / `allowColdStart`；作用域对分隔符 `':'`；`ELEVATION_POLICIES = ['none','ask','passby']`、缺省 `'none'`。🔴 **非法值一律落到最保守默认、不返回 400**（客户端自己拼参数，回 400 只会让右栏页白屏）。
-- **响应形状**：`{ ok: true; snapshot } | { ok: false; error: { code, message } }`；**路由级错误只有两条** —— `rules-unavailable` **503**（读不到 netsh 规则 ⇒ 事实不可信，必须整体失败）与 `internal` **500**（未预期抛出）。**其余降级全部走 200 + 快照内字段**（`docker.ok:false` / `diff.ok:false` / `distroError`）⇒ 页面照样渲染出可读的降级态。
-- **客户端取用点**：`src/client/route-source.ts` 把响应映射成 `PortsSource`；HTTP 失败 ⇒ `error.code`（或兜底 `http-<status>`）+ 可读 message；环境无 `fetch` ⇒ `no-fetch`。**取不到源时右栏页不注册**（`ports-source-missing`，即 T6.8 存在的原因）。
-- ⚠️ **状态：在制品**（T6.8 未收口）。以上字面量取自 **2026-10-09 12:00 的源码直读**（非代理转述）；代理回报若与本节不符，**以本节为准**并追加订正条目（§P 系列的既定口径：较新的 P 覆盖较早的）。
+- **传输 = 自建 `ctx.webServer` 具名路由、HTTP-only**：`register({ kind: 'prefix', path, handler })`（真机证实宿主就是这个对象式签名），**不用** `registerUpgrade`。独占前缀 + 快照端点 + `GET`。**不蹭 002 的 `/dsh-managed-terminal/`**。
+- 🔴 **宿主路由匹配规则（2026-10-09 真机 + 源码双证：`dsh-host-webserver/lib/index.js:328`）**：`if (pathname !== prefix && !pathname.startsWith(`${prefix}/`)) continue;` ⇒ **前缀常量必须【不带尾斜杠】**。我们曾写成 `'/dsh-wsl-docker-ports/'`：宿主实际要求 `startsWith('…//')` ⇒ `/…/snapshot` **永不命中**，被宿主兜底 404 吃掉（**无 Content-Type、无 body、零日志**）。⇒ 既定口径：`PORTS_HTTP_PREFIX = '/dsh-wsl-docker-ports'`（**无尾斜杠**），拼接一律 `prefix + '/snapshot'`；**对外端点 URL 不变**。真机旁证：`GET /dsh-wsl-docker-ports/`（正好等于旧前缀）**能**打到我们的 handler。
+- 🔴 **注册时机（真机实测，静默失败）**：`+68ms` 时 `ctx.get('webServer') === undefined`，`+755ms` 本包 `inject(['webServer'])` 才 FIRED ⇒ **在 `apply` 里同步取服务来决定是否注册 = 必然不注册**（插件面板照旧显示「运行中」、**零报错**）。⇒ 注册必须挂在 `ctx.inject(['webServer'], …)`（或等价的宿主可用时机）；「服务缺失 ⇒ 记 gap 且不注册」的语义**保留**。
+- **判定顺序**：已知路径 + 非 GET ⇒ **405**；未知路径 ⇒ **404**。⚠️ 真机实证反例：handler 先判路径后判方法时 **405 永不达**（`POST /…/` 得到 JSON 404）。
+- 👍 **`HttpResponseLike` 假设【真机成立】**：`response.statusCode = …` + `setHeader('Content-Type'|'Content-Length'|'Cache-Control')` + `end(body)` 在真宿主正确落地（实测 200 + `application/json; charset=utf-8` + 字节准确 `Content-Length` + `no-store`）。`Content-Length` **按 UTF-8 字节**算（中文按字符算会短 ⇒ 长连接串包）。
+- **响应形状**：`{ ok: true; snapshot } | { ok: false; error: { code, message } }`；🔴 **路由级错误共四条** —— `not-found` **404** / `method-not-allowed` **405** / `rules-unavailable` **503**（读不到 netsh 规则 ⇒ 事实不可信，整体失败）/ `internal` **500**（未预期抛出）。**订正**：本节 2026-10-09 早先版本写「路由级错误只有两条」，**是错的**（当时只读到 `fail()` 的一部分），以本条为准。
+- **其余降级全部走 200 + 快照内字段**（`docker.ok:false` + `reason:'timeout'` / `diff.ok:false` + `reason:'eth0-unknown'` / `distroError`）⇒ 页面照样渲染可读降级态。**真机实证**：冷启动首次 `docker.ok:false, reason:'timeout'`（10s 硬超时砍掉），5 s 后重试 `ok:true`、6 个容器、1.17 s ⇒「超时 + 重试、不把空输出当『没有容器』」成立。
+- **查询参数是「声明」不是「事实」**：`managedPorts` / `scope` / `distro` / `elevationPolicy` / `allowColdStart`；作用域分隔符 `':'`；`ELEVATION_POLICIES = ['none','ask','passby']`、缺省 `'none'`。🔴 **非法值一律落到最保守默认、不返回 400**（客户端自己拼参数，回 400 只会让右栏页白屏）。
+- **客户端取用点**：`src/client/route-source.ts` 把响应映射成 `PortsSource`；HTTP 失败 ⇒ `error.code`（或兜底 `http-<status>`）+ 可读 message；环境无 `fetch` ⇒ `no-fetch`；**取不到源时右栏页不注册**（`ports-source-missing`，即 T6.8 存在的原因）。⚠️ **真机遗留**：客户端 bundle 加载成功（manifest 里有、200、我们的 CSS 已注入），但**右栏无页、无 snapshot 请求、控制台零 error** ⇒ 疑似同类的「先同步软取 `sidebarRight*`、之后才 inject 注册」竞态（**未证实**，修复任务在查）。
+- ⚠️ **真机不可信字段（勿当真值用）**：`elevationAvailable` 现为 `async () => false` 的**占位**（本机 gsudo 2.6.1 已装 ⇒ 真值应为 true）；`iphlpsvcRunning` 恒 `null`（未实现探测）；冷启动那份快照内部不自洽（`diff` 已取到 eth0，而 `distro.state` 仍 `"Stopped"`，竞态）。
+- ⚠️ **状态**：离线门禁已收口（T6.8 勾选，上列四码 / `Content-Length` / `no-store` 均出自源码直读）；**真机路由 200 尚未取得** —— 被上述两条真机缺陷挡住（A 时序 / B 尾斜杠），修复在制品。真机装载全程 `desktop` profile 零改动、`--dump-config` 前后 sha256 相同。
 
 ---
 
