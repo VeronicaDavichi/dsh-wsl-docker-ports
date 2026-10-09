@@ -38,7 +38,7 @@ export interface PlanFactSources {
   /** `.wslconfig` 的 `localhostForwarding`（**同步读缓存值**，由调用方负责读一次）；取不到 ⇒ `null`（**不要**猜 `false`） */
   readonly localhostForwarding?: (() => boolean | null) | undefined;
   /** 提权可用性（005 的单飞 + 一次缓存探测）；未跑过时给 `{ available: false, backend: null }` */
-  readonly elevation?: (() => { readonly available: boolean; readonly backend: string | null }) | undefined;
+  readonly elevation?: (() => { readonly available: boolean; readonly backend: string | null } | Promise<{ readonly available: boolean; readonly backend: string | null }>) | undefined;
   /** 当前配置的策略；**留空 = `'unknown'`**（不假装知道：`elevationPolicy` 是 P1 完整配置页的字段） */
   readonly elevationPolicy?: string | undefined;
 }
@@ -61,8 +61,8 @@ export function createPlanFacts(sources: PlanFactSources): PlanFacts {
     rules: (port) => sources.rules(port),
     ...(forward === undefined ? {} : { localhostForwarding: () => forward() ?? null }),
     // `elevation` 在 PlanFacts 里是**必填** ⇒ 没给来源时给「不可用」，绝不省略
-    elevation: () => {
-      const current = elevation?.();
+    elevation: async () => {
+      const current = await elevation?.();
       return { policy, backend: current?.backend ?? 'unknown', available: current?.available ?? false };
     },
   };

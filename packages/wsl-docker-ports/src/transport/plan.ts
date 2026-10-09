@@ -144,6 +144,13 @@ export function parseDeclaration(
 }
 
 /** 现读事实（**全是读**；T1.4 接真机，单测给固定 fixture ⇒ 两边都零副作用） */
+/** 提权可用性（REQ-3.1：预览必须显示它）。**允许 Promise** ⇒ 接线方可**真触发**探测；plan.ts 一律 wait（await 非 Promise 合法 ⇒ 既有同步替身不受影响）。 */
+export interface PlanElevation {
+  readonly policy: string;
+  readonly backend: string;
+  readonly available: boolean;
+}
+
 export interface PlanFacts {
   /** 声明集合（REQ-1.1 所有权判据）—— 只来自服务端配置 */
   managedPorts(declaration: ManagedPorts | undefined): ManagedPorts;
@@ -158,7 +165,7 @@ export interface PlanFacts {
   /** `localhostForwarding`（REQ-2.2/2.5）；`null` = 取不到 */
   localhostForwarding?: (() => boolean | null) | undefined;
   /** 当前提权策略与后端（REQ-3.1：预览必须显示它） */
-  elevation(): { readonly policy: string; readonly backend: string; readonly available: boolean };
+  elevation(): PlanElevation | Promise<PlanElevation>;
 }
 
 /** 单端口计划（原样透出 005 的 `WriteStep`，不另造步骤形状） */
@@ -252,7 +259,7 @@ export function createPlanChannel(facts: PlanFacts): (target: unknown, problem?:
   return async (target: unknown, problem?: string): Promise<WriteRouteResult> => {
     let elevation: PlanResponse['elevation'];
     try {
-      elevation = facts.elevation();
+      elevation = await facts.elevation();
     } catch {
       elevation = { policy: 'unknown', backend: 'unknown', available: false };
     }

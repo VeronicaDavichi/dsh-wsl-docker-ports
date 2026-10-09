@@ -47,16 +47,20 @@ test('Phase2 ②③④ 空规则是事实；eth0 / localhostForwarding 拿不到
   assert.equal(noForward.localhostForwarding, undefined, '没给来源 ⇒ 不提供该事实（该门不启用，而不是编一个值）');
 });
 
-test('Phase2 ⑤⑥ elevation 恒可调且不做触发方降级；声明缺省 = 空集', () => {
+test('Phase2 ⑤⑥ elevation 恒可调且不做触发方降级；声明缺省 = 空集', async () => {
   const fallback = createPlanFacts(sources());
-  assert.deepEqual(fallback.elevation(), { policy: 'unknown', backend: 'unknown', available: false }, '缺省来源 ⇒ 一律不可用（不假装能提权）');
+  assert.deepEqual(await fallback.elevation(), { policy: 'unknown', backend: 'unknown', available: false }, '缺省来源 ⇒ 一律不可用（不假装能提权）');
+
+  // 🔴 接线方给的是**真探测的 Promise**（vailability.probe()）⇒ 必须被 await 到值（这正是本次修的 bug：只 peek 不触发）
+  const probed = createPlanFacts(sources({ elevation: async () => ({ available: true, backend: 'gsudo' }) }));
+  assert.deepEqual(await probed.elevation(), { policy: 'unknown', backend: 'gsudo', available: true }, 'Promise 来源必须被 await，而不是把 Promise 当对象读');
 
   const real = createPlanFacts(sources({ elevation: () => ({ available: true, backend: 'gsudo' }), elevationPolicy: 'ask' }));
-  assert.deepEqual(real.elevation(), { policy: 'ask', backend: 'gsudo', available: true });
-  assert.equal(real.elevation().policy, 'ask', '只反映配置档 —— Agent 触发的降级归执行层（005 resolvePolicy）');
+  assert.deepEqual(await real.elevation(), { policy: 'ask', backend: 'gsudo', available: true });
+  assert.equal((await real.elevation()).policy, 'ask', '只反映配置档 —— Agent 触发的降级归执行层（005 resolvePolicy）');
 
   const nullBackend = createPlanFacts(sources({ elevation: () => ({ available: false, backend: null }) }));
-  assert.deepEqual(nullBackend.elevation(), { policy: 'unknown', backend: 'unknown', available: false }, 'backend=null ⇒ unknown，不编造后端名');
+  assert.deepEqual(await nullBackend.elevation(), { policy: 'unknown', backend: 'unknown', available: false }, 'backend=null ⇒ unknown，不编造后端名');
 
   assert.deepEqual(fallback.managedPorts(undefined), [], '没声明 ⇒ 空集（失败方向最保守）');
   assert.deepEqual(fallback.managedPorts([{ start: 5432, end: 5432 }]), [{ start: 5432, end: 5432 }]);

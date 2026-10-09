@@ -287,7 +287,7 @@ export function applyWslDockerPorts(
   // ② 路由：**注册发生在宿主可用时机**（`ctx.inject(['webServer'])`），此处不再同步 `ctx.get` 定生死
   const route: PortsRouteRegistration = registerPortsRoute(ctx, builder);
   // ③ 写通道（008 T1.7）：接线在独立文件里（wire-plugin.ts），此处只留一行调用 ⇒ 不挤爆 400 行 SHALL
-  const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({ executor, netsh: deps.netsh, probeEth0: () => service.probeEth0(false), elevation: () => availability.peek() }));
+  const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({ executor, netsh: deps.netsh, probeEth0: () => service.probeEth0(false), probeElevation: () => availability.probe() }));
 
   /**
    * webServer 缺口：**每次读都按 `route` 的当前状态算**。

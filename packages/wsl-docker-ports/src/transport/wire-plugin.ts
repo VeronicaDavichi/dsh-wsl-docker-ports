@@ -74,7 +74,7 @@ export interface PluginReadParts {
   /** 现读 eth0（`service.probeEth0(false)`）；`ok:false` 或没有 `ip` ⇒ `null` */
   readonly probeEth0: () => Promise<{ readonly ok: boolean; readonly ip?: string | undefined }>;
   /** 提权可用性（005 的单飞 + 一次缓存探测的 `peek()`）；没跑过 ⇒ `null` */
-  readonly elevation: () => { readonly available: boolean; readonly backend: string | null } | null;
+  readonly probeElevation: () => Promise<{ readonly available: boolean; readonly backend: string | null }>;
   readonly elevationPolicy?: string | undefined;
 }
 
@@ -95,7 +95,7 @@ export function createPluginFacts(parts: PluginReadParts): PlanFacts {
       const outcome = await parts.probeEth0();
       return outcome.ok === true && typeof outcome.ip === 'string' ? outcome.ip : null;
     },
-    elevation: () => parts.elevation() ?? { available: false, backend: null },
+    elevation: () => parts.probeElevation(),
     ...(parts.elevationPolicy === undefined ? {} : { elevationPolicy: parts.elevationPolicy }),
   });
 }
