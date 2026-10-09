@@ -6,6 +6,7 @@
  */
 
 export {
+  createElevationAvailabilityProbe,
   defaultFileExists,
   detectBackend,
   GSUDO_ELEVATION_FAILED_EXIT,
@@ -13,10 +14,14 @@ export {
   isSystemSudoPath,
   parseGsudoStatus,
   parseWhereOutput,
+  probeElevationAvailability,
   resolvePolicy,
   WHERE_TIMEOUT_MS,
   windowsSudoPath,
+  type AvailabilityProbeDeps,
   type BackendProbeDeps,
+  type ElevationAvailability,
+  type ElevationAvailabilityProbe,
   type GsudoStatus,
 } from './backend.ts';
 

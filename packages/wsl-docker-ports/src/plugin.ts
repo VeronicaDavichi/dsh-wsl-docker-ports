@@ -49,6 +49,9 @@ import { createExecutor, listDistros, resolveDistro } from 'dsh-wsl-shared';
 import type { DistroResolution, Executor, WslDistro, WslSharedError } from 'dsh-wsl-shared';
 import { diff } from './diff/engine.ts';
 import type { DiffInput, DiffOutcome } from './diff/types.ts';
+import { createElevationAvailabilityProbe } from './elevate/backend.ts';
+import type { ElevationAvailability } from './elevate/backend.ts';
+import type { BackendChoice } from './elevate/types.ts';
 import { probeDockerPs } from './read/docker-probe.ts';
 import type { DockerPsOutcome } from './read/docker-probe.ts';
 import { createEth0Source } from './read/eth0-source.ts';
@@ -109,8 +112,10 @@ export interface PortsHostDeps {
   readonly eth0?: Eth0SourceOptions | undefined;
   /** 固定时间戳（测试）；默认 `Date.now` */
   readonly now?: (() => number) | undefined;
-  /** 提权可用性探测（005 的只读后端探测）；缺省**保守地**返回 false */
+  /** 提权可用性探测（005 的只读后端探测）；缺省 = **真探测**（缓存 + 单飞，见 `applyWslDockerPorts` 内的说明） */
   readonly probeElevationAvailable?: (() => Promise<boolean>) | undefined;
+  /** 覆盖**后端探测本身**（测试用；缺省 = 005 的 `detectBackend` 真跑 `where.exe gsudo` + `gsudo status`） */
+  readonly probeBackend?: (() => Promise<BackendChoice>) | undefined;
   /** 整体替换装配器（集成方/测试；缺省用 `createSnapshotBuilder(…)`） */
   readonly snapshotBuilder?: SnapshotBuilder | undefined;
 }
@@ -155,6 +160,11 @@ export interface WslDockerPortsPluginHandle {
    * 再读 `gaps` 就不会有这一条（`pending` 与 `missing` 的文案不同，见 `webServerGap`）。
    */
   readonly gaps: readonly PluginGap[];
+  /**
+   * 提权可用性的**最近一次探测结果**（懒探测：还没请求过快照时为 `null`）。
+   * 给集成方一条命令读出「判定成哪个后端 + 依据」——真机复验用（`elevationAvailable` 在快照里只是布尔）。
+   */
+  readonly elevationAvailability: () => ElevationAvailability | null;
   /** `ctx.provide` 是否真的调用成功 */
   readonly provided: boolean;
   effectCount(): number;
@@ -237,6 +247,19 @@ export function applyWslDockerPorts(
           '右栏页的数据通道另见下面的 gaps 条目（REQ-10.3 的降级，不是错误）。',
       };
 
+  // ── 提权可用性（缺陷 2 / 005 tasks 的「待办①」）：真探测 = 005 的只读后端探测 ──────────
+  // 🔴 缓存口径（为什么不是每份快照都真探测）：`build()` 每次刷新都问一次可用性，而真探测要起
+  // 1–3 个进程（`where.exe gsudo` + `gsudo status --json`，读不出来再加 `gsudo status`）⇒ 每份
+  // 快照都打进程 = 刷新一次卡一次。故取「**进程内单飞 + 一次缓存**」（`createElevationAvailabilityProbe`）。
+  // **不设 TTL** 的依据：① 真正的后端判定在每次提权时由 `runElevate` 重做一遍 ⇒ 陈旧值不可能
+  // 造成错误的写；② 会话内「有没有提权通道」几乎不翻转（native 永久可回落）。
+  const availability = createElevationAvailabilityProbe({
+    executor,
+    ...(deps.probeBackend === undefined ? {} : { probeBackend: deps.probeBackend }),
+  });
+  const elevationAvailable =
+    deps.probeElevationAvailable ?? (async (): Promise<boolean> => (await availability.probe()).available);
+
   // ── T6.8：宿主侧快照装配 + 自建路由（右栏页的数据通道） ──────────────────────
   // ① 装配器：**只构造，不执行**（探针在请求处理里才跑 ⇒ 装载期零外部命令）
   const snapshotDeps: SnapshotDeps = {
@@ -247,8 +270,8 @@ export function applyWslDockerPorts(
     ...(deps.eth0 === undefined ? {} : { eth0: deps.eth0 }),
     ...(deps.readNetworkingMode === undefined ? {} : { readNetworkingMode: deps.readNetworkingMode }),
     ...(deps.now === undefined ? {} : { now: deps.now }),
-    // 提权可用性 = 005 的只读后端探测（`where.exe gsudo` + `gsudo status`，零提权、零写入）
-    elevationAvailable: deps.probeElevationAvailable ?? (async (): Promise<boolean> => false),
+    // 提权可用性 = 上面那个**缓存 + 单飞**的真探测（注入 `probeElevationAvailable` 时以注入为准）
+    elevationAvailable,
     // 002 的 `managedTerminal` 只按字符串键软取（REQ-10.2：不建包依赖边）
     execAvailable: (): boolean => ctx.get?.('managedTerminal') !== undefined,
   };
@@ -276,6 +299,16 @@ export function applyWslDockerPorts(
         `${why} ⇒ 快照端点 ${PORTS_SNAPSHOT_PATH} 未注册；` +
         '客户端半会按 ports-source-missing 降级（不注册页面、不抛异常），只读服务面仍可用。',
     };
+  };
+
+  /**
+   * 提权可用性的缺口：**只在探测失败时**出现（探测是懒的 ⇒ 没请求过快照就还没跑过，此时无话可说）。
+   * 与 `webServer` 那条同一取向：活的、不静默、原因必须可诊断。
+   */
+  const availabilityGap = (): PluginGap | null => {
+    const result = availability.peek();
+    if (result === null || result.available) return null;
+    return { what: 'elevationAvailable', reason: `${result.reason}；快照的 elevationAvailable 因此为 false（写控件置灰）` };
   };
 
   // ③ 提权写路径：**执行器已实现**（005 的 `runElevate`），未接线的是「计划装配 + 浏览器→宿主传输」
@@ -314,8 +347,9 @@ export function applyWslDockerPorts(
    * 装载结果。
    *
    * ⚠️ `gaps` 是 **getter**（不是那一刻的快照）：`webServer` 那条按 `route` 的当前状态现算，
-   * 于是「惰性注入后到 ⇒ 路由注册成功」时它会**自己消失**（见 `webServerGap`）。
-   * 顺序保持既有口径：`provide` → `webServer` → `ElevationInvoker` → `effect`。
+   * 于是「惰性注入后到 ⇒ 路由注册成功」时它会**自己消失**（见 `webServerGap`）；`elevationAvailable`
+   * 那条同理，按**缓存里的探测结果**现算（没探测过就不出现）。
+   * 顺序保持既有口径：`provide` → `webServer` → `elevationAvailable` → `ElevationInvoker` → `effect`。
    */
   const handle: WslDockerPortsPluginHandle = {
     service,
@@ -326,9 +360,12 @@ export function applyWslDockerPorts(
       if (provideGap !== null) out.push(provideGap);
       const web = webServerGap();
       if (web !== null) out.push(web);
+      const availabilityGapNow = availabilityGap();
+      if (availabilityGapNow !== null) out.push(availabilityGapNow);
       out.push(...tailGaps);
       return out;
     },
+    elevationAvailability: () => availability.peek(),
     provided,
     effectCount: () => effectCount,
     dispose,
