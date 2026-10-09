@@ -24,8 +24,7 @@
  * 「往 PTY 写」的路径 —— 读路径能注入输入的唯一方式就是绕过本模块，所以它在结构上不成立。
  */
 
-import { SerializeAddon } from '@xterm/addon-serialize';
-import { Terminal } from '@xterm/headless';
+import { createRequire } from 'node:module';
 
 import {
   TERM_SCREEN_SCROLLBACK_LINES,
@@ -36,6 +35,25 @@ import {
 import type { TerminalSize } from '../limits.ts';
 import { createTermBuffer } from './buffer.ts';
 import type { TermBuffer, TermChunk } from './buffer.ts';
+
+/**
+ * 🔴 这两个依赖**必须**经 `createRequire` 取，不能写成命名 import —— 这是 2026-10-09
+ * 「构建门」当场照出的**真装载缺陷**（不是风格问题）：
+ *
+ * `@xterm/headless` 6.0.0 与 `@xterm/addon-serialize` 0.14.0 的 `package.json` **都没有
+ * `exports` 字段**，`main` 指向 CJS（`lib-headless/xterm-headless.js` / `lib/addon-serialize.js`），
+ * 而 `module` 字段 **Node 不认** ⇒ Node 按 CJS 加载，再由 cjs-module-lexer 反推具名导出，
+ * **推不出** UMD 打包里的 `Terminal` / `SerializeAddon` ⇒ ESM 侧
+ * `import { Terminal } from '@xterm/headless'` 在**真 import 时**抛
+ * `SyntaxError: The requested module '@xterm/headless' does not provide an export named 'Terminal'`。
+ *
+ * ⚠️ **vitest 照不出这个缺陷**（它自己做了 CJS 互操作）⇒ 244 条单测全绿、typecheck exit 0，
+ * 而 `node -e "import('lib/index.js')"` 一行就炸。只有「构建 + 真 import 产物」能照出来。
+ * 依赖类型仍按 `typeof import(...)` 声明（`as` 只改写法、不改类型面；两个符号都只出现在值位置）。
+ */
+const require_ = createRequire(import.meta.url);
+const { Terminal } = require_('@xterm/headless') as typeof import('@xterm/headless');
+const { SerializeAddon } = require_('@xterm/addon-serialize') as typeof import('@xterm/addon-serialize');
 
 /** 尺寸别名（002 的公开面用 `ScreenSize`；004/003 从 `./screen-model.ts` 拿） */
 export type ScreenSize = TerminalSize;

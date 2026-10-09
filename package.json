@@ -8,6 +8,7 @@
     "node": ">=22.6.0"
   },
   "scripts": {
+    "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:contract": "pnpm -r --if-present test:contract",
