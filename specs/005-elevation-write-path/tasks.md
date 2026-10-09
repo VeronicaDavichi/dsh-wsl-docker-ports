@@ -13,9 +13,10 @@
   - ⚠️ 本项**必须人工点 UAC**（无法自动化）
   - 🔵 **只读前置已核（2026-10-09，零 UAC、零写入）**：`gsudo` **在 PATH**（`D:\Program Files\gsudo\Current\gsudo.exe`，v2.6.1）· `%SystemRoot%\System32\sudo.exe` **不存在** · `netsh.exe` 与 `New-NetFirewallRule` 均可调 · 当前进程**非管理员**（⇒「写路径必经 UAC」这条前提成立）· 既有 **19 条**规则**仍在**（写验收的比对对象完好）· `gsudo --help` 含 `gsudo { Write-Output … } -args` 的 **stdio 回传**示例。**仍欠**：真的点一次 UAC，验通 stdio 回传 + 退出码 + 临时文件清理 ⇒ **本项保持未完成**
 
-- [ ] T0.2 [C-1/C-2] 继承 003 的前置结论
+- [x] T0.2 [C-1/C-2] 继承 003 的前置结论（2026-10-09 完成）
   - 内容：`netsh` 的**输出编码与解析**（003 的 T0.1 —— 2026-10-08 实测是**纯 ASCII** + CRLF，原「OEM 代码页」假设**已推翻**）与 19 条规则 fixture（003 的 T0.2）**不重复做**
   - 验证：003 的 Phase 0 结论可见且在 fixtures 目录中；若 003 的编码结论变化 → 本 Spec 的脚本读取方式同步
+  - ✅ **2026-10-09 完成（集成方独立核，未重复任何真机实验）**：① **结论可见** —— 003 `tasks.md` 的 T0.1/T0.2 均为 `[x]` + ✅ 2026-10-08；② **fixture 在库且可核字节** —— `tests/contract/fixtures/netsh-portproxy-v4tov4.raw`（**1,109 B**、**19 条**列式规则、端口 `80,443,3000,3128,5000-5003,5173,5432,6379,8080,8194,9000,9001,18080,30808,38080,50051`、connectaddress **去重后仅 `172.20.201.152`**、表头英文），**字节事实逐条对上「纯 ASCII + CRLF」结论**：NUL 字节 **0**、CRLF **25**、裸 LF **0**；③ **本 Spec 未另起编码假设** —— 005 侧 17 个源文件（`src/write/**` + `src/elevate/**`）对 `gbk|GBK|OEM|代码页`、`latin1|utf16|utf-16|ucs2`、`charset|TextDecoder|Buffer.from(…, 'utf'|'hex')` **命中全 0** ⇒ 无「OEM 代码页」旧假设的残影，也无需随 003 结论变化而改读取方式；④ **未重复造 fixture** —— 005 测试经 `tests/unit/fake-executor.ts` 走 `../contract/fixtures/<name>` 复用同一份实物。
 
 ---
 
@@ -108,6 +109,7 @@
 - [ ] T3.5 文档回写
   - 内容：T0.1（提权链路真机结论）、T3.2（规则不变证据）→ 回写 requirements/design；**A-1（降级为 `ask`）与 A-2（卸载不自动清理）均已于 2026-10-08 定案** ⇒ 本任务只剩真机结论回写
   - 验证：`grep -n "A-1\|A-2\|reset" specs/005-elevation-write-path/*.md` 可见结论（**A-1 已于 2026-10-08 定案 = 降级为 `ask`**；A-2 已确认）
+  - 🟡 **2026-10-09 集成方预核：本行**故意不勾**（判据已过、内容未齐）** —— 验证判据（`grep`）实测**已通过**：`A-1|A-2|reset` 在四份文档里分别命中 design **6**（L27/30/78/120/122）/ README **7**（L23/43/70/71/105）/ requirements **5**（L30/58/66/89/90）/ tasks **7**（L71/80-83）；但**内容**要求的「T0.1（提权链路真机结论）+ T3.2（他人规则条数不变证据）」两项**都还没跑**（每次要人工点 UAC）⇒ 本任务只剩的那部分**仍被真机阻塞**，等主人到场后与本 Spec 的 T0.1 / T3.2 一起收口。
 
 - [ ] T3.7 [REQ-3.4] 提权后端链（`gsudo → native`，A-3）
   - 内容：探测**用户自装**的 `gsudo`（用 `where.exe gsudo`，**不认 `sudo` 别名** —— gsudo 安装器会造同名别名）；有则走其 **stdio 回传**，并把 **exit code 999** 判为「提权失败」；`gsudo status` 显示**缓存活跃** ⇒ 回落 `Start-Process -Verb RunAs` + 临时文件；**不安装 / 不改 PATH / 不动 gsudo 配置**（尤其 `CacheMode`）。Windows 自带 `sudo` 仅 `elevationBackend: winsudo` 时启用（本机 23H2 无法验证 ⇒ 登记为未验证项）
