@@ -23,7 +23,7 @@
   - 判据：注入的提权/执行器 spy **全 0**；`apply` 未被调用；真机复验计划前后 `netsh` 逐字节相同（并进 T1.7）。
 - [x] T1.5 [REQ-2.3–2.4] 非法输入与集合外端口：返回空计划 + 可读原因，零动作。
   - 判据：`ports:[0]` / `ports:[70000]` / `scope:'wan'` / 集合外 `5173` ⇒ `steps: []` 且 `notes` 非空；**不是** 400。
-- [ ] T1.6 [REQ-5] `src/transport/audit.ts`：内存环形（N=100）+ 单行人类可读日志；`GET …/write/audit` 返回尾部。
+- [x] T1.6 [REQ-5] `src/transport/audit.ts`：内存环形（N=100）+ 单行人类可读日志；`GET …/write/audit` 返回尾部。
   - 判据：**不产生任何文件**（用临时目录快照断言零新增文件）；敏感词扫描零命中。
 - [ ] T1.7 [REQ-6.1] 真机复验 P1：探针 profile（**白名单：不得用 `desktop` / `web`**）起实例，打 `plan` 与 `audit`。
   - 判据：① `plan` 前后 `netsh … show v4tov4` **逐字节相同**（G1）；② 未知路径/错方法真机返回**我们的 JSON**（不是宿主兜底 404）（G4）；③ 跑完逐字节还原 profile。
