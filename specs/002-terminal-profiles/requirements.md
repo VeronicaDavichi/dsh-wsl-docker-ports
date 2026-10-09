@@ -80,7 +80,7 @@
 
 ### REQ-2 配置存活（编辑不杀终端）
 
-- **REQ-2.1** GIVEN 存在运行中的终端实例，WHEN 用户保存 **volatile-only** 变更（改 `profiles`），THEN 行 SHALL NOT 重挂载，运行中终端 SHALL CONTINUE TO 存活（PTY pid 不变）。**成立前提 = B-1**：机制已由宿主源码确认（整数组标 volatile 成立，见 `stack-decision.md` 的 `plugin.profileConfigLiveness.evidence`），剩余 5 条真机行为链见 tasks.md T0.1。
+- **REQ-2.1** GIVEN 存在运行中的终端实例，WHEN 用户保存 **volatile-only** 变更（改 `profiles`），THEN 行 SHALL NOT 重挂载，运行中终端 SHALL CONTINUE TO 存活（PTY pid 不变）。**成立前提 = B-1 ✅ 已闭环（2026-10-08 五条全定案）**：机制由宿主源码确认（整数组标 volatile 成立，见 `stack-decision.md` 的 `plugin.profileConfigLiveness.evidence`），**且真机已验证** live 写入 152ms 生效、不重挂载、值经 `.get()` 真传播（详见 tasks.md T0.1）。<br>⚠️ **2026-10-09 订正**：原文写「剩余 5 条真机行为链见 tasks.md T0.1」—— 真机链当日已跑完全部定案，属结论已出、正文未同步的**指令残留**。
 - **REQ-2.2** GIVEN 待保存变更**含 ordinary 字段**（会退化为 remount），THEN 系统 SHALL 在写盘前提示「正在运行的终端将被终止」并要求确认，SHALL NOT 静默重挂载。
 - **REQ-2.3** 本包 SHALL NOT 为 ordinary 字段声明「每次 parse 造新实例」的 transform（否则无变更也会 remount）。
 - **REQ-2.4** 编辑 `cwd` / `cwdLinux` SHALL NOT 迁移已运行实例（只影响新建），并在配置页明示这一点。

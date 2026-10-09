@@ -86,4 +86,4 @@
 | C-3 | 本机既有 **19 条** portproxy 是用户真实数据 | 所有写操作验收的比对对象：**他人规则条数必须不变** |
 | A-1（**✅ 已确认**）| Agent 触发的提权在 `passby` 下**降级为 `ask`** | REQ-4.1；**2026-10-08 主人定案 = 方案 A**（备选「直接拒绝」被否）|
 | A-2（**✅ 已确认**）| 卸载**不**自动清理规则，改提供清单 + 显式清理 | REQ-5.1；**2026-10-08 主人确认**，本 Spec 口径零改动 |
-| A-3（**新·假设**）| 提权后端链 = `gsudo → native`（`auto`）；Windows 自带 `sudo` 只在显式配置时用 | 依据：微软官方文档（**24H2+**、默认关闭、默认 `forceNewWindow` **拿不到输出**、改模式须提权命令行）；**本机 23H2 无法验证** ⇒ 不进 `auto`。影响：24H2 且未装 gsudo 时回落 native（**功能无损**，只多一个临时文件）|
+| A-3（**新·假设**）| 提权后端链 = `gsudo → native`（`auto`）；Windows 自带 `sudo` 只在显式配置时用 | 依据：微软官方文档（**24H2+**、默认关闭、默认 `forceNewWindow` **拿不到输出**、改模式须提权命令行）；**本机 23H2 无法验证** ⇒ 不进 `auto`。影响：24H2 且未装 gsudo 时回落 native（**功能无损**，只多一个临时文件）<br>🔵 **2026-10-09 本机只读核验**：`%SystemRoot%\System32\sudo.exe` **不存在**（23H2 预期吻合）；`Get-Command sudo -All` **唯一命中 gsudo 的 shim**（`D:\Program Files\gsudo\Current\sudo.exe`，ProductName=gsudo 2.6.1）⇒ 佐证 REQ-3.4 的「探测不得按命令名 `sudo`」（否则必然误判进 winsudo 分支）。`gsudo` 本机可用且 v2.6.1 与 2026-10-08 记录一致 |

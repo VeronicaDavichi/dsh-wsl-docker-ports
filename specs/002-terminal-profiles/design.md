@@ -180,7 +180,20 @@ PTY 输出 → `headless.write(data)` → serializer 产出快照。**快照与�
 
 ## 10. 已知限制
 
-1. **一项已由源码确认、一项未验证**：① 数组路径 `.volatile()` —— **机制已确认可用**（源码实证，见 `plugin.profileConfigLiveness.evidence`）；剩余 5 条真机**行为链**见 tasks.md T0.1，若第 1 条不成立则走 §4.1 方案 B；② Electron 下的 `ctx.webServer` 路径（官方文档写明它只服务浏览器、Electron 走 `file://` + IPC 桥接；本 Spec 只覆盖 Web GUI，A-3）。
+1. **B-1 已全部闭环（2026-10-08）**：数组路径 `.volatile()` 的 5 条行为链**全部定案**（真机 3 + 离线 2，见 tasks.md T0.1 与 A-6）⇒ §4.1 的方案 B **未启用**。② Electron 下的 `ctx.webServer` 路径**仍未覆盖**（官方只服务浏览器、Electron 走 `file://` + IPC；本 Spec 只覆盖 Web GUI，A-3）。
 2. **WS 顶掉旧连接**：刷新期间可能出现一次 `superseded` 抖动（REQ-7.4 已择定该实现选择）。
 3. **不做进程恢复**：Host 重启后 PTY 全丢，无重放（范围外）。
 4. **两份 xterm 共存**：官方 `ui-sidebar-terminal` 自带 chunk，本包另带一份 → 体积翻倍（懒加载 + 局部样式只能缓解，不消除）；日志不落终端输出是隐私取舍（未做可选本地落盘）。
+
+---
+
+## 11. 宿主契约事实（2026-10-09 只读源码复核定案：宿主 `0.2.0-rc.2` + 官方首方调用点；零真机；残余真机项见 tasks.md T0.5）
+
+| 能力 | 事实（**实现必须照此**）|
+|---|---|
+| `spawnTerminal` | **单对象入参**（必填 `argv`/`terminalType`/`rows`/`cols`）；**立即返回 live handle**（`terminate` **幂等**）；🔴 **`resize(cols, rows)` 列在前且不夹紧** ⇒ 本包 `resize(id, rows, cols)` **必须在唯一入口换序**、夹紧自实现（弄反**静默转置**）；**失败一律调用端抛错**（程序/cwd 不存在时是 node-pty 原始报错 ⇒ 要稳定错误码须自调 `resolveExecutable()`）|
+| ⚠️ 参数/依赖陷阱 | `cwd: undefined` ⇒ 落**宿主进程 cwd**（node-pty 不校验）⇒ 必须显式传；Windows 上 `shellActivity: true` 是**反效果**（activity 无效，却**跳过** done 后自动 `terminate`）⇒ 不照抄官方 controller；`@xterm/headless` **6.0.0** + `addon-serialize` **0.14.0** 随宿主可用（CJS），但 `createLazyRequire` **按调用方解析** ⇒ **本包必须自声明依赖** |
+| `ctx.webServer` | HTTP `register({kind,path,handler})` / WS `registerUpgrade({path,handler})`（**仅 exact pathname**）；**重复 `(kind,path)` 抛错**；disposer 是**普通返回值** ⇒ **必须 `ctx.effect` 收编**（服务关闭也不清表）；generator 体可回滚中途抛错，普通函数体**只收返回值** |
+| `ctx.sidebarRightTabs` | `register({id,kind,…,keepMounted?})` 返回 disposer；⚠️ **浏览器侧服务**（`dsh-client-ui-sidebar-right`）⇒ **Host 侧拿不到** |
+| `ctx.sandboxPolicy` | **策略解析器**（`resolve()`/`overrideOf()`/`defaultMode`/`setSandboxMode`），官方 bash/pwsh/fs/terminal **四族同源** ✓；**不是逐次门禁**（门禁在 `tools/pre-execute` + `ctx.tools.guard()`）；缺服务的官方做法是**加载期 fail-fast** |
+| ⚠️ containment | Windows 上 `spawnTerminal` **不进 Job**（源码自述「Windows ConPTY remains outside Job containment」）⇒ 本包「`kill` 含进程树」的强度**只到进程组**，逃逸子孙不保证被终止 ⇒ 结果里明说「尽力而为」（**未真机验证**）|

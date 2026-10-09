@@ -51,16 +51,25 @@
     ① 期望集 = mappings ∩ managedPorts           （REQ-3.1）
     ② 对每个期望端口 p：
          rules(p) = actualRules.filter(r => r.listenPort === p)
-         若无规则                      → missing
+         若无规则                      → missing（**仅当该端口 `needsRule`**；loopback + `localhostForwarding=true` ⇒ **无需规则**，**不是** missing → 005 REQ-2.2）
          若有规则且 connectAddress==eth0Ip → ok
          若有规则且 connectAddress!=eth0Ip 且 connectPort 与期望一致 → drift   （REQ-6.1）
-         若有规则但形态与本插件声明不符（connectPort 不符 / listenAddress 非本插件会写的值）
-                                       → conflict（**只报告**，REQ-4.3）
+         若有规则且 connectAddress 既非当前 eth0、也非本插件写入值
+                                       → conflict（**只报告**，不修改/不删除 → 005 REQ-1.3）
     ③ 对每个 managedPorts 内、已不在期望集的端口：
          若有规则 → extra（提示可移除，不自动）
     ④ managedPorts 之外的规则：**不参与五态计算**（REQ-4.1），但**出现在「外部规则」只读清单**（REQ-15：不进五态、无动作）
 
 **判定优先级**：`conflict` > `drift` > `ok`，避免一条规则被同时算成两种状态（REQ-3.3）。
+
+> ⚠️ **订正留痕（2026-10-09，集成期；由 003 Phase 2 实现 + 同族复核共同暴露）**：本节 ② 原文为「形态与本插件声明不符（`connectPort` 不符 / `listenAddress` 非本插件会写的值）→ conflict」。**定案三段**：
+> ① **`conflict` 判据 = 「形态根本不是本插件会写的」**：`connectPort` ≠ 期望端口 **或** `listenAddress` ∉ {`127.0.0.1`, `0.0.0.0`}（本插件只写这两种，见 005 §2）⇒ 只报告、**绝不修改或删除**（005 REQ-1.3）。
+> ② **`listenAddress` 落在上述两形态之内、但与「声明作用域」不一致**（典型：声明 loopback、规则却监听 `0.0.0.0`）⇒ **不再判 conflict，改判事实位** `scopeMismatch: boolean`（**不改变** `state`）。理由：conflict 的语义是「SHALL NOT 修改或删除」，而 005 REQ-1.2 明确授权改写 `connectAddress` 匹配的规则 —— 真判 conflict 会把**本机 19 条既有 `0.0.0.0` 规则**在用户一声明端口后**永久锁死**（连「它暴露给了局域网」都修不掉），安全上更糟。
+> ③ `connectAddress` ≠ 当前 eth0 且形态相符 ⇒ `drift`（旧→新，REQ-6.1），**优先于 `ok`**（否则「一条好规则 + 一条陈旧规则」会被报成 ok，把陈旧的那条藏起来）。原引用的 `REQ-4.3` 已迁至 005 ⇒ 引用改为 **005 REQ-1.3**。
+>
+> 🔴 **遗留张力（待主人拍板；2026-10-09 登记，不阻塞读侧）**：005 REQ-1.3 把 conflict 的另一半定义为「`connectAddress` **既非当前 eth0、也非本插件写入值**」，而本设计**不建台账**（见 [types.ts](../../packages/wsl-docker-ports/src/diff/types.ts) 的说明）⇒「**本插件写入值**」**不可判定**（无法从规则本身分辨「谁写的」）。本实现改用「形态」代理该判据，后果：一条 `connectAddress` 指向**第三方**地址（如 `192.168.1.50`）的规则会被报 **`drift`（可修）**，而 005 REQ-1.2 的删除前置（`connectAddress` == 期望值）**不授权**动它 ⇒ UI 可能引导一个写路径必须拒绝的「修复」。两条出路（**集成方推荐 ①**）：① 005 侧把「声明式所有权」贯彻到底 —— 所有权由 `listenPort ∈ managedPorts` 界定（005 REQ-1.1 的本意），删/改不再额外要求 `connectAddress` 匹配；② 003 侧为「`connectAddress` 非 eth0 且归属不可判定」另设**只读态**（不进五态、无动作）。**拍板前行为**：003 维持 `drift`（读侧只报告、不产生任何写动作），动作授权仍全部归 005 ⇒ 两侧都不会因此产生越权写入。
+>
+> **同批订正**：`missing` 补 `needsRule` 前提（loopback + `localhostForwarding=true` ⇒ **无需规则**，**不是** missing，否则会把用户引去加一条不该加的规则）。**影响面**：003 的 T2.1 表格驱动用例、Phase 5 的端口表标签、005 的 scope 切换序列；三处均以本注为准。
 
 ---
 

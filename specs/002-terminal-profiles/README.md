@@ -1,5 +1,5 @@
 ---
-status: planned
+status: in-progress
 created: 2026-10-08
 priority: high
 tags:
@@ -13,15 +13,17 @@ depends_on:
 - 001-wsl-shared
 - 006-path-translation
 created_at: 2026-10-08T09:43:13.130539300Z
-updated_at: 2026-10-09T02:03:25.257242900Z
+updated_at: 2026-10-09T02:07:40.898759800Z
 transitions:
 - status: planned
   at: 2026-10-08T13:23:04.496516100Z
+- status: in-progress
+  at: 2026-10-09T02:07:40.898759800Z
 ---
 # 可配置终端 · Agent 可读写（右栏受管终端）
 
 **类型**: 需求驱动（requirements-first）
-**状态**: planned（2026-10-08 已 `planned`；B-1 五条已定案 ⇒ 开工前置见文末「阻塞项」表）
+**状态**: in-progress（**2026-10-09 转 `in-progress`**：Phase 1「配置模型与容错」实现中；Phase 0 剩 **T0.2 / T0.3** 由**只读契约研究**并行核对（结论将回写本目录的 tasks/design）、**T0.5** 真机安装接入待主人在场时做）
 **优先级**: high
 **包名**: `dsh-terminal-profiles`（**插件包**）
 **位置**: `packages/terminal-profiles/`
@@ -109,7 +111,7 @@ transitions:
 | Agent 面（**004**）| 完整族 `new/list/read/write/resize/kill` | 覆盖完整生命周期 |
 | Agent 读模型（**004**）| **屏幕快照 + 增量流** 两者都给 | 快照给 TUI 正确画面，增量给低延迟；派生 Host 侧屏幕模型需求（屏幕模型本体仍在 002）|
 | Agent 权限（**004**）| 受 `ctx.sandboxPolicy` + 工具审批 | 避免 Agent 借终端绕过 `read-only`/`workspace-write` |
-| 配置存活 | `profiles` 整数组 `.volatile()` | 换「编辑配置不杀终端」；**机制已由宿主源码确认**，B-1 降级为真机行为链（T0.1）|
+| 配置存活 | `profiles` 整数组 `.volatile()` | 换「编辑配置不杀终端」；**B-1 五条已全定案（2026-10-08，含真机）** ⇒ 机制与行为**双双闭环**；落盘语义同日定案（A-6）|
 | 通道 | 自建路由 + WS upgrade，**独占前缀** `/dsh-managed-terminal/…`；**upgrade 必须 exact path** | 官方 `dsh-host-webserver` 支持第三方具名路由（`exact`/`prefix`）与 upgrade（**仅 exact**）注册，匹配顺序 exact → 最长 prefix → fallback；Typert Remote 方案实测可行但需改双 face TS 工程 + 换 tsdown + 受 Zod 子集限制 + 重启生效（已否决）|
 | 页类型 | 新 kind `managedTerminal` + extension 档 | 与官方 6 个 kind（`files`/`text`/`changes-review`/`scheduleTask`/`browser`/`terminal`）全部区分 |
 | 样式 | `xterm.css` **只在自有容器作用域内**加载，不注入全局 | 官方终端另有一份 xterm chunk，两份共存会互相污染 |
@@ -147,7 +149,9 @@ transitions:
 
 | # | 阻塞项 | 状态 |
 |---|---|---|
-| **B-1** | **`z.array(...).volatile()` 在数组路径上是否生效** —— 官方样例只给了标量（`provider`/`model`/`selectedEffort`/`maxParallelToolCalls`），数组路径**无样例**。这是 REQ-2（编辑配置不杀终端）的成立前提 | 🟡 **机制已定案（2026-10-08 源码实证）**：`equal()` 首行 `if (schema?.meta?.volatile) return true` → 整数组标**成立**；剩 5 条真机行为链（T0.1，证伪导向）。**仍是开工阻塞项**（真机未走）|
+| ~~B-1~~ | ~~**`z.array(...).volatile()` 在数组路径上是否生效**~~ → ✅ **2026-10-08 五条全部定案**：**真机** live 写入 152ms 生效、**不重挂载**且 `.get()` **值真传播**、ordinary 字段**真 remount**、非法值静默拒绝不崩；**离线**两条（元素内标 volatile 在 **parse 时**抛 `ValidationError`；数组级解析为带 `.get()` 的**深冻结**对象）。方法：临时 profile `volatile-probe` + 一次性探针插件（`--port 0`，不碰在跑的实例）| ✅ **已闭环**（T0.1 已打勾；落盘语义同日定案 → A-6）|
+
+> ⚠️ **订正留痕（2026-10-09）**：B-1 行原写「🟡 仍是开工阻塞项（真机未走）」—— 与本仓 `AGENTS.md` / `stack-decision.md` 的 2026-10-08 定案记录**互相矛盾**，也**与** 002 自己的 T0.1 已打勾相矛盾。经复核，真机实验早已跑完（五条全定案），该行属**指令残留**（早期口径未随结论同步），本轮按 SSoT 订正。
 | ~~B-2~~ | ~~6 项 `backend.*` 的 `confirmed: implied` 待主人逐条点头~~ → ✅ **2026-10-08 已确认全为 `none`，本项清除** | ✅ 已闭环（不影响本组件技术选型）|
 | B-3 | 路由前缀独占性（是否被官方 SPA fallback 抢走）| ✅ **2026-10-08 源码定案：不会被抢**（匹配顺序 exact → 最长 prefix → fallback；fallback 单座位且只答无具名路由匹配的请求）。⚠️ 同时发现 **upgrade 仅支持 exact path**，已修正 REQ-7.1；真机只留 T0.3 的 4 条行为确认 |
 
@@ -156,4 +160,5 @@ transitions:
 ## 下一步
 
 1. 主人复核本 Spec，重点：REQ-6 的增量流缓冲策略与 REQ-7 的 WS 握手校验口径。
-2. 打掉 **B-1 / B-3**（B-2 已于 2026-10-08 确认清除）后 → `leanspec update --status planned` → `/leanspec-apply`。
+2. **B-1（五条全定案）/ B-2（清除）/ B-3（源码定案）均已闭环** ⇒ 002 **已于 2026-10-09 转 `in-progress`**，Phase 1 实现中（见 `tasks.md`）。
+3. 剩余 Phase 0：**T0.2 / T0.3**（宿主 0.2.0-rc.2 基线能力与路由注册行为）由**只读契约研究**并行核对；**T0.5**（安装接入验证）需真机改 profile + 重启 DSH ⇒ **待主人在场时**排期。

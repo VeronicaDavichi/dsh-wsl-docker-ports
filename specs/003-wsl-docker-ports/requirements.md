@@ -71,7 +71,7 @@
 - **REQ-3.1** 期望集 SHALL = **docker 实际端口映射 ∩ `managedPorts`**；SHALL NOT 硬编码任何端口清单。
 - **REQ-3.2** 实际集 SHALL 来自解析 `netsh interface portproxy show v4tov4`，至少取 `listenAddress` / `listenPort` / `connectAddress` / `connectPort`。
 - **REQ-3.3** 每个期望端口 SHALL 被归入 `ok` / `missing` / `drift` / `conflict` / `extra` **恰好一个**状态（不重复计数）。
-- **REQ-3.4** 归类 SHALL 只依据三条事实：① `listenPort` 是否 ∈ `managedPorts`；② `connectAddress` 是否等于当前 eth0 IPv4；③ 该端口上是否存在与本插件声明不符的既有规则。SHALL NOT 靠时间戳、条目顺序或名称相似度猜测。
+- **REQ-3.4** 归类 SHALL 只依据三条事实：① `listenPort` 是否 ∈ `managedPorts`；② `connectAddress` 是否等于当前 eth0 IPv4；③ 该端口上是否存在与本插件声明不符的既有规则。SHALL NOT 靠时间戳、条目顺序或名称相似度猜测。**2026-10-09 澄清（集成期定案，详见 [design.md](./design.md) §3 的订正留痕）**：③ 的「不符」= **形态根本不是本插件会写的**（`connectPort` ≠ 期望端口 **或** `listenAddress` ∉ {`127.0.0.1`, `0.0.0.0`}），**不按 `connectAddress` 判**（`connectAddress` ≠ eth0 且形态相符 ⇒ `drift`）；**`listenAddress` 与声明作用域不一致不算 conflict**，而是**事实位**（不改变 `state`，UI 提示并允许经写路径修正）。理由：005 REQ-1.3 的「本插件写入值」在**不建台账**下**不可判定**（见 design §3 的遗留张力），且 conflict 语义 = SHALL NOT 修改或删除 ⇒ 照原义判会把「声明 loopback、规则却监听 `0.0.0.0`」这条**真实局域网暴露永久锁死**。另：`missing` 仅适用于**确实需要规则**的端口（loopback + `localhostForwarding=true` ⇒ 无需规则，不是 missing，见 005 REQ-2.2）。
 - **REQ-3.5** GIVEN 解析失败（输出形态不可识别），THEN 系统 SHALL 报错并展示脱敏后的原始输出，SHALL NOT 猜结果。
 
 ### REQ-4（已迁出）

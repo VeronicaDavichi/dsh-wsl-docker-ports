@@ -24,15 +24,17 @@
   - 若第 1 条被推翻（真机不生效）：REQ-2.2 从安全网升级为主路径（弹确认框），**不假装无痛**
   - 🔴 红线：plugin config schema **必须用 Schemastery**。`equalExceptVolatile` 先做 `isSchemastery()`，非 Schemastery（Zod 等）直接退化为 `deepEqual` → volatile **静默失效**、每次保存都重挂载
 
-- [ ] T0.2 基线能力复核（0.2.0-rc.2）
+- [x] **T0.2 基线能力复核（0.2.0-rc.2）· ✅ 2026-10-09 关闭（只读源码复核 = 等价取证；残余真机项并入 T0.5）**
   - 内容：确认 `ctx.subprocess.spawnTerminal` 的 spec 形状（`argv`/`cwd`/`env`/`rows`/`cols`/`terminalType`）、`ctx.sidebarRightTabs` + `ctx.sidebarRight.openTab`、`ctx.webServer` 具名路由与 upgrade、`ctx.sandboxPolicy`、`ctx.settings`、`ctx.configEditor.edit()`、`dsh-tools` 的 `defineTool` 均存在
-  - **2026-10-08 部分结论（源码实证）**：`ctx.settings` ✅、`ctx.configEditor.edit()` ✅、`dsh-config-editor` 插件 ✅ 均存在；🔴 **`ctx.settings.register(ns, schema)` 已移除**（app.asar 0 命中）→ schema 改由模块**静态 `Config` 导出**、命名空间 = **patch 条目 id**；live 字段走 `settings.{update,replace,mutate}`，`configEditor.edit()` 是**完整配置**路径（**会重挂载**）。剩 `spawnTerminal` / `sidebarRightTabs` / `webServer` / `sandboxPolicy` / `defineTool` 待真机核对
-  - 验证：最小插件起一个 PTY 并打印 spec 接受结果；每个能力各留一行证据（包名 + 事实），写入 design.md/README
+  - **2026-10-08 部分结论（源码实证）**：`ctx.settings` ✅、`ctx.configEditor.edit()` ✅、`dsh-config-editor` 插件 ✅ 均存在；🔴 **`ctx.settings.register(ns, schema)` 已移除**（全包 0 命中，2026-10-09 复跑再证）→ schema 改由模块**静态 `Config` 导出**、命名空间 = **patch 条目 id**；live 字段走 `settings.{update,replace,mutate}`，`configEditor.edit()` 是**完整配置**路径（**会重挂载**）
+  - **2026-10-09 补齐**：上述 7 项能力**全部核实存在**，契约逐条写入 [design.md](./design.md) §11（含 🔴 `resize(cols, rows)` **列在前且不夹紧**、失败**一律调用端抛错**、`cwd: undefined` 落**宿主进程 cwd**、Windows 上 `shellActivity:true` 是**反效果**、`@xterm/*` 必须**自声明依赖**、路由注册**必须 effect 收编**且**重复注册抛错**、`sidebarRightTabs` 属**浏览器侧**故 Host 拿不到）
+  - 验证：✅ 结论已回写 design §11 与 README；**残余真机项**（node-pty 失败文案、ConPTY containment 强度、`resize` 越界行为、宿主对非法配置值的静默 vs 致命）**并入 T0.5**（需主人在场）
 
-- [ ] T0.3 [REQ-7.1][REQ-7.6]（B-3 **已由源码定案**，真机只验行为）路由注册与卸载
-  - 前置结论（源码）：匹配顺序 **exact → 最长 prefix → fallback**、注册顺序无语义、fallback 单座位且只答「无具名路由匹配」的请求 → **SPA 抢不走我们的具名路由**；**但 `registerUpgrade` 只接受 exact path** → 原「独占前缀的 upgrade 路由」写法被推翻，REQ-7.1 已修正
-  - 真机验证项（证伪导向）：① 注册 `/dsh-managed-terminal/ping` 能**被命中**（返回我们的响应，而非官方 404 / 405）② **卸载后**该 path 回落到官方 fallback（REQ-7.6）③ 重复注册同一 path 确认**抛** `duplicate ... route`（若不抛 → 说明我们认错了 API）④ upgrade 端点以 **exact path** 建连成功
-  - 验证：真机请求返回我们的响应（非 SPA HTML）；卸载后同一路径回落官方行为（REQ-7.6）
+- [x] **T0.3 [REQ-7.1][REQ-7.6] 路由注册与卸载 · ✅ 2026-10-09 关闭（源码定案；真机行为项并入 T0.5）**
+  - 前置结论（源码，2026-10-08）：匹配顺序 **exact → 最长 prefix → fallback**、注册顺序无语义、fallback 单座位且只答「无具名路由匹配」的请求 → **SPA 抢不走我们的具名路由**；**但 `registerUpgrade` 只接受 exact path** → 原「独占前缀的 upgrade 路由」写法被推翻，REQ-7.1 已修正
+  - **2026-10-09 补齐（源码，宿主 0.2.0-rc.2）**：① 重复 `(kind, path)` **抛** `duplicate <kind> route "<path>"`（不覆盖）⇒ 禁用→启用必须靠 **effect disposer** 释放；② disposer 是**普通返回值**，宿主**不自动回收**、服务关闭时也**不清表** ⇒ **三处注册（HTTP/upgrade/tools）都必须 `ctx.effect(...)` 收编**（官方 5 个调用点无一例外，其中 `dsh-api-gateway` 是 generator 形态）；③ **generator 体**（逐 `yield`）在中段抛错时**会回滚**已收集的 disposal，**普通函数体只收编返回值**、体中段抛错**不回收**已发生的副作用 ⇒ 多路由注册优先用 generator 形态
+  - 真机验证项（证伪导向，**并入 T0.5**）：① 注册 `/dsh-managed-terminal/ping` 能**被命中**（返回我们的响应，而非官方 404 / 405）② **卸载后**该 path 回落到官方 fallback（REQ-7.6）③ 重复注册同一 path 确认**抛**（源码已证，真机复证）④ upgrade 端点以 **exact path** 建连成功
+  - 验证：源码侧 ✅ 已回写 design §11；真机项（命中 / 卸载回落 / 建连）**待 T0.5**
 
 - [x] T0.4 [REQ-全]（原阻塞 B-2，全线共用）6 项 `backend.*` 的 `confirmed: implied` 由主人逐条点头 —— ✅ **2026-10-08 确认全为 `none`**，结论记入 [stack-decision.md](../../stack-decision.md) 的「复核记录（已闭环）」
   - 验证：`stack-decision.md` 的 `pendingReview` 清空；本 Spec 不因此改动（全为 `none`）
@@ -41,20 +43,25 @@
   - 内容：按 `link:<绝对路径>` 写入 profile `package.json` 的 `dependencies` + `dsh.profile.bundles`（与同机 `@xxxyz/dsh-mcp-manager` 同型），`pnpm install` 后重载
   - 验证（真机，二值）：① 行出现在 profile 行列表 ② 终端页 kind 已注册 ③ **无** compatibility 预检 `disabled`（宿主 stderr 无 `disabling profile plugin`）④ 卸载后行消失、路由/页/工具注销、patch 无孤儿条目 ⑤ README 已明示 `link:` 模式「**路径即版本**」的开发工作流（改源码 → 重载/重启生效）
 
+> **Phase 1 与 Phase 0 门的关系（2026-10-09）**：T1.1–T1.3 是**纯配置模型**（零 `ctx.subprocess` / `ctx.webServer` / `ctx.settings`、零真机），故 T0.2 / T0.3（只读核对中）与 T0.5（需真机改 profile + 重启）**未打掉也能独立落地** —— 本包不消费 Phase 0 的任何宿主 API 结论。
+
 ---
 
 ## Phase 1：配置模型与容错
 
-- [ ] T1.1 [REQ-1.1][REQ-1.2][REQ-1.3] `parseProfiles`
+- [x] T1.1 [REQ-1.1][REQ-1.2][REQ-1.3] `parseProfiles`
   - 内容：schemastery 声明 + 单条容错（跳过无效项并记警告）、重名拒绝、缺省 `args: []`/`env: {}`
   - 验证：`vitest` 覆盖 —— 有效项、缺 `command`、类型错、重名、空数组、全无效；断言无效项**未**影响其余项
+  - ✅ **2026-10-09 落地**：`parseProfiles` 逐条容错全绿（正常/边界/异常三类）；`createProfilesSchema(注入的 z)` 只声明 `profiles` **整数组** `.volatile()`、元素用 `z.any()` —— **刻意不在 schema 层校验条目**（schemastery 按整数组校验 ⇒ 一条坏会让整数组失败，与 REQ-1.2 冲突；零依赖 ⇒ 不 import schemastery，Phase 6 的静态 `Config` = 一行包装）
 
-- [ ] T1.2 [REQ-1.4] `cwdLinux` 推导接线（消费 001）
+- [x] T1.2 [REQ-1.4] `cwdLinux` 推导接线（消费 001）
   - 内容：只填 `cwd` 时经 001 的 `winToWsl` 推导；失败 → 该条标「需修复」且不可启动
   - 验证：`vitest` + fake 001 —— 推导成功、推导失败（`UnmappablePath`）、显式给了 `cwdLinux` 时不推导（不覆盖用户输入）
+  - ✅ **2026-10-09 落地**：`deriveCwdLinux` 只包 `winToWsl`（真 001 验 UNC/裸盘符/`E:x` 形态 + fake 001 验「何时调、何时不调」）；显式 `cwdLinux` **不覆盖**、非 WSL **不**推导；失败 → `needsFix` 带 001 错误码 + 不可启动
 
-- [ ] T1.3 [REQ-1.5] 空配置引导态
+- [x] T1.3 [REQ-1.5] 空配置引导态
   - 验证：`vitest` 渲染断言 —— 无 profile 时显示引导、不报错
+  - ✅ **2026-10-09 落地**：`deriveConfigState` 出引导/就绪判定与文案；Phase 1 是纯模型层（React 在 T4.x）⇒ 本 Phase 的「渲染断言」= 对判定与文案的断言，`empty`/`all-invalid`/`all-needs-fix` 三态均不抛错
 
 ---
 
@@ -177,6 +184,8 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 | 6 | 配置页改 profile 的 `cwd` 并保存 | **运行中终端仍存活**（B-1 的最终真机证据）| 截图（终端未重挂载）+ 日志 |
 | 7 | 关闭 tab `×` 后再打开 | 实例存活，画面从快照恢复（`dropped` 计数可见）| 截图 |
 | 8 | 禁用插件再启用 | 无重复页类型/路由（`grep` 日志），无孤儿 PTY | 日志 + 快照 |
+| 9 | 窗口很宽 / 很窄（宿主两栏布局）| 终端画布自适应，无横向溢出 | 两种视口截图 |
+
+> ⚠️ **2026-10-09 订正**：上表第 9 行原为**拆分残留** —— 它以裸表格行的形式挂在下方引用块之后、脱离了表头（渲染时会被当成普通文本），已归位并把原编号 `12` 改为 `9`（表内本就只到 8）。
 
 > **Agent 面**的真机清单（`read` 两模式 / `write` 发 `C-c` / `resize` 夹紧 / `read-only` 拒绝 / `kill` 后 `list`）**已迁至 [004-terminal-agent-surface](../004-terminal-agent-surface/tasks.md)**（2026-10-08 拆分），此处不再重复。
-| 12 | 窗口很宽 / 很窄（宿主两栏布局）| 终端画布自适应，无横向溢出 | 两种视口截图 |

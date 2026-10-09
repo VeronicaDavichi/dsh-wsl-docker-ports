@@ -35,38 +35,52 @@
 
 ## Phase 1：数据层（只读解析）
 
-- [ ] T1.1 [REQ-2.1][REQ-2.2][REQ-2.3][REQ-2.5] `parseDockerPs`
+- [x] T1.1 [REQ-2.1][REQ-2.2][REQ-2.3][REQ-2.5] `parseDockerPs` — ✅ **2026-10-09 完成（Phase 1）**
   - 内容：经 001 的 `run` 执行 `wsl.exe -d <distro> -- docker ps --format '{{json .}}'`（**不是** `--format json`，实测会挂住）；解析 `0.0.0.0:8080->80/tcp` 与 `[::]:8080->80/tcp`；UDP 标记保留（供 REQ-9.2）
-  - 验证：`node --test` 用真机 fixture 断言容器数、端口映射四元组；`vitest` 覆盖未安装 / daemon 停 / 权限不足三种可区分错误；断言**未**把失败显示成空列表
+  - ✅ 落地：`src/read/docker-probe.ts`（`probeDockerPs`，261 行）+ `src/read/probe.ts`（统一失败态，69 行）+ `src/read/redact.ts`（脱敏，38 行）。**解析器一字未改**（复用 T0.1 的 `parseDockerPsJsonl`）
+  - 验证：`pnpm -C packages/wsl-docker-ports test` → **71/71 通过、0 失败**（本任务 **14 条**：真机 fixture 3 + 边界/异常 11）；`typecheck` exit 0
+  - ✅ 关键断言：① argv 逐字 = `['-d','Ubuntu2204','--','docker','ps','--format','{{json .}}']`，并**静态断言**「`--format` 只出现在一个数组字面量里、且不存在 `--format json` 回落形态」（口径订正 2026-10-09：原写法数**裸词** `--format`，会被提示文案里的正当提及判红 = 假阳性 ⇒ 改为断言**禁止形态**，源码不动）② 三种失败可区分（`docker-missing` / `daemon-down` / `permission-denied`；权限**优先**判——两者 stderr 都含 “docker daemon”）③ `Timeout` → 重试（`attemptCount=2`）、**两次都超时 → `timeout` 失败**且 `'containers' in outcome === false`（REQ-1.3：绝不空列表冒充）④ 空输出**复核**后才 `emptyAfterRetry=true`（`attempts:1` 时为 false）⑤ **发行版 Stopped 时执行器调用数 = 0**（REQ-2.4 不冷启动）
+  - ⚠️ 口径替代：验证行原写 `vitest` → 实际用 **`node --test`**（包内既有 `test` 脚本，契约与单元同跑、零新依赖、不动 `pnpm-lock.yaml`）
 
-- [ ] T1.2 [REQ-3.2][REQ-3.5] `parsePortproxy`
+- [x] T1.2 [REQ-3.2][REQ-3.5] `parsePortproxy` — ✅ **2026-10-09 完成（Phase 1）**
   - 内容：解析 `netsh … show v4tov4` 的 v4 表；跳过表头（**不依赖表头字面量**，`netsh` 输出会本地化）
-  - 验证：`node --test` 真机 fixture 断言解析 **19 条**且 `connectAddress` 全部为首个 eth0 值；`vitest` 覆盖空表、乱码/截断 → 报错 + 保留脱敏原文（REQ-3.5）
+  - ✅ 落地：`src/read/netsh-probe.ts`（`probePortproxyRules`，117 行）；解析器复用 T0.1 的 `parsePortproxyTable`
+  - 验证：**8 条**（真机 fixture 1 + 边界/异常 7）——19 条一条不少且 `connectAddress` 全为 eth0；只走 `netsh.exe`（**不经 WSL ⇒ 不可能冷启动**、`show` 只读 ⇒ 不提权）；空表（无分隔线）→ **成功且 `[]`**；列数不对 / 端口越界 → `parse-error` + **脱敏**原文（`C:\Users\EDY` → `C:\Users\<user>`、`token=abc123` → `token=<已脱敏>`）；`non-zero-exit` / `netsh-missing` / `timeout`（不重试：本地毫秒级调用）
 
-- [ ] T1.3 [005-REQ-2.5] 读取 `localhostForwarding`（本包自读，单消费者）
-  - 验证：`vitest` —— 缺省 `true`；显式 `false` 时 loopback 走「需显式规则」分支；断言**未**改文件
+- [x] T1.3 [005-REQ-2.5] 读取 `localhostForwarding`（本包自读，单消费者）— ✅ **2026-10-09 完成（Phase 1）**
+  - ✅ 落地：`src/read/localhost-forwarding.ts`（174 行）；路径解析**借 001 的 `readNetworkingMode().path`**（该函数成功/失败两路都带 `path`）⇒ **不复制** 001 那套 `USERPROFILE=''` 守卫（复制品迟早分叉，而分叉后果是静默读错文件）
+  - 验证：**10 条** —— 缺省 `true`（ENOENT / 无该键 / 键在别的节）；显式 `false` ⇒ `enabled=false`（由 T2.1 的 `missing②` 证明它走「loopback 需显式规则」分支）；值不可识别 ⇒ **保守 `false`** + `source='fallback'` + `warning`（不静默；方向理由：说成 true 而其实需要 = 连不上且不报错，说成 false 最多多一条可见可删的规则）；读不了（非 ENOENT）⇒ `config-unreadable` + path；容忍 BOM / CRLF / 单 CR / 行内注释 / 大小写 / 重复键最后一个胜出
+  - ✅ **「未改文件」的可执行形式**：静态断言（剥注释后源码里 `writeFile`/`appendFile`/`mkdir`/`rm(`/`unlink`/`copyFile`/`rename`/`chmod`/`process.env` **零命中**）
+  - ⚠️ 已知重复（**未越界修改**，建议 001 后续导出「按节取键」的通用纯函数）：`parseWslConfig` 未在 001 公开面 ⇒ 这里的 INI 子集解析是**第二份实现**（只复制骨架：节跟踪 + 注释剥离 + 最后一个键胜出）
 
 ---
 
 ## Phase 2：diff-engine（纯函数，五态）
 
-- [ ] T2.1 [REQ-3.1][REQ-3.3][REQ-3.4] 期望集与五态分类
+- [x] T2.1 [REQ-3.1][REQ-3.3][REQ-3.4] 期望集与五态分类 — ✅ **2026-10-09 完成（Phase 2）**
   - 内容：期望集 = mappings ∩ `managedPorts`；分类只依据三条事实（REQ-3.4）
-  - 验证：`vitest` 表格驱动 —— ok / missing / drift / conflict / extra 各至少两例；断言每个端口**恰好一个**状态
+  - ✅ 落地：`src/diff/managed-ports.ts`（区间表示 + 成员判定 + 求交，70 行）· `src/diff/types.ts`（类型契约，156 行）· `src/diff/expected.ts`（期望集构造，110 行）· `src/diff/engine.ts`（五态引擎，229 行）
+  - 验证：**16 条**（表格驱动 `ok`/`missing`/`drift`/`conflict`/`extra` 各 ≥2 + 区间求交 3 条 + `scopeMismatch` 事实位 + 每端口恰好一个状态 + `counts` 之和 = 归类条数 + 输出**无任何函数**）——每条断言「恰好一条状态」（REQ-3.3）
+  - ✅ 期望集口径：**未发布到宿主**的映射（`8080/tcp` 无 `host->`）不进期望集（没有宿主端口可听）；`docker 映射区间 ∩ 声明区间` **先求交再展开**（声明 5001 个端口而 docker 只映射 2 个 ⇒ 只有 2 条期望项，REQ-16.2）；映射区间**横跨**两个声明区间时只收交集中的端口（5004 不在集合 ⇒ 不出现）
+  - ⚠️ **口径判断（design §3 与 005 REQ 的张力，已在报告登记）**：`listenAddress` 与声明作用域不一致（声明 loopback 而规则监听 `0.0.0.0`）**不判 `conflict`**，只置事实位 `scopeMismatch`。理由：005 REQ-1.3 把 conflict 定义为按 `connectAddress` 判，且 REQ-1.2 允许删/改 connectAddress 匹配的规则；若按 design 判 conflict（= SHALL NOT 修改或删除），则本机 19 条 `0.0.0.0` 既有规则一旦被声明就**再也删不掉**（写路径锁死）⇒ **以 requirements 为准**
+  - ✅ 优先级 `conflict > drift > ok`：同端口「一条好 + 一条陈旧」⇒ `drift`（不许把陈旧规则藏进 `ok`）
 
-- [ ] T2.2 [005-REQ-1.1][REQ-15.1] `managedPorts` 之外零参与（只读清单侧）
-  - 验证：`vitest` —— fixture 里注入一条集合外端口的规则，断言它**不出现在**任何状态里、也不计为 conflict
+- [x] T2.2 [005-REQ-1.1][REQ-15.1] `managedPorts` 之外零参与（只读清单侧）— ✅ **2026-10-09 完成（Phase 2）**
+  - 验证：**1 条**（真机 fixture 19 条 + 注入 1 条「绑具体网卡地址 + 指向别的地址」的集合外规则 = 20 条）——只声明 `8080` ⇒ `ports` **恰好** `[[8080,'ok']]`；集合外的 19 条**不进任何状态**、`counts.conflict === 0`、全部落只读清单（`reason='port-not-managed'`）
 
-- [ ] T2.3 [REQ-6.1][REQ-6.2][REQ-6.4] 漂移判定与「取不到 eth0」
+- [x] T2.3 [REQ-6.1][REQ-6.2][REQ-6.4] 漂移判定与「取不到 eth0」— ✅ **2026-10-09 完成（Phase 2）**
   - 内容：**校准（T0.2 实测）**：本机两次重建 eth0 都未变 ⇒ 漂移是**安全网**而非主路径，**不要**为它加定时器/守护/持久化；判定在**激活 / 刷新 / 写入前**执行，其中**写入前必须强制现读**（不吃缓存 —— 否则等于拿旧地址亲手造一条新的坏规则）
-  - 验证：`vitest` —— `connectAddress` ≠ eth0 → drift 且返回「旧→新」；`eth0Ip` 为 null → 全部**不**标 drift、返回「无法确定地址」；**新增**：写入路径调用时**绕过缓存**重读 eth0（fake 执行器断言读次数 +1）
+  - ✅ 落地：`src/read/eth0-source.ts`（`cachedIp()` / `probe()` 两件事分型，76 行）；守卫与执行仍全在 001 的 `probeEth0`（只有一份实现）
+  - 验证：**6 条** —— `connectAddress` ≠ eth0 → `drift` 且返回「旧→新」两个地址；`eth0Ip === null` → `ok:false / reason='eth0-unknown'` + 「无法确定 WSL 地址」，**无 `result` 字段 ⇒ 一条判决都没有**（自然也不会全标 drift），但 `external` 只读清单照给；**写入路径绕过缓存**：fake 执行器断言 `probe()` 连续两次 ⇒ 调用数 **1 → 2（+1）**，而 `cachedIp()` 全程 **0 次调用**；探测**失败后缓存清空**（`cachedIp() === null`，不留可能失效的地址）；`Stopped` 时默认 `probe()` **0 次执行**、只有显式 `{allowColdStart:true}` 才执行（001 REQ-2.4）
 
-- [ ] T2.4 [REQ-9.2] UDP 标记
-  - 验证：`vitest` —— 容器 UDP 映射在结果中标「不支持」，且**未**生成期望转发项
+- [x] T2.4 [REQ-9.2] UDP 标记 — ✅ **2026-10-09 完成（Phase 2）**
+  - 验证：**1 条**（含 4 个非 TCP 映射：udp v4/v6 各一 + sctp 一条 + **未发布**的 `8081/udp` 一条）——全部进 `unsupported`（`reason='portproxy-tcp-only'`）、**期望集里零条**、同一端口上 `tcp` 与 `udp` 并存时**只有 tcp** 进期望集；未发布的那条也标出来（REQ-9.2「不许直接忽略该映射」）；`sctp` 顺手同办（portproxy 同样只支持 TCP）且**未**做任何代偿（REQ-9.3）
 
-- [ ] T2.5 [REQ-15.1][REQ-14.2] 外部规则只读集合（D-2）
+- [x] T2.5 [REQ-15.1][REQ-14.2] 外部规则只读集合（D-2）— ✅ **2026-10-09 完成（Phase 2）**
   - 内容：把「∉ `managedPorts` 且非本插件写入」的规则归入独立集合（不属于五态）
-  - 验证：`vitest` —— 本机 19 条 fixture **全部**落外部清单且**未**进五态、动作产生数 = 0；空集合时不渲染区域；与 T5.7 的渲染断言配对
+  - ✅ 落地：`collectExternalRules()`（`src/diff/engine.ts`）+ `ExternalRule.display`（`监听地址:端口 → 目标地址:端口`）
+  - 验证：**4 条** —— `managedPorts` 为空 ⇒ 本机 **19 条全部**落外部清单（`reason='port-not-managed'`）且 `ports === []`、`counts` **全 0**、**动作产生数 = 0**（`assertNoFunctions` 走遍整棵结果对象）；展示串逐条为 `0.0.0.0:80 → 172.20.201.152:80` 形态；集合内 2 个端口 ⇒ 其余 17 条仍是只读清单且集合内的落 `extra`（不双现）；无任何规则 ⇒ 空数组（UI 据此不渲染区域）
+  - ⚠️ 判据只有「`listenPort ∉ managedPorts`」一条：本插件**不建台账**（stack-decision 定案）⇒ 无法从形态上分辨「谁写的」（原脚本那 19 条 connectAddress 就是 eth0，与插件写的规则同形）；声明式所有权正是靠这条判据落地
 
 ---
 
