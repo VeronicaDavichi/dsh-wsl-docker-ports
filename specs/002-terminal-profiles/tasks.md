@@ -254,3 +254,20 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 
 ⚠️ 注意：在**没有**官方侧栏 client 插件的 profile 里，V1/V3 **必然**失败且**不是缺陷**（本文件上一节已用 client bundle 列表证明）；V2 在这种情况下**预期有 1 条**我们自己的降级提示（文案含「不是失败」）。
 ⇒ 本三项**当前状态：未通过（未验）**，不得记为完成。
+
+### 🔴 2026-10-09 更正：V1/V3 **CLI 侧永久不可验**（三条独立证据 + 官方护栏）
+
+**结论**：官方右栏是**应用级**界面，**不属于任何 profile** ⇒ 任何用 CLI 起的 profile 都长不出它 ⇒ **V1（guide 胶囊可点）在 CLI 侧不可能验**；V3 同理（它挂在应用的设置/插件页那套 client 插件上）。
+
+| # | 证据 | 事实 |
+| --- | --- | --- |
+| E1 | **新建** profile `ui-probe`（从 `volatile-probe` 的 `dsh-base`+`dsh-web-app` 起，剥掉自杀探针插件，装入本仓两包，真机起实例） | 页面 0 error / 1 warning；client bundle 请求 URL 里**仍是那 8 个**，**不含** `dsh-client-ui-sidebar` / `-sidebar-right`；`browser_find("端口")` 0 命中 |
+| E2 | **`web` profile 自己的 bundle 清单**（只读已捕获） | `@deepseek-ai/dsh-base` / `@deepseek-ai/dsh-web-app` / `dsh-webview-clipboard` / `@deepseek-ai/dsh-acp-app` / `dsh-web-noopenbrowser` / `@xxxyz/dsh-mcp-manager` ⇒ **一个 sidebar 包都没有** ⇒ 侧栏不可能来自 bundles |
+| E3 | **共享 `profiles/node_modules/@deepseek-ai` 里的 4 个 sidebar 包** | 全是 **Junction**，指向 `%TEMP%\dshstudio-runtime\0.1.5-rc.2\node_modules\@deepseek-ai\…`，而**该目标目录已空** ⇒ `package.json` 不存在 ⇒ **断链**（真右栏在应用打包资源里） |
+
+**官方护栏（与上表独立的一条事实）**：`dsh` CLI **按名字**禁止操作 `desktop` —— `D:\nvm\v24.15.0\node_modules\@deepseek-ai\dsh\lib\bin.js:35` 的 `rejectElectronProfile()`，`line 36`：`profile.toLowerCase() === "desktop"` ⇒ `error: profile "desktop" is managed exclusively by the Electron application`。**只有应用自己**能绕过（`parseDshArgs(argv, version, manageDesktopProfile=false)` 的**第二个参数**，`line 101/119`）—— **没有 CLI flag、没有环境变量**。
+⇒ 故 `dsh plugin --profile desktop add …` **注定失败**（官方设计，不是社区版残留 ✓：`desktop` 目录本身是普通 profile，`dsh.profile.bundles` 11 项、`patchReload: live`，**无任何 electron/managed 标记**）。
+
+**处置**：
+- V1 / V3 ⇒ 状态改为「**仅应用内可验**（CLI 侧永久不可验）」；**不记为通过**；将来在应用内正式装上本仓插件时再顺手确认。
+- V2 ⇒ 正向分支（服务准时到达 ⇒ **零** warn）**同因不可验**；**已验的是降级分支**：真机 0 error + 恰 1 条我们自己写明「不是失败」的提示、不崩不静默 ⇒ 注册路径由单测（假 sidebar 服务）覆盖。
