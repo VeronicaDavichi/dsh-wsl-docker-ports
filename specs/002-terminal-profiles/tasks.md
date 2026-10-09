@@ -222,3 +222,19 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 | 兜底对照 `GET /nope` | 404 | ✅ 404 |
 
 **仍未验**：① 拿到**令牌后**的 200 与列表正文（需会话令牌，未走）；② **浏览器侧**的 `guide` 入口可点 / 正常启动零 warn / 007 配置页 —— 该探针 profile **不含** `@deepseek-ai/dsh-client-ui-sidebar-right`（`bundles` = `dsh-base` / `dsh-web-app` / 探针插件 + 本仓两包）⇒ 客户端会走**设计好的降级**（`sidebar-right-unavailable`），**验不了 guide 入口**；要验必须用含官方侧栏 bundle 的 profile（需主人授权）。
+
+### 2026-10-09 浏览器侧：**不可验**（证据充分，且不是缺陷）
+
+工具：**Playwright MCP**（⚠️ 偏离：技术栈写的是 chrome-devtools MCP —— 后者在本机连不上，它只认默认 Chrome 用户目录里的 `DevToolsActivePort`，而本机 Chrome 未以远程调试启动、且新版 Chrome 拒绝在默认 profile 上开调试口 ⇒ 经主人批准改用 Playwright 并留此痕）。
+
+在一个**含 `@deepseek-ai/dsh-base` + `dsh-web-app`** 的临时探针 profile 上（官方侧栏插件被临时禁用自杀行为后起实例，跑完**逐字节还原**）：
+
+| 项 | 真机结果 |
+| --- | --- |
+| 页面加载 | 0 error、**1 warning** |
+| 那条 warning | `[dsh-terminal-profiles] 右栏页尚未注册：已登记 ctx.inject([sidebarRightTabs, sidebarRight]) 等待宿主服务（不是失败）` ⇒ **我们自己的降级提示**，文案已写明不是失败 ✓ |
+| `browser_find("端口")` | **0 命中** ⇒ 右栏里既没有 guide 胶囊、也没有端口页 |
+| 控制台请求 URL 里的 client bundle 列表 | 共 **8** 个：`dsh-client-ui-deliverables` / `dsh-wsl-docker-ports` / `dsh-terminal-profiles` / `dsh-typert-registry` / `dsh-client-connection` / `dsh-api-workspace-controller` / `dsh-api-session-controller` / `dsh-client-ui-directory-picker-native` ⇒ **不含官方 `dsh-client-ui-sidebar` / `sidebar-right`** |
+
+⇒ **根因**：该 profile 里官方侧栏 **client 插件根本没被加载** ⇒ 宿主服务 `sidebarRightTabs` / `sidebarRight` **永远不会到达** ⇒ 我们的插件**按设计降级**（响一声、说清原因、零报错）✓ —— **这不是缺陷** ✓。
+⇒ **结论**：「guide 入口可点」与「007 配置页」两项**必须在官方侧栏 client 插件真被加载的 profile 里验**（即主人的真实桌面环境）；在纯探针 profile 里**物理上不可验** ✗，**不记为通过**。
