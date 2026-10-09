@@ -42,3 +42,7 @@
 - **002 拥有**：配置模型（`parseProfiles`）、`.volatile()` 语义与 `VOLATILE_FIELDS`、客户端骨架/行渲染/终端会话、服务导出（`managedTerminal`）。
 - 两侧同包、**不建反向边**（L3 生命周期隔离；`depends_on` 只有 `007 → 002`）。
 
+
+## 决策留痕
+
+- ✅ **2026-10-09（主人裁定）设置命名空间不加宿主侧 schema**：`ctx.settings.register` 在宿主 `0.2.0-rc.2` 已移除 ⇒ 本包的 settings 声明走**我们自己的 `cordis.patch.yml` 的 `- insert:` 条目**，**不引 `@deepseek-ai/schemastery`**、不加依赖。真机只需验证该条目被正常加载。

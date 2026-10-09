@@ -72,6 +72,7 @@
 
 > 🔵 **2026-10-09 Phase 1+2 交付时的口径级报备（子代理只报不改 ⇒ 需主人裁定 / 集成方认可）**
 > ① 🔴 **6 个工具用裸名（`new`/`list`/`read`/`write`/`resize`/`kill`）与宿主内建工具族撞名**：REQ-1.1 与 design §2/§5 **字面**就是裸名，实现照做、未擅改。硬证据：**宿主内建工具里已存在 `read` / `write`**（本机 DSH 工具面实测有 `read`/`write`/`edit`/`glob`/`grep`/`pwsh`…；官方工具包也确有 `dsh-tool-fs` / `dsh-tool-jobs` / `dsh-terminal` 一族）。⚠️ **撞名的实际后果（注册抛错 vs 静默遮蔽官方 `read`）本机无法离线验证** —— 2026-10-09 集成方去查宿主源码时发现 profile 的 `node_modules\@deepseek-ai\*` 符号链接**悬空**（见 stack-decision.md 同日「宿主源码不可读」行）⇒ 该判据只能等真机 T0.5 装载时观测。**集成方建议：改名加 `terminal_` 前缀**（`terminal_new` / `terminal_read` / `terminal_send` …）—— 代价 = REQ-1.1 的 6 个名字 + design §2/§5 + 少量断言（「恰好 6 名」不变）；收益 = 彻底消除遮蔽官方 `read`/`write` 的风险。**若主人不改名**，则必须把「注册后断言官方 `read` 仍可达」写进 T0.5 的装载验证，把风险变成可观测判据。
+> ✅ **2026-10-09 主人裁定：加 `terminal_` 前缀**（`terminal_new` / `terminal_list` / `terminal_read` / `terminal_write` / `terminal_resize` / `terminal_kill`）⇒ 上面 ① 的撞名风险从「等真机观测」变为**结构性消除**；代价 = REQ-1.1 与 design §2 的 6 个名字（本文档的裸名叙述保留为**改名前的历史记录**，勿据以实现）。
 > ② **`invalid-args` 码故意不收编**（代理取舍，集成方认可）：参数非法由 `defineTool` 的 schema 在**进体之前**拦下，那时 `execute` 尚未被调用 ⇒ 既套不上 `[code]` 前缀、也没有改写 `ToolArgsError` 的钩子；硬写成自己的码只会制造「文档说 A、运行时是 B」的假契约 ⇒ 对外形状就是宿主的 `invalid arguments: …`（在业务逻辑前、可读）。
 > ③ **`write` 判别式的真实代价（已有用例钉住）**：为同时满足 REQ-4.2（未识别**键名**报错）与 REQ-1.5（文本原样进 PTY），判据收窄为「单 token、无空白、且匹配 `^(\^|C-|Ctrl\+)` 或首字母大写」⇒ **想发单 token 大写文本（如 `Hello`）会被判 `unknown-key`**（绕法：带分隔 `Hello ` 或 `"Hello"`）。登记备案；要放宽就得改 REQ-4.2 的判据本身。
 
