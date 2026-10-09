@@ -4,7 +4,7 @@
  * ## 为什么是「纯函数 + 一张表」
  *
  * design §3 明写「新增键名只改表，不改工具逻辑」⇒ 本文件没有分支逻辑，只有一个 `Record` 和两个
- * 薄函数。`write` 工具只负责把结果交给 002 的 `session-manager.write(id, data)`（原样字节，
+ * 薄函数。`managed_terminal_write` 工具只负责把结果交给 002 的 `session-manager.write(id, data)`（原样字节，
  * 不经 shell 切词），所以「按什么键」这件事的全部风险都收敛在这张表里。
  *
  * ## 两条口径（REQ-4.2）
@@ -113,7 +113,7 @@ export function decodeKeyName(name: string): string | undefined {
 }
 
 /**
- * `write` 的载荷口径（REQ-1.5 + REQ-4.2）与它的**唯一**判别式。
+ * `managed_terminal_write` 的载荷口径（REQ-1.5 + REQ-4.2）与它的**唯一**判别式。
  *
  * 需求把两种调用挤进同一个 `data` 参数：① 「按键」——design §3 点名的键名；② 「发文本」——
  * design §6 要求「字节原样，不经 shell 切词」。判别式只能从形状来，本实现定成三条（**按序**）：
@@ -140,7 +140,7 @@ export function looksLikeKeyName(data: string): boolean {
 /**
  * `data` → 真正写进 PTY 的字节（`''` 表示**未识别的按键名**，REQ-4.2）。
  *
- * 返回空串作为失败信号是安全的：**调用方（`register.ts` 的 `write`）在进体前就把空串判掉**
+ * 返回空串作为失败信号是安全的：**调用方（`register.ts` 的 `managed_terminal_write`）在进体前就把空串判掉**
  * （`bytes === ''` ⇒ `unknown-key`，REQ-4.2 的「不猜、不丢弃」）—— 这条不变式让本函数不必引入
  * 第二个返回值。
  *

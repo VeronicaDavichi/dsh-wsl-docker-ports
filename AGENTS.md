@@ -132,7 +132,7 @@ Validation checks:
 | 终端渲染 | 浏览器 `@xterm/xterm` + `@xterm/addon-fit`（**独立懒加载 chunk**：官方终端页实证 —— 主 bundle **19,887 B** + `require.async("./client.terminal.js")` 取 **685,949 B** 的 chunk，xterm **内联在 chunk 里**、chunk 不在 `exports` 里；见 [`client-contract.md`](./client-contract.md) §P2）；Host `@xterm/headless` + serializer |
 | 终端内核 | `ctx.subprocess.spawnTerminal`（真 PTY：`argv` + `cwd` + `env` + `rows/cols/terminalType`）—— 不复用官方 `terminal`，不 require 私有 `node-pty` |
 | 配置字段（profile） | `name` + `command` + `args` + `env`；路径**两个字段**：`cwd`（Windows 路径）+ `cwdLinux`（WSL 路径）—— `E:\x` 与 `/mnt/e/x` 语义不同，两字段无歧义 |
-| Agent 工具面 | 完整族 `new` / `list` / `read` / `write` / `resize` / `kill`，经 `dsh-tools` 的 `defineTool` 注册 |
+| Agent 工具面 | 完整族 `managed_terminal_new` / `managed_terminal_list` / `managed_terminal_read` / `managed_terminal_write` / `managed_terminal_resize` / `managed_terminal_kill`（**2026-10-09 主人二次裁定**：原裸名与宿主内建 `read`/`write` 撞名；`terminal_` 一次裁定被官方 `dsh-tool-terminal` 证伪），经 `dsh-tools` 的 `defineTool` 注册 |
 | Agent 读模型 | 屏幕快照 **+** 增量流**两者都给** → 派生「Host 侧必须持有屏幕模型」 |
 | 前后端通道 | 自建 `ctx.webServer` 具名路由（**HTTP 用 `prefix`**）+ WebSocket upgrade（**仅支持 `exact` path**，多终端靠协议层会话 id 复用单一端点），**独占前缀**（不用官方 Typert Remote）；重复 `(kind, path)` 注册会抛错 → 必须登记 effect-scoped disposer |
 | 右栏页类型 | 新 kind `managedTerminal`，`priority` **留空**（= 宿主默认 extension 档）。**2026-10-09 订正**：kind 是**开放字符串**（无枚举类型），0.1.7-rc.2 实测 **9 个**（`guide`/`files`/`browser`/`text`/`changes-review`/`terminal`/`scheduleTask`/`plan`/`subagentchat`）⇒ 判据 = **不与官方已用 kind 重名**（`managedTerminal` 未被占用 ✅）；官方 `terminal` 页自己用 `priority: "builtin"`，第三方**必须**留空或写 `extension` |

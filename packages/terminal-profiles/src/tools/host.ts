@@ -76,7 +76,7 @@ export interface ValueNode {
   readonly items?: ValueNode;
   /** 属性节点上的必填标记（**只有** `properties` 的直接子节点可以写） */
   readonly required?: true;
-  /** 判别联合（`read` 的两模式、`write` 的取消分支都靠它）；分支节点**不得**再带 `required` */
+  /** 判别联合（`managed_terminal_read` 的两模式、`managed_terminal_write` 的取消分支都靠它）；分支节点**不得**再带 `required` */
   readonly oneOf?: readonly ValueNode[];
   readonly enum?: readonly (string | number | boolean | null)[];
   readonly const?: string | number | boolean | null;

@@ -55,7 +55,7 @@ export type ServiceResult<T> = { readonly ok: true; readonly value: T } | Servic
  * `open` 的入参。
  *
  * `profile` 是 **profile 名**（不是配置对象）：§5 的失败列有「profile 不存在」⇒ 必然有一次
- * 按名查找；且 003 不该持有 002 的配置对象（L3）。与 004 的 `new` 工具**同一口径**（`profile: string`）。
+ * 按名查找；且 003 不该持有 002 的配置对象（L3）。与 004 的 `managed_terminal_new` 工具**同一口径**（`profile: string`）。
  */
 export interface OpenTerminalRequest {
   readonly profile: string;

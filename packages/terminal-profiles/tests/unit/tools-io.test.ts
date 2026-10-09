@@ -33,14 +33,14 @@ async function flood(h: ReturnType<typeof createToolsHarness>, handleIndex: numb
   }
 }
 
-describe('T1.2 REQ-1.4 read 的两种模式', () => {
+describe('T1.2 REQ-1.4 managed_terminal_read 的两种模式', () => {
   it('正常：缺省 mode = snapshot，直接给 002 的屏幕模型（text/rows/cols/seq/dropped）', async () => {
     const h = createToolsHarness();
     await h.start('pwsh');
     const handle = handleOf(h.fake);
     await handle.emit('hello\r\n');
 
-    const result = await h.call('read', { id: 'term-1' });
+    const result = await h.call('managed_terminal_read', { id: 'term-1' });
 
     expect(result.isError).toBe(false);
     const value = result.value as { mode: string; snapshot: Record<string, unknown> };
@@ -58,7 +58,7 @@ describe('T1.2 REQ-1.4 read 的两种模式', () => {
     await handle.emit('abc');
     await handle.emit('def');
 
-    const result = await h.call('read', { id: 'term-1', mode: 'incremental' });
+    const result = await h.call('managed_terminal_read', { id: 'term-1', mode: 'incremental' });
 
     expect(result.isError).toBe(false);
     const value = result.value as { mode: string; lost: boolean; chunks: any[]; seq: number; dropped: number };
@@ -72,7 +72,7 @@ describe('T1.2 REQ-1.4 read 的两种模式', () => {
     await h.start('pwsh');
     await handleOf(h.fake).emit('abc');
 
-    const result = await h.call('read', { id: 'term-1', mode: 'incremental', sinceSeq: 2 });
+    const result = await h.call('managed_terminal_read', { id: 'term-1', mode: 'incremental', sinceSeq: 2 });
 
     expect(result.isError).toBe(false);
     const value = result.value as { lost: boolean; chunks: unknown[]; seq: number };
@@ -86,7 +86,7 @@ describe('T1.2 REQ-1.4 read 的两种模式', () => {
     await h.start('pwsh');
     await flood(h, 0, TERM_BUFFER_MAX_BLOCKS + 20);
 
-    const result = await h.call('read', { id: 'term-1', mode: 'incremental', sinceSeq: 1 });
+    const result = await h.call('managed_terminal_read', { id: 'term-1', mode: 'incremental', sinceSeq: 1 });
 
     expect(result.isError).toBe(false);
     const value = result.value as {
@@ -106,21 +106,21 @@ describe('T1.2 REQ-1.4 read 的两种模式', () => {
     expect(typeof value.snapshot.text).toBe('string');
   });
 
-  it('REQ-2.4 / REQ-3.3：`dropped` 在 list 与 read 里**都**看得见（不隐藏丢失）', async () => {
+  it('REQ-2.4 / REQ-3.3：`dropped` 在 managed_terminal_list 与 managed_terminal_read 里**都**看得见（不隐藏丢失）', async () => {
     const h = createToolsHarness();
     await h.start('pwsh');
     await flood(h, 0, TERM_BUFFER_MAX_BLOCKS + 5);
 
-    const listed = (await h.call('list', {})).value as { instances: any[] };
+    const listed = (await h.call('managed_terminal_list', {})).value as { instances: any[] };
     expect(listed.instances[0]?.dropped).toBe(5);
 
-    const read = (await h.call('read', { id: 'term-1' })).value as { snapshot: { dropped: number } };
+    const read = (await h.call('managed_terminal_read', { id: 'term-1' })).value as { snapshot: { dropped: number } };
     expect(read.snapshot.dropped).toBe(5);
     h.dispose();
   });
-  it('T1.4 异常：read 未知实例 ⇒ instance-not-found + 指向 list 的提示，**不**静默返回空文本', async () => {
+  it('T1.4 异常：managed_terminal_read 未知实例 ⇒ instance-not-found + 指向 managed_terminal_list 的提示，**不**静默返回空文本', async () => {
     const h = createToolsHarness();
-    const result = await h.call('read', { id: 'term-1' });
+    const result = await h.call('managed_terminal_read', { id: 'term-1' });
 
     expect(result.isError).toBe(true);
     const text = result.content.map((block) => block.text).join('');
@@ -138,21 +138,21 @@ describe('T1.2 REQ-1.4 read 的两种模式', () => {
     handle.exit(0);
     await new Promise((resolve) => setImmediate(resolve));
 
-    const value = (await h.call('read', { id: 'term-1' })).value as { snapshot: { text: string } };
+    const value = (await h.call('managed_terminal_read', { id: 'term-1' })).value as { snapshot: { text: string } };
     expect(value.snapshot.text).toContain('bye');
     h.dispose();
   });
 });
 
-describe('T1.2 REQ-1.5 write：键名与字面文本', () => {
+describe('T1.2 REQ-1.5 managed_terminal_write：键名与字面文本', () => {
   it('正常：键名命中键名表 ⇒ 发的是**转义字节**（不是键名的字面量）', async () => {
     const h = createToolsHarness();
     await h.start('pwsh');
     const handle = handleOf(h.fake);
 
-    const enter = await h.call('write', { id: 'term-1', data: 'Enter' });
-    const ctrlC = await h.call('write', { id: 'term-1', data: 'C-c' });
-    const up = await h.call('write', { id: 'term-1', data: 'ArrowUp' });
+    const enter = await h.call('managed_terminal_write', { id: 'term-1', data: 'Enter' });
+    const ctrlC = await h.call('managed_terminal_write', { id: 'term-1', data: 'C-c' });
+    const up = await h.call('managed_terminal_write', { id: 'term-1', data: 'ArrowUp' });
 
     // 🔴 载荷是**转义字节**：`\r` / `\x03` / CSI `A`（不是键名字面量）
     expect(handle.writeCalls).toStrictEqual(['\r', '\u0003', '\u001b[A']);
@@ -167,7 +167,7 @@ describe('T1.2 REQ-1.5 write：键名与字面文本', () => {
     await h.start('pwsh');
     const handle = handleOf(h.fake);
 
-    const result = await h.call('write', { id: 'term-1', data: 'ls -la "a b"' });
+    const result = await h.call('managed_terminal_write', { id: 'term-1', data: 'ls -la "a b"' });
 
     expect(result.value).toMatchObject({ written: 12, key: 'text' });
     expect(handle.writeCalls).toStrictEqual(['ls -la "a b"']);
@@ -179,8 +179,8 @@ describe('T1.2 REQ-1.5 write：键名与字面文本', () => {
     await h.start('pwsh');
     const handle = handleOf(h.fake);
 
-    expect((await h.call('write', { id: 'term-1', data: 'a' })).isError).toBe(false);
-    expect((await h.call('write', { id: 'term-1', data: ' ' })).isError).toBe(false);
+    expect((await h.call('managed_terminal_write', { id: 'term-1', data: 'a' })).isError).toBe(false);
+    expect((await h.call('managed_terminal_write', { id: 'term-1', data: ' ' })).isError).toBe(false);
     expect(handle.writeCalls).toStrictEqual(['a', ' ']);
     h.dispose();
   });
@@ -190,8 +190,8 @@ describe('T1.2 REQ-1.5 write：键名与字面文本', () => {
     await h.start('pwsh');
     const handle = handleOf(h.fake);
 
-    expect((await h.call('write', { id: 'term-1', data: 'echo 你好' })).isError).toBe(false);
-    expect((await h.call('write', { id: 'term-1', data: '😀' })).isError).toBe(false);
+    expect((await h.call('managed_terminal_write', { id: 'term-1', data: 'echo 你好' })).isError).toBe(false);
+    expect((await h.call('managed_terminal_write', { id: 'term-1', data: '😀' })).isError).toBe(false);
     expect(handle.writeCalls).toStrictEqual(['echo 你好', '😀']);
     h.dispose();
   });
@@ -201,7 +201,7 @@ describe('T1.2 REQ-1.5 write：键名与字面文本', () => {
     await h.start('pwsh');
     const handle = handleOf(h.fake);
 
-    const result = await h.call('write', { id: 'term-1', data: 'C-?' });
+    const result = await h.call('managed_terminal_write', { id: 'term-1', data: 'C-?' });
 
     expect(result.isError).toBe(true);
     const text = result.content.map((block) => block.text).join('');
@@ -214,7 +214,7 @@ describe('T1.2 REQ-1.5 write：键名与字面文本', () => {
 
   it('REQ-4.2 异常：未知键名的判定**先于**实例查找（不把参数级错误说成实例不存在）', async () => {
     const h = createToolsHarness();
-    const text = (await h.call('write', { id: 'term-404', data: 'C-?' })).content
+    const text = (await h.call('managed_terminal_write', { id: 'term-404', data: 'C-?' })).content
       .map((block) => block.text)
       .join('');
     expect(text).toContain('[unknown-key]');
@@ -222,21 +222,21 @@ describe('T1.2 REQ-1.5 write：键名与字面文本', () => {
     h.dispose();
   });
 
-  it('T3.1 异常：write 未知实例 ⇒ instance-not-found（参数合法时）', async () => {
+  it('T3.1 异常：managed_terminal_write 未知实例 ⇒ instance-not-found（参数合法时）', async () => {
     const h = createToolsHarness();
-    const result = await h.call('write', { id: 'term-404', data: 'ls' });
+    const result = await h.call('managed_terminal_write', { id: 'term-404', data: 'ls' });
     expect(result.content.map((block) => block.text).join('')).toContain('[instance-not-found]');
     h.dispose();
   });
 });
 
-describe('T1.2 REQ-1.6 resize：夹紧 + 顺序', () => {
+describe('T1.2 REQ-1.6 managed_terminal_resize：夹紧 + 顺序', () => {
   it('🔴 正常：`rows ≠ cols` 时宿主收到的是 `resize(cols, rows)`（我们的 `(rows, cols)` 已由 002 换序）', async () => {
     const h = createToolsHarness();
     await h.start('pwsh');
     const handle = handleOf(h.fake);
 
-    const result = await h.call('resize', { id: 'term-1', rows: 30, cols: 100 });
+    const result = await h.call('managed_terminal_resize', { id: 'term-1', rows: 30, cols: 100 });
 
     expect(result.value).toMatchObject({ rows: 30, cols: 100 });
     // [cols, rows] 位置参数：100 在前、30 在后。反了就是静默转置。
@@ -249,7 +249,7 @@ describe('T1.2 REQ-1.6 resize：夹紧 + 顺序', () => {
     await h.start('pwsh');
     const handle = handleOf(h.fake);
 
-    const tooBig = await h.call('resize', { id: 'term-1', rows: 9999, cols: 9999 });
+    const tooBig = await h.call('managed_terminal_resize', { id: 'term-1', rows: 9999, cols: 9999 });
     expect(tooBig.value).toMatchObject({
       rows: TERM_MAX_ROWS,
       cols: TERM_MAX_COLS,
@@ -257,7 +257,7 @@ describe('T1.2 REQ-1.6 resize：夹紧 + 顺序', () => {
       requestedCols: 9999,
     });
 
-    const tooSmall = await h.call('resize', { id: 'term-1', rows: 0, cols: 0 });
+    const tooSmall = await h.call('managed_terminal_resize', { id: 'term-1', rows: 0, cols: 0 });
     expect(tooSmall.value).toMatchObject({ rows: TERM_MIN_ROWS, cols: TERM_MIN_COLS });
 
     expect(handle.resizeCalls).toStrictEqual([
@@ -272,7 +272,7 @@ describe('T1.2 REQ-1.6 resize：夹紧 + 顺序', () => {
     await h.start('pwsh');
     const handle = handleOf(h.fake);
 
-    const negative = await h.call('resize', { id: 'term-1', rows: -50, cols: -1 });
+    const negative = await h.call('managed_terminal_resize', { id: 'term-1', rows: -50, cols: -1 });
     expect(negative.value).toMatchObject({ rows: TERM_MIN_ROWS, cols: TERM_MIN_COLS });
     expect(handle.resizeCalls).toStrictEqual([[TERM_MIN_COLS, TERM_MIN_ROWS]]);
     h.dispose();
@@ -284,7 +284,7 @@ describe('T1.2 REQ-1.6 resize：夹紧 + 顺序', () => {
     const handle = handleOf(h.fake);
 
     await expect(
-      h.tool('resize').execute({ id: 'term-1', rows: '30', cols: 100 }, { callId: 'c1' }),
+      h.tool('managed_terminal_resize').execute({ id: 'term-1', rows: '30', cols: 100 }, { callId: 'c1' }),
     ).rejects.toThrow(/invalid arguments/);
     expect(handle.resizeCalls).toStrictEqual([]);
     h.dispose();
@@ -295,7 +295,7 @@ describe('T1.2 REQ-1.6 resize：夹紧 + 顺序', () => {
     await h.start('pwsh');
     handleOf(h.fake).resizeError = new Error('conpty gone');
 
-    const result = await h.call('resize', { id: 'term-1', rows: 30, cols: 100 });
+    const result = await h.call('managed_terminal_resize', { id: 'term-1', rows: 30, cols: 100 });
 
     expect(result.isError).toBe(true);
     expect(result.content.map((block) => block.text).join('')).toMatch(/^Error: \[/);

@@ -45,7 +45,7 @@ import { createSessionManager } from './session/manager.ts';
 import type { SubprocessSurface } from './session/types.ts';
 import { createTerminalTools, ToolFailureError } from './tools/index.ts';
 import type { HostContextLike, ToolRegisterSurface } from './tools/index.ts';
-import { assertWriteAllowed } from './tools/policy.ts';
+import { assertWriteAllowed, type WriteTool } from './tools/policy.ts';
 import { createTokenStore } from './ws/auth.ts';
 import type { TokenStore } from './ws/auth.ts';
 import { registerTerminalChannel } from './ws/routes.ts';
@@ -358,7 +358,7 @@ function provideService(ctx: PluginContextLike, serviceName: string, value: unkn
  * 依据（都是本仓既有事实，不是偏好）：
  * ① design §11：`ctx.sandboxPolicy` 是**策略解析器**，**不是逐次门禁** —— 门禁在
  *    `tools/pre-execute` + `ctx.tools.guard()`；
- * ② 004 的真机验收项 #7：`read-only` 下 **Agent** 的 `write` 被拒 + **页面键盘输入仍可用**
+ * ② 004 的真机验收项 #7：`read-only` 下 **Agent** 的 `managed_terminal_write` 被拒 + **页面键盘输入仍可用**
  *    ⇒ 沙箱约束的是 **Agent 动作**，不是用户/宿主侧能力；
  * ③ 本服务面的消费方 003 是**页面级**的（用户点按钮才 `open`）⇒ 在这一层再拦一次会让
  *    `read-only` 下「用户自己的按钮」失效，与 #7 直接矛盾；而 Agent 路径在 004 的工具层
@@ -366,12 +366,13 @@ function provideService(ctx: PluginContextLike, serviceName: string, value: unkn
  *
  * ⇒ 缺省 `guard === undefined`（不过门）。这个函数**保留**是为了「零成本可切换」：想复用
  * 004 的同一份策略时，`PluginDeps.guard = (action) => sandboxGuard(policyCtx, action)` 即可
- * （`read` / `list` 永不过门，REQ-3.2）。缺策略服务时它是 fail-closed（`read-only` ⇒ 拒绝）。
+ * （`managed_terminal_read` / `managed_terminal_list` 永不过门，REQ-3.2）。缺策略服务时它是 fail-closed（`read-only` ⇒ 拒绝）。
  *
  * 审批**不在**这一层：审批是「Agent 触发」的语义（004 的 `gate()` 需要 agent 才能问）。
  */
 export function sandboxGuard(ctx: HostContextLike, action: GuardAction): ServiceFailure | undefined {
-  const tool = action === 'open' ? 'new' : action;
+  // `GuardAction` 是 003 消费的服务面词汇（`open` 不是工具名）⇒ 在这里显式映射到 Agent 工具名
+  const tool: WriteTool = action === 'open' ? 'managed_terminal_new' : `managed_terminal_${action}`;
   try {
     assertWriteAllowed(ctx, undefined, tool);
     return undefined;

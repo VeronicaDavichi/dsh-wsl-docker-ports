@@ -7,7 +7,7 @@
  * 它不持有 PTY、不碰 handle、不建缓冲：所有机制都在 002（NFR-3）。因此本文件里不会出现
  * `spawnTerminal` / `resize(cols, rows)` / `seq` 这类词 —— 出现即违规。
  *
- * ## 🔴 `resize` 的换序**不在**这里（宿主契约复核）
+ * ## 🔴 `managed_terminal_resize` 的换序**不在**这里（宿主契约复核）
  *
  * 宿主 handle 是 `resize(cols, rows)`（列在前、不夹紧），而 002 对外的唯一入口是
  * `session-manager.resize(id, rows, cols)`（行在前、自带夹紧）。本层**只准**调后者，绝不能拿
@@ -24,7 +24,7 @@ import type { SessionManager } from '../session/manager.ts';
 import { fail, ToolFailureError, unknownKeyFailure } from './failure.ts';
 import type { HostContextLike, ToolRunContext } from './host.ts';
 import { decodeKeyName, decodeWritePayload, supportedKeyNames } from './keys.ts';
-import { assertWriteAllowed, requestApproval } from './policy.ts';
+import { assertWriteAllowed, requestApproval, type WriteTool } from './policy.ts';
 import { failFromSessionResult, readViaSession } from './read-model.ts';
 import {
   KILL_OUTPUT,
@@ -38,12 +38,12 @@ import {
 
 /** 6 个工具名（design §5 逐个核对过的字面量；**恰好 6 个**，REQ-1.1） */
 export const TERMINAL_TOOL_NAMES = [
-  'new',
-  'list',
-  'read',
-  'write',
-  'resize',
-  'kill',
+  'managed_terminal_new',
+  'managed_terminal_list',
+  'managed_terminal_read',
+  'managed_terminal_write',
+  'managed_terminal_resize',
+  'managed_terminal_kill',
 ] as const;
 
 export type TerminalToolName = (typeof TERMINAL_TOOL_NAMES)[number];
@@ -63,7 +63,7 @@ export interface CreateTerminalToolsOptions {
   readonly tools: ToolRegisterSurface;
   /** 002 的实例表（**唯一**的机制入口） */
   readonly manager: SessionManager;
-  /** profile 名录（`new` 的枚举校验与 REQ-1.2 的「可用列表」都来自它） */
+  /** profile 名录（`managed_terminal_new` 的枚举校验与 REQ-1.2 的「可用列表」都来自它） */
   readonly profiles: () => readonly TerminalProfile[];
   /** host context（沙箱/审批走它的非严格 `get`） */
   readonly ctx: HostContextLike;
@@ -73,7 +73,7 @@ export interface CreateTerminalToolsOptions {
 async function gate(
   ctx: HostContextLike,
   exec: ToolRunContext,
-  tool: 'new' | 'write' | 'resize' | 'kill',
+  tool: WriteTool,
   reason: string,
 ): Promise<{ readonly cancelled: false } | { readonly cancelled: true; readonly value: unknown }> {
   assertWriteAllowed(ctx, exec.agent, tool);
@@ -87,7 +87,7 @@ async function gate(
   return approval.allowed ? { cancelled: false } : { cancelled: true, value: approval.value };
 }
 
-/** `new` 的 profile 查找（REQ-1.2：不存在时**附可用列表**，不是只说「没找到」） */
+/** `managed_terminal_new` 的 profile 查找（REQ-1.2：不存在时**附可用列表**，不是只说「没找到」） */
 function findProfile(profiles: readonly TerminalProfile[], name: string): TerminalProfile {
   const hit = profiles.find((profile) => profile.name === name);
   if (hit !== undefined) return hit;
@@ -113,7 +113,7 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
 
   register(
     defineTool({
-      name: 'new',
+      name: 'managed_terminal_new',
       description:
         'Start a new managed terminal instance from a configured profile. Returns the instance id, '
         + 'which every other terminal tool takes. Each call opens a NEW instance (ids are never reused). '
@@ -123,7 +123,7 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
         profile: {
           type: 'string',
           required: true,
-          description: 'Profile name from the plugin configuration (see terminal list / the config page).',
+          description: 'Profile name from the plugin configuration (see managed_terminal_list / the config page).',
         },
       },
       output: {
@@ -135,10 +135,10 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
       },
       async execute(args: { profile: string }, exec: ToolRunContext) {
         const profile = findProfile(profiles(), args.profile);
-        const denied = await gate(ctx, exec, 'new', `start terminal profile "${args.profile}"`);
+        const denied = await gate(ctx, exec, 'managed_terminal_new', `start terminal profile "${args.profile}"`);
         if (denied.cancelled) return denied.value;
         const started = await manager.start(profile);
-        if (!started.ok) return failFromSessionResult('new', started);
+        if (!started.ok) return failFromSessionResult('managed_terminal_new', started);
         const summary = started.value;
         return {
           id: summary.id,
@@ -153,7 +153,7 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
 
   register(
     defineTool({
-      name: 'list',
+      name: 'managed_terminal_list',
       description:
         'List managed terminal instances: id, profile, pid, size, alive state, next seq and the dropped-chunk '
         + 'counter of the bounded output buffer. Read-only: available under every sandbox mode.',
@@ -190,7 +190,7 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
 
   register(
     defineTool({
-      name: 'read',
+      name: 'managed_terminal_read',
       description:
         'Read one terminal instance screen. mode "snapshot" (default) returns the current rendered screen as '
         + 'replayable escape sequences plus rows/cols/seq/dropped. mode "incremental" returns the output chunks '
@@ -200,7 +200,7 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
         id: {
           type: 'string',
           required: true,
-          description: 'Instance id returned by terminal new / terminal list (e.g. "term-1").',
+          description: 'Instance id returned by managed_terminal_new / managed_terminal_list (e.g. "term-1").',
         },
         mode: {
           type: 'string',
@@ -260,7 +260,7 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
 
   register(
     defineTool({
-      name: 'write',
+      name: 'managed_terminal_write',
       description:
         'Send input to one terminal instance. data is either a key name (Enter, Tab, Esc, Backspace, ArrowUp, '
         + 'C-c, F5, …) or literal text sent byte-for-byte to the PTY (no shell word splitting). An unrecognised '
@@ -287,10 +287,10 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
         // 🔴 键名解析**先于**权限门：未识别的键名是参数级错误（REQ-4.2），不该花掉一次审批
         const bytes = decodeWritePayload(args.data);
         if (bytes === '') return unknownKeyFailure(args.data, supportedKeyNames());
-        const denied = await gate(ctx, exec, 'write', `write ${bytes.length} char(s) to ${args.id}`);
+        const denied = await gate(ctx, exec, 'managed_terminal_write', `write ${bytes.length} char(s) to ${args.id}`);
         if (denied.cancelled) return denied.value;
         const written = await manager.write(args.id, bytes);
-        if (!written.ok) return failFromSessionResult('write', written);
+        if (!written.ok) return failFromSessionResult('managed_terminal_write', written);
         // `key` 是**回执**：键名命中键名表时给归一化后的键名（`Enter` / `C-c`），字面发送时给 `text`。
         // 它的用途是让「刚才那个 `\r` 到底是回车还是别的」在结果里可判 —— 所以存的是键名本身，
         // 不是写进去的字节（字节长度为 1 的键有 20 多个，回显字节等于没回执）。
@@ -301,7 +301,7 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
 
   register(
     defineTool({
-      name: 'resize',
+      name: 'managed_terminal_resize',
       description:
         'Resize one terminal instance. Out-of-range values are clamped and the result reports the ACTUAL '
         + 'effective rows/cols (requestedRows/requestedCols echo the input). Requires write access.',
@@ -324,12 +324,12 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
               }],
       },
       async execute(args: { id: string; rows: number; cols: number }, exec: ToolRunContext) {
-        const denied = await gate(ctx, exec, 'resize', `resize ${args.id} to ${args.rows}x${args.cols}`);
+        const denied = await gate(ctx, exec, 'managed_terminal_resize', `resize ${args.id} to ${args.rows}x${args.cols}`);
         if (denied.cancelled) return denied.value;
         // 🔴 顺序与入参同名：002 的入口就是 `(id, rows, cols)`（行在前、自带夹紧）。
         // 宿主 handle 的 `resize(cols, rows)` **不在本层出现** —— 换序只在 002 的 manager 里发生一次。
         const resized = await manager.resize(args.id, args.rows, args.cols);
-        if (!resized.ok) return failFromSessionResult('resize', resized);
+        if (!resized.ok) return failFromSessionResult('managed_terminal_resize', resized);
         return {
           rows: resized.value.rows,
           cols: resized.value.cols,
@@ -342,7 +342,7 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
 
   register(
     defineTool({
-      name: 'kill',
+      name: 'managed_terminal_kill',
       description:
         'Terminate one terminal instance (best-effort process-group termination) and release its screen model. '
         + 'An unknown id is an explicit error, never a silent success. Requires write access.',
@@ -357,10 +357,10 @@ export function createTerminalTools(options: CreateTerminalToolsOptions): {
             : [{ type: 'text', text: `Killed ${value.id ?? ''}`.trim() + (value.warning === undefined ? '.' : ` (${value.warning})`) }],
       },
       async execute(args: { id: string }, exec: ToolRunContext) {
-        const denied = await gate(ctx, exec, 'kill', `kill ${args.id}`);
+        const denied = await gate(ctx, exec, 'managed_terminal_kill', `kill ${args.id}`);
         if (denied.cancelled) return denied.value;
         const killed = await manager.kill(args.id);
-        if (!killed.ok) return failFromSessionResult('kill', killed);
+        if (!killed.ok) return failFromSessionResult('managed_terminal_kill', killed);
         return {
           killed: true,
           id: args.id,

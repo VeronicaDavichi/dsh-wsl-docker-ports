@@ -27,8 +27,8 @@ import { APPROVAL_SERVICE, SANDBOX_POLICY_SERVICE } from './host.ts';
 import { cancelledValue, fail } from './failure.ts';
 import type { ToolFailureValue } from './failure.ts';
 
-/** 需要写权限的四个工具（design §4 表：`new` / `write` / `resize` / `kill` 受策略约束） */
-export type WriteTool = 'new' | 'write' | 'resize' | 'kill';
+/** 需要写权限的四个工具（design §4 表：`managed_terminal_new` / `managed_terminal_write` / `managed_terminal_resize` / `managed_terminal_kill` 受策略约束） */
+export type WriteTool = 'managed_terminal_new' | 'managed_terminal_write' | 'managed_terminal_resize' | 'managed_terminal_kill';
 
 /** 逐工具的**保守**默认：缺服务/解析不出时**拒绝**（REQ-3.4「最保守，SHALL NOT 默认放行」） */
 export const CONSERVATIVE_MODE = 'read-only';
@@ -96,7 +96,7 @@ export function resolveMode(ctx: HostContextLike, session: unknown): SandboxMode
  * 写工具的准入：沙箱否决是**终态**（不进入业务逻辑、不产生副作用），返回可读原因 + 当前策略。
  *
  * 「为什么」写进 hint（REQ-3.1 的「返回原因」）：只读下要告诉模型**怎么自救** —— 要么改策略，
- * 要么改用 `read` / `list`（它们在只读下可用，REQ-3.2）。
+ * 要么改用 `managed_terminal_read` / `managed_terminal_list`（它们在只读下可用，REQ-3.2）。
  */
 export function assertWriteAllowed(ctx: HostContextLike, session: unknown, tool: WriteTool): void {
   const policy = resolvePolicy(ctx, session);
@@ -105,13 +105,13 @@ export function assertWriteAllowed(ctx: HostContextLike, session: unknown, tool:
     fail(
       'sandbox-denied',
       `宿主未提供沙箱策略服务，${tool} 按最保守口径被拒绝（REQ-3.4：缺服务时不得默认放行）`,
-      '这是防御性分支：确认 profile 里挂载了 @deepseek-ai/dsh-permission-presets 的 sandbox 配置；只读的 read / list 不受影响。',
+      '这是防御性分支：确认 profile 里挂载了 @deepseek-ai/dsh-permission-presets 的 sandbox 配置；只读的 managed_terminal_read / managed_terminal_list 不受影响。',
     );
   }
   fail(
     'sandbox-denied',
     `当前沙箱策略为 read-only，${tool} 被拒绝（终端不绕过沙箱）`,
-    '把沙箱模式切到 workspace-write / danger-full-access 后重试；read 与 list 在 read-only 下仍可用。',
+    '把沙箱模式切到 workspace-write / danger-full-access 后重试；managed_terminal_read 与 managed_terminal_list 在 read-only 下仍可用。',
   );
 }
 

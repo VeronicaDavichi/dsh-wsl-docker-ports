@@ -47,7 +47,7 @@ transitions:
 
 Agent 面是这个组件的**主要卖点**（002 的概述已写死：官方右栏终端的输出不进 Agent transcript，Agent 看不见终端在跑什么）。本 Spec 把这个面写死：
 
-    Agent ──defineTool──▶ managed_terminal_new / list / read / write / resize / kill
+    Agent ──defineTool──▶ `managed_terminal_new` / `managed_terminal_list` / `managed_terminal_read` / `managed_terminal_write` / `managed_terminal_resize` / `managed_terminal_kill`
                             │  受 ctx.sandboxPolicy + 工具审批（与官方 bash / fs 同源）
                             ▼
                     002 的 session-manager / screen-model（本 Spec 不重新实现）

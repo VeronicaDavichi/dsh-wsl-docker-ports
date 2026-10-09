@@ -88,7 +88,7 @@ stack:
     consequence: 标签布局、重连、滚动缓冲、主题适配均需自建。
     verified: ctx.subprocess 由 @deepseek-ai/dsh-subprocess-local 在标准组合中挂载（app.asar:366599）
   plugin.agentSurface:
-choice: 完整工具族 managed_terminal_new / managed_terminal_list / managed_terminal_read / managed_terminal_write / managed_terminal_resize / managed_terminal_kill（**2026-10-09 起加 `terminal_` 前缀**：原裸名 `new`/`list`/`read`/`write`/`resize`/`kill` 与宿主内建 `read`/`write` 撞名）
+choice: 完整工具族 managed_terminal_new / managed_terminal_list / managed_terminal_read / managed_terminal_write / managed_terminal_resize / managed_terminal_kill（**2026-10-09 起加 `managed_terminal_` 前缀**：原裸名与宿主内建 `read`/`write` **及官方 `dsh-tool-terminal` 的 `terminal_read`/`terminal_list`** 撞名）
     confirmed: true
     alternatives: [最小两个 read / write, 只提供 service 不注册模型工具]
     rationale: 用户第 1 轮明确选择完整族；覆盖「Agent 能在终端里读写」的完整生命周期。

@@ -25,14 +25,14 @@ export type SessionRead = TerminalRead;
  * 002 失败 → 工具失败。`code` **原样透传**（002 的 `SessionFailureCode` 与 design §5 是同一套词汇，
  * 见 `../session/types.ts` 的文件头），只补一句「谁拒绝的」以免模型把 `spawn-failed` 当成工具坏了。
  *
- * 🔴 `instance-not-found` 时**必须**补上「用 list 看有哪些实例」：002 的 hint 是给 UI 看的
+ * 🔴 `instance-not-found` 时**必须**补上「用 managed_terminal_list 看有哪些实例」：002 的 hint 是给 UI 看的
  * （「当前没有任何实例」），对 Agent 而言「读不到某个 id」最需要的动作是列举现存的 id
- * （T1.4 的「指向 list」）。这是本层唯一改写 hint 的地方，改的是**动作**、不是 002 的判断。
+ * （T1.4 的「指向 managed_terminal_list」）。这是本层唯一改写 hint 的地方，改的是**动作**、不是 002 的判断。
  */
 function failFromSession(tool: string, failure: { code: string; message: string; hint?: string; cwd?: string }): never {
   const cwd = failure.cwd === undefined ? '' : `（PTY cwd：${failure.cwd}）`;
   const hint = failure.code === 'instance-not-found'
-    ? `先用 list 看看当前有哪些实例 id（实例可能已被 kill 或从未创建）。${failure.hint ?? ''}`
+    ? `先用 managed_terminal_list 看看当前有哪些实例 id（实例可能已被 managed_terminal_kill 或从未创建）。${failure.hint ?? ''}`
     : failure.hint;
   return fail(failure.code, `${tool}：${failure.message}${cwd}`, hint);
 }
@@ -54,7 +54,7 @@ export async function readViaSession(
       ? { mode: 'incremental', ...(options.sinceSeq === undefined ? {} : { sinceSeq: options.sinceSeq }) }
       : { mode: 'snapshot' },
   );
-  if (!result.ok) return failFromSession('read', result);
+  if (!result.ok) return failFromSession('managed_terminal_read', result);
   const read = result.value;
   if (read.mode === 'snapshot') return { mode: 'snapshot', snapshot: read.snapshot };
   if (!read.lost) {
@@ -71,7 +71,7 @@ export async function readViaSession(
   };
 }
 
-/** 002 的失败也用于 `write` / `resize` / `kill` / `new` —— 同一个透传点，形状统一 */
+/** 002 的失败也用于 `managed_terminal_write` / `managed_terminal_resize` / `managed_terminal_kill` / `managed_terminal_new` —— 同一个透传点，形状统一 */
 export function failFromSessionResult(
   tool: string,
   failure: { code: string; message: string; hint?: string; cwd?: string },

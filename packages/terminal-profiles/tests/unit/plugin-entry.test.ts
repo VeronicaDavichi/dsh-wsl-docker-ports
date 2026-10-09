@@ -21,7 +21,6 @@ import {
 } from '../../src/plugin.ts';
 import { defaultHostModulePort, resolveSchemaFactory } from '../../src/service-export/host-modules.ts';
 import { MANAGED_TERMINAL_SERVICE } from '../../src/service-export/types.ts';
-import { TERMINAL_TOOL_NAMES } from '../../src/tools/index.ts';
 import type { HostContextLike, ToolRegisterSurface } from '../../src/tools/index.ts';
 import {
   TERM_WS_HTTP_PREFIX,
@@ -40,6 +39,16 @@ import {
 import { createFakeTools } from '../helpers/tools-define.ts';
 import { createFakeWebServer } from '../helpers/ws-server-fakes.ts';
 import { handshakeHeaders } from '../helpers/ws-frames-fixture.ts';
+
+/** 6 个 Agent 工具名（**字面量**：故意不从 `src` 取 —— 改名必须让本文件红，而不是自动跟随） */
+const TOOL_NAMES = [
+  'managed_terminal_new',
+  'managed_terminal_list',
+  'managed_terminal_read',
+  'managed_terminal_write',
+  'managed_terminal_resize',
+  'managed_terminal_kill',
+] as const;
 
 /* 脚手架（constants / fake ctx / fake 宿主模块端口 / 手动调度器）见 `../helpers/plugin-fixtures.ts` */
 
@@ -194,8 +203,8 @@ describe('T7.2 卸载清理：全部计数归零 + 全部实例被终止', () =>
     expect(handle.routeCount()).toBe(2);
     expect(webServer.registerCalls).toEqual([{ kind: 'prefix', path: TERM_WS_HTTP_PREFIX }]);
     expect(webServer.upgradeCalls).toEqual([{ path: TERM_WS_UPGRADE_PATH }]);
-    expect(tools.names).toEqual([...TERMINAL_TOOL_NAMES]);
-    expect(handle.toolNames).toEqual([...TERMINAL_TOOL_NAMES]);
+    expect(tools.names).toEqual([...TOOL_NAMES]);
+    expect(handle.toolNames).toEqual([...TOOL_NAMES]);
     expect(handle.channel?.channel.activeCount).toBe(1);
     expect(handle.serviceHost.listenerCount()).toBe(1);
     expect(handle.serviceHost.tickerCount()).toBe(1);

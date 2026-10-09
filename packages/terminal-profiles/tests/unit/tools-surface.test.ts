@@ -196,7 +196,7 @@ describe('NFR-4 单文件 ≤ 400 行（原始行数，**含 tests/**）', () =>
 
 describe('design §5 错误码与工具名（防改名漂移）', () => {
   it('工具名**恰好** 6 个且与 design §2 表格逐字一致', () => {
-    expect([...TERMINAL_TOOL_NAMES]).toStrictEqual(['new', 'list', 'read', 'write', 'resize', 'kill']);
+    expect([...TERMINAL_TOOL_NAMES]).toStrictEqual(['managed_terminal_new', 'managed_terminal_list', 'managed_terminal_read', 'managed_terminal_write', 'managed_terminal_resize', 'managed_terminal_kill']);
     expect(new Set(TERMINAL_TOOL_NAMES).size).toBe(6);
   });
 
@@ -209,8 +209,13 @@ describe('design §5 错误码与工具名（防改名漂移）', () => {
 
   it('`output.schema` + `output.render` 是每个工具都有的（A-1 的 ③）', () => {
     const register = readSource('register.ts');
-    expect([...register.matchAll(/name: '([a-z]+)',/g)].map((match) => match[1])).toStrictEqual([
-      ...TERMINAL_TOOL_NAMES,
+    expect([...register.matchAll(/name: '([a-z_]+)',/g)].map((match) => match[1])).toStrictEqual([
+      'managed_terminal_new',
+      'managed_terminal_list',
+      'managed_terminal_read',
+      'managed_terminal_write',
+      'managed_terminal_resize',
+      'managed_terminal_kill',
     ]);
     expect([...register.matchAll(/output: \{/g)]).toHaveLength(6);
     expect([...register.matchAll(/render: /g)]).toHaveLength(6);

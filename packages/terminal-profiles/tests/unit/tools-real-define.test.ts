@@ -22,10 +22,20 @@
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { describe, expect, it } from 'vitest';
 
-import { TERMINAL_TOOL_NAMES, createTerminalTools } from '../../src/tools/register.ts';
+import { createTerminalTools } from '../../src/tools/register.ts';
 import type { CreateTerminalToolsOptions } from '../../src/tools/register.ts';
 import type { SessionManager } from '../../src/session/manager.ts';
 import { createFakeContext } from '../helpers/tools-define.ts';
+
+/** 6 个 Agent 工具名（**字面量**：故意不从 `src` 取 —— 改名必须让本文件红，而不是自动跟随） */
+const TOOL_NAMES = [
+  'managed_terminal_new',
+  'managed_terminal_list',
+  'managed_terminal_read',
+  'managed_terminal_write',
+  'managed_terminal_resize',
+  'managed_terminal_kill',
+] as const;
 
 /** 用**真** `defineTool` 走一遍 `createTerminalTools` 的注册过程，回传宿主侧收到的定义 */
 function registerWithRealDefineTool(): {
@@ -64,9 +74,9 @@ const BROKEN_OUTPUT_SCHEMA = {
 describe('工具面 · 真 defineTool 注册（DSL 契约核对）', () => {
   it('① 真模块接受全部 6 个工具：注册不抛且名字齐全（这次的真缺陷就死在这条）', () => {
     const { names, definitions } = registerWithRealDefineTool();
-    expect(names).toEqual([...TERMINAL_TOOL_NAMES]);
+    expect(names).toEqual([...TOOL_NAMES]);
     // 反假绿：断言「扫到了 6 个定义」，否则「0 个也全绿」
-    expect(definitions.length).toBe(TERMINAL_TOOL_NAMES.length);
+    expect(definitions.length).toBe(TOOL_NAMES.length);
     expect(definitions.length).toBeGreaterThanOrEqual(6);
   });
 
@@ -74,13 +84,13 @@ describe('工具面 · 真 defineTool 注册（DSL 契约核对）', () => {
     const { definitions } = registerWithRealDefineTool();
     const byName = new Map(definitions.map((definition) => [definition.name as string, definition]));
 
-    // `new` 的唯一参数 profile 是必填 ⇒ 编译后出现在**顶层** required（DSL 的功劳，不是我们手写的）
-    const created = byName.get('new');
+    // `managed_terminal_new` 的唯一参数 profile 是必填 ⇒ 编译后出现在**顶层** required（DSL 的功劳，不是我们手写的）
+    const created = byName.get('managed_terminal_new');
     expect(created?.parameters.type).toBe('object');
     expect(created?.parameters.required).toEqual(['profile']);
     expect(Object.keys(created?.parameters.properties ?? {})).toEqual(['profile']);
     expect(typeof created?.output.render).toBe('function');
-    // `new` 的输出是 `oneOf`(成功 | 审批取消) 联合 ⇒ 无顶层 `type`，逐个分支看：
+    // `managed_terminal_new` 的输出是 `oneOf`(成功 | 审批取消) 联合 ⇒ 无顶层 `type`，逐个分支看：
     // 第一条分支的 `required` 恰恰是我们写在**属性节点**上的 `required: true` 被编译出来的
     const branches = created?.output.schema.oneOf as readonly Record<string, any>[] | undefined;
     expect(Array.isArray(branches)).toBe(true);
@@ -90,8 +100,8 @@ describe('工具面 · 真 defineTool 注册（DSL 契约核对）', () => {
     expect(branches?.[1]?.required).toEqual(['ok', 'code', 'message']);
     expect(branches?.[0]?.additionalProperties).toBe(false);
 
-    // `list` / `read` / `write` / `resize` / `kill` 也都编译出了 parameters 与 output.schema
-    for (const name of TERMINAL_TOOL_NAMES) {
+    // `managed_terminal_list` / `managed_terminal_read` / `managed_terminal_write` / `managed_terminal_resize` / `managed_terminal_kill` 也都编译出了 parameters 与 output.schema
+    for (const name of TOOL_NAMES) {
       const definition = byName.get(name);
       expect(definition, `工具 ${name} 未注册`).toBeDefined();
       expect(definition?.parameters.type).toBe('object');

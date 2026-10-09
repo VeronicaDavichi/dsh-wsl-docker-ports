@@ -82,7 +82,7 @@ export interface ManagedTerminalServiceOptions {
   /** 订阅节奏（缺省 `createDefaultSchedule()`；单测传手动推进的 fake） */
   readonly schedule?: SchedulePort | undefined;
   readonly pollMs?: number | undefined;
-  /** 写路径门禁（返回失败即拒绝；`read`/`list` 不过门，REQ-3.2） */
+  /** 写路径门禁（返回失败即拒绝；`managed_terminal_read`/`managed_terminal_list` 不过门，REQ-3.2） */
   readonly guard?: ((action: GuardAction) => ServiceFailure | undefined) | undefined;
 }
 

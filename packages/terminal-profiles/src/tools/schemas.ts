@@ -7,7 +7,7 @@
  * ⚠️ 两条刻意写法：
  * ① **成功形状才进 schema** —— 失败一律抛出（见 `./failure.ts` 的文件头），宿主归一化成
  *    `isError:true` 的可读结果，**不**出现在 `value` 里；所以这里没有 `ok` 判别字段。
- * ② `read` 的两模式用 `oneOf` 且靠 `mode` 的 `enum` 单值判别：模型不必猜自己拿到的是哪一种
+ * ② `managed_terminal_read` 的两模式用 `oneOf` 且靠 `mode` 的 `enum` 单值判别：模型不必猜自己拿到的是哪一种
  *    （与 002 的 `TerminalRead` 判别联合一一对应）。
  *
  * ⚠️ 唯一进 schema 的「非成功」是 `cancelled`（REQ-3.5：**不是** error 语义，见 design §5 表格）。
@@ -27,7 +27,7 @@
 
 import type { ValueNode } from './host.ts';
 
-/** `new` → `{ id, pid? }`（REQ-1.2） */
+/** `managed_terminal_new` → `{ id, pid? }`（REQ-1.2） */
 export const NEW_OUTPUT: ValueNode = {
   type: 'object',
   additionalProperties: false,
@@ -40,7 +40,7 @@ export const NEW_OUTPUT: ValueNode = {
   },
 };
 
-/** `list` → 实例数组（REQ-1.3 的 id/profile/pid/尺寸/存活 + REQ-2.4 的 `dropped`） */
+/** `managed_terminal_list` → 实例数组（REQ-1.3 的 id/profile/pid/尺寸/存活 + REQ-2.4 的 `dropped`） */
 export const LIST_OUTPUT: ValueNode = {
   type: 'object',
   additionalProperties: false,
@@ -75,7 +75,7 @@ export const LIST_OUTPUT: ValueNode = {
   },
 };
 
-/** `read` 的快照分支（002 `ScreenSnapshot` 的直射，REQ-2.1） */
+/** `managed_terminal_read` 的快照分支（002 `ScreenSnapshot` 的直射，REQ-2.1） */
 const SNAPSHOT_NODE: ValueNode = {
   type: 'object',
   additionalProperties: false,
@@ -88,7 +88,7 @@ const SNAPSHOT_NODE: ValueNode = {
   },
 };
 
-/** `read` → 快照 | 增量块 | 丢失+快照（REQ-1.4 / REQ-2.2） */
+/** `managed_terminal_read` → 快照 | 增量块 | 丢失+快照（REQ-1.4 / REQ-2.2） */
 export const READ_OUTPUT: ValueNode = {
   oneOf: [
     {
@@ -143,7 +143,7 @@ export const READ_OUTPUT: ValueNode = {
   ],
 };
 
-/** `write` → `{ written, key }`（REQ-1.5；`key` 让「按了什么键」可追溯） */
+/** `managed_terminal_write` → `{ written, key }`（REQ-1.5；`key` 让「按了什么键」可追溯） */
 export const WRITE_OUTPUT: ValueNode = {
   type: 'object',
   additionalProperties: false,
@@ -161,7 +161,7 @@ export const WRITE_OUTPUT: ValueNode = {
   },
 };
 
-/** `resize` → **实际生效**值（REQ-1.6；夹紧在 002，这里只回报） */
+/** `managed_terminal_resize` → **实际生效**值（REQ-1.6；夹紧在 002，这里只回报） */
 export const RESIZE_OUTPUT: ValueNode = {
   type: 'object',
   additionalProperties: false,
@@ -173,7 +173,7 @@ export const RESIZE_OUTPUT: ValueNode = {
   },
 };
 
-/** `kill` → `{ killed, id, warning? }`（REQ-1.7；`warning` = 进程树终止的尽力而为告警） */
+/** `managed_terminal_kill` → `{ killed, id, warning? }`（REQ-1.7；`warning` = 进程树终止的尽力而为告警） */
 export const KILL_OUTPUT: ValueNode = {
   type: 'object',
   additionalProperties: false,

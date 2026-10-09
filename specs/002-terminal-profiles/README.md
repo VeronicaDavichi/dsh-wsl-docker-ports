@@ -52,7 +52,7 @@ transitions:
     └──────────────┴────────────────────────────────────────────┘
 
     Agent 面（defineTool，受 ctx.sandboxPolicy + 审批约束）：
-      managed_terminal_new / list / read / write / resize / kill
+      `managed_terminal_new` / `managed_terminal_list` / `managed_terminal_read` / `managed_terminal_write` / `managed_terminal_resize` / `managed_terminal_kill`
       → **2026-10-08 已拆出**：Agent 面的需求/设计/任务在 004-terminal-agent-surface
 
 ---

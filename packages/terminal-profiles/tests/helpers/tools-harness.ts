@@ -247,8 +247,8 @@ export function createToolsHarness(options: ToolsHarnessOptions = {}): ToolsHarn
       return resultText(await call(name, args, exec));
     },
     async start(profileName) {
-      // 走**工具面**的 `new`：沙箱门、审批门、实例表登记与生产完全同一条路
-      const result = await call('new', { profile: profileName });
+      // 走**工具面**的 `managed_terminal_new`：沙箱门、审批门、实例表登记与生产完全同一条路
+      const result = await call('managed_terminal_new', { profile: profileName });
       if (result.isError) throw new Error(`夹具起实例失败：${resultText(result)}`);
       return (result.value as { id: string }).id;
     },

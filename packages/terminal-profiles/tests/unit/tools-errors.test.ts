@@ -30,17 +30,17 @@ interface FailureCase {
 }
 
 const CASES: readonly FailureCase[] = [
-  { tool: 'new', args: { profile: 'nope' }, code: 'profile-not-found', sandbox: 'workspace-write' },
-  { tool: 'list', args: {}, code: '', sandbox: 'read-only' }, // 对照：只读下 list 不该失败
-  { tool: 'read', args: { id: 'term-404' }, code: 'instance-not-found', sandbox: 'workspace-write' },
-  { tool: 'write', args: { id: 'term-1', data: 'C-?' }, code: 'unknown-key', sandbox: 'workspace-write' },
-  { tool: 'write', args: { id: 'term-404', data: 'ls' }, code: 'instance-not-found', sandbox: 'workspace-write' },
-  { tool: 'resize', args: { id: 'term-404', rows: 30, cols: 100 }, code: 'instance-not-found', sandbox: 'workspace-write' },
-  { tool: 'kill', args: { id: 'term-404' }, code: 'instance-not-found', sandbox: 'workspace-write' },
-  { tool: 'new', args: { profile: 'pwsh' }, code: 'sandbox-denied', sandbox: 'read-only' },
-  { tool: 'write', args: { id: 'term-1', data: 'Enter' }, code: 'sandbox-denied', sandbox: 'read-only' },
-  { tool: 'resize', args: { id: 'term-1', rows: 30, cols: 100 }, code: 'sandbox-denied', sandbox: 'read-only' },
-  { tool: 'kill', args: { id: 'term-1' }, code: 'sandbox-denied', sandbox: 'read-only' },
+  { tool: 'managed_terminal_new', args: { profile: 'nope' }, code: 'profile-not-found', sandbox: 'workspace-write' },
+  { tool: 'managed_terminal_list', args: {}, code: '', sandbox: 'read-only' }, // 对照：只读下 managed_terminal_list 不该失败
+  { tool: 'managed_terminal_read', args: { id: 'term-404' }, code: 'instance-not-found', sandbox: 'workspace-write' },
+  { tool: 'managed_terminal_write', args: { id: 'term-1', data: 'C-?' }, code: 'unknown-key', sandbox: 'workspace-write' },
+  { tool: 'managed_terminal_write', args: { id: 'term-404', data: 'ls' }, code: 'instance-not-found', sandbox: 'workspace-write' },
+  { tool: 'managed_terminal_resize', args: { id: 'term-404', rows: 30, cols: 100 }, code: 'instance-not-found', sandbox: 'workspace-write' },
+  { tool: 'managed_terminal_kill', args: { id: 'term-404' }, code: 'instance-not-found', sandbox: 'workspace-write' },
+  { tool: 'managed_terminal_new', args: { profile: 'pwsh' }, code: 'sandbox-denied', sandbox: 'read-only' },
+  { tool: 'managed_terminal_write', args: { id: 'term-1', data: 'Enter' }, code: 'sandbox-denied', sandbox: 'read-only' },
+  { tool: 'managed_terminal_resize', args: { id: 'term-1', rows: 30, cols: 100 }, code: 'sandbox-denied', sandbox: 'read-only' },
+  { tool: 'managed_terminal_kill', args: { id: 'term-1' }, code: 'sandbox-denied', sandbox: 'read-only' },
 ];
 
 describe('T3.1 REQ-4.1 失败呈现为可读结果且不中断', () => {
@@ -65,17 +65,17 @@ describe('T3.1 REQ-4.1 失败呈现为可读结果且不中断', () => {
 
   it('REQ-4.1：一次失败之后**同一套工具**还能继续正常服务（会话没被打断）', async () => {
     const h = createToolsHarness({ sandboxMode: 'workspace-write' });
-    expect((await h.call('kill', { id: 'term-404' })).isError).toBe(true);
-    expect((await h.call('new', { profile: 'pwsh' })).isError).toBe(false);
-    expect((await h.call('write', { id: 'term-1', data: 'ls' })).isError).toBe(false);
-    expect((await h.call('read', { id: 'term-1' })).isError).toBe(false);
-    expect((await h.call('kill', { id: 'term-1' })).isError).toBe(false);
+    expect((await h.call('managed_terminal_kill', { id: 'term-404' })).isError).toBe(true);
+    expect((await h.call('managed_terminal_new', { profile: 'pwsh' })).isError).toBe(false);
+    expect((await h.call('managed_terminal_write', { id: 'term-1', data: 'ls' })).isError).toBe(false);
+    expect((await h.call('managed_terminal_read', { id: 'term-1' })).isError).toBe(false);
+    expect((await h.call('managed_terminal_kill', { id: 'term-1' })).isError).toBe(false);
     h.dispose();
   });
 
   it('REQ-1.8：参数违规由 schema 在进体前拦下（宿主 `ToolArgsError`），同样归一化成结果', async () => {
     const h = createToolsHarness();
-    const result = await runTool(h.tool('new'), {});
+    const result = await runTool(h.tool('managed_terminal_new'), {});
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toContain('invalid arguments');
     // 参数违规根本没有进体 ⇒ 没有副作用
@@ -85,9 +85,9 @@ describe('T3.1 REQ-4.1 失败呈现为可读结果且不中断', () => {
 });
 
 describe('T3.1 REQ-4.3 错误含可读原因与可执行下一步', () => {
-  it('沙箱拒绝：说出**当前**策略 + 怎么自救（切到 workspace-write，或用 read/list）', async () => {
+  it('沙箱拒绝：说出**当前**策略 + 怎么自救（切到 workspace-write，或用 managed_terminal_read/managed_terminal_list）', async () => {
     const h = createToolsHarness({ sandboxMode: 'read-only' });
-    const text = (await h.call('write', { id: 'term-1', data: 'Enter' })).content
+    const text = (await h.call('managed_terminal_write', { id: 'term-1', data: 'Enter' })).content
       .map((b) => b.text)
       .join('');
 
@@ -100,16 +100,16 @@ describe('T3.1 REQ-4.3 错误含可读原因与可执行下一步', () => {
 
   it('profile 不存在：把**可用的** profile 名列出来', async () => {
     const h = createToolsHarness();
-    const text = await h.text('new', { profile: 'nope' });
+    const text = await h.text('managed_terminal_new', { profile: 'nope' });
     expect(text).toContain('可用 profile');
     expect(text).toContain('pwsh');
     expect(text).toContain('wsl');
     h.dispose();
   });
 
-  it('实例不存在：指向 `list`（下一步动作可执行）', async () => {
+  it('实例不存在：指向 `managed_terminal_list`（下一步动作可执行）', async () => {
     const h = createToolsHarness();
-    const text = await h.text('read', { id: 'term-404' });
+    const text = await h.text('managed_terminal_read', { id: 'term-404' });
     expect(text).toContain('instance-not-found');
     expect(text).toContain('list');
     h.dispose();
@@ -120,7 +120,7 @@ describe('T3.1 REQ-4.3 错误含可读原因与可执行下一步', () => {
     await h.start('pwsh');
     const handle = handleOf(h.fake);
 
-    const text = (await h.call('write', { id: 'term-1', data: 'C-?' })).content
+    const text = (await h.call('managed_terminal_write', { id: 'term-1', data: 'C-?' })).content
       .map((b) => b.text)
       .join('');
 
@@ -149,7 +149,7 @@ describe('T3.1 REQ-4.3 错误含可读原因与可执行下一步', () => {
 describe('T3.1 REQ-4.2 未识别键名（不猜、不丢弃）', () => {
   it('异常：判定**先于**实例查找与权限门（参数级错误不该被误报成别的问题）', async () => {
     const h = createToolsHarness({ sandboxMode: 'read-only' });
-    const text = (await h.call('write', { id: 'term-404', data: 'Frobnicate' })).content
+    const text = (await h.call('managed_terminal_write', { id: 'term-404', data: 'Frobnicate' })).content
       .map((b) => b.text)
       .join('');
 
@@ -164,8 +164,8 @@ describe('T3.1 REQ-4.2 未识别键名（不猜、不丢弃）', () => {
     await h.start('pwsh');
     const handle = handleOf(h.fake);
 
-    expect((await h.call('write', { id: 'term-1', data: 'C-?' })).isError).toBe(true);
-    expect((await h.call('write', { id: 'term-1', data: 'Enter' })).isError).toBe(false);
+    expect((await h.call('managed_terminal_write', { id: 'term-1', data: 'C-?' })).isError).toBe(true);
+    expect((await h.call('managed_terminal_write', { id: 'term-1', data: 'Enter' })).isError).toBe(false);
 
     expect(handle.writeCalls).toStrictEqual(['\r']);
     h.dispose();
@@ -188,7 +188,7 @@ describe('T3.1 工具面只经宿主公开面取服务', () => {
     const h = createToolsHarness({ sandboxMode: 'workspace-write' });
     // 去掉 `get`：模拟「宿主没有服务定位器」的极端形态
     delete (h.ctx as { get?: unknown }).get;
-    const result = await h.call('new', { profile: 'pwsh' });
+    const result = await h.call('managed_terminal_new', { profile: 'pwsh' });
     expect(result.isError).toBe(true);
     expect(result.content.map((b) => b.text).join('')).toContain('[sandbox-denied]');
     h.dispose();
