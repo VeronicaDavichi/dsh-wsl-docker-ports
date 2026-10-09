@@ -14,12 +14,14 @@
  * 先自证「不是代码膨胀、也不是 Spec 拆分不当」，**不许**再来抬阈值。
  * **复算口径与判定逻辑不变**（留痕见 specs/001-wsl-shared/tasks.md 的口径节）。
  *
- * 去注释用正则启发式（本包不引解析器依赖，NFR-1）：块注释 + 行注释；
- * 行注释带 `(^|[^:])` 保护，避免把 `https://` 里的 `//` 当成注释起点。
+ * 去注释走**与 `check-scope.mjs` 共用**的 `strip-comments.mjs`（T6.2，2026-10-09）：
+ * 两道门都「只看代码不看注释」，各写一份正则必然漂移，而漂移的症状是**一道门悄悄失去判据**。
+ * 该模块的已知局限（正则启发式而非 AST，`(^|[^:])` 保护 `https://`）记在它的文件头。
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments } from './strip-comments.mjs';
 
 /** 软指标：去注释、去空行后的源码 ≤ 40 KiB（2026-10-08 主人三次拍板：15 → 25 → 40） */
 const SIZE_BUDGET_BYTES = 40 * 1024;
@@ -30,9 +32,6 @@ const srcDir = fileURLToPath(new URL('../src', import.meta.url));
 const files = readdirSync(srcDir)
   .filter((name) => name.endsWith('.ts'))
   .sort();
-
-const stripComments = (source) =>
-  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 const codeOnly = (source) =>
   stripComments(source)

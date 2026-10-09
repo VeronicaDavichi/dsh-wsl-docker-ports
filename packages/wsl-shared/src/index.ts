@@ -11,8 +11,8 @@
  *
  * 已完成：Phase 0（T0.1/T0.2）发行版表解析 · Phase 1（T1.1–T1.5）错误模型与执行器 ·
  * Phase 2（T2.1–T2.4）发行版发现与目标解析 · Phase 3（T3.1–T3.4）eth0 探测 + 通用发行版执行件 ·
- * Phase 4（T4.1–T4.4）路径翻译 · Phase 5（T5.1–T5.3）`.wslconfig` 与 networkingMode 判定。
- * 未完成：Phase 6 收口（校验脚本 + 探针 + 复盘）。
+ * Phase 4（T4.1–T4.4）路径翻译 · Phase 5（T5.1–T5.3）`.wslconfig` 与 networkingMode 判定 ·
+ * Phase 6（T6.1–T6.4）收口（公开面复核 + `check-scope.mjs` 准入回归 + 质量门 + 真机探针 + 文档回写）。
  */
 
 export { createExecutor } from './exec.ts';

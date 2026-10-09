@@ -13,7 +13,9 @@
     "test:contract": "node --test \"tests/contract/**/*.test.ts\"",
     "test:all": "pnpm run test && pnpm run test:contract",
     "check:exports": "node scripts/check-exports.mjs",
-    "check:size": "node scripts/check-size.mjs"
+    "check:size": "node scripts/check-size.mjs",
+    "check:scope": "node scripts/check-scope.mjs",
+    "probe": "node scripts/probe.mjs"
   },
   "devDependencies": {
     "vitest": "^5.0.3"
