@@ -195,6 +195,28 @@ register(definition: SidebarRightTabDefinition): () => void;   // 幂等 dispose
 - ⇒ **判据改口**：可证的只有「**0.1.7-rc.2 有 9 个，且 `managedTerminal` 未被任何官方包占用 ⇒ 仍安全**」；「官方恰好 6 个」**无实物支撑**，该数字从规格里撤下（真机 `sidebarRightTabs.entries()` 打印后再写死）。
 - ⚠️ 注意第 6 项：官方**已经有一个 `terminal` kind**（`dsh-client-ui-sidebar-terminal`）⇒ 我们选 `managedTerminal` 是对的（**不抢占**官方 kind），且应在设计里写明「与官方 `terminal` 区分」的理由。
 
+### P4 📌 manifest 的**第四个字段 `dsh.client.external`** + 机制逐字确认（2026-10-09 三次取证）
+
+**证据源**：官方 `deepseek-ai-dsh-client-modules-0.1.7-rc.2.tgz :: package/README.md`（**规范文档**，非推断）。逐字引用：
+
+- L34 `### Declaring a client plugin`：*"A browser plugin package declares `dsh.client` in its `package.json` with `platform: 'web'`, exports a `./client` bundle, and **lists any non-baseline module requests under `dsh.client.external`**. The host half turns each declaration into a served bundle **under `/plugins`**, ordered so dynamic providers load before their consumers."*
+- L46 `### Sharing modules`：*"The shell seeds a frozen module table (**`PLATFORM_MODULES`: React, Cordis, and static UI libraries**); every dynamic bundle resolves its externals against exactly that baseline. **`dsh.client.external` adds only exact non-baseline requests**, each answered by the dynamic package row it names or an exact static-table key. **Type-only imports are erased and create no request.** Composition **rejects malformed requests, missing suppliers, self-requests, and synchronous request cycles**."*
+- L38：*"A source `import()` split by tsdown compiles to **`require.async("./client.<name>.js")`**; its versioned sibling script arrives only when that expression runs."*（⇒ 与 §P3 的 `client.<name>.js` 正则**互相印证**）
+- L38：*"`<id>/client` and the bare id resolve to the same exports, because a plugin bundle is its package's client half."*
+- L50 `### Build requirements`：*"The host serves built client bundles, so **`pnpm run build` must have produced each `lib/client.js` before launch**; a missing bundle **fails activation loudly** with one build instruction and a package/path list."*
+- L68 `### Lazy-CJS model`：*"Executing a plugin bundle only registers its factory; **every module-body side effect (CSS injection included) lives in the factory closure and runs at materialization** (`factory(require)` → exports, memoized in `loadCache`)."*
+
+**⇒ 对本项目两个客户端半的硬要求（**两个包都适用**）**
+1. **manifest 至少四件**：`dsh.client = { platform:'web', inject:[…], external?:[…], immediately? }` + `exports['./client']` + `dsh.bundle.patch` + 构建产物 `lib/client.js`（缺产物 = **激活期响亮失败**）。
+2. **require 面越小越好**：基线 = React / Cordis / **静态 UI 库**（官方终端页 require 了 `@deepseek-ai/dsh-client-ui-primitives` 却**没有**写 `external` ⇒ 它属基线）。**非基线的 require 必须逐条写进 `dsh.client.external`**，否则会被 composition **拒绝**（missing supplier）。
+3. **不要 require `react-dom`**：我们的组件由宿主渲染进它的树，自己**不建 root** ⇒ 客户端半只需要 `react`（+ `react/jsx-runtime`）。（`react-dom` 只出现在**测试**里。）
+4. **CSS 注入必须发生在 factory 闭包内**（材质化时执行），不要在模块顶层做副作用（顶层副作用不在 `loadCache` 语义内）。
+5. 自检脚本应断言：**主 bundle 的 require 集合 ⊆（基线 ∪ 清单里声明的 `external`）**，且清单里声明的 `external` **每一条**都真被 require（避免幽灵声明）。
+
+⚠️ 与 §A 的关系：§A 的清单描述**漏了 `external` 字段**，以本节为准；`inject` 与 `external` 是**两件事**（前者 = 客户端服务注入，后者 = 非基线**模块**请求）。
+
+---
+
 ### P3 📌 chunk 的**命名与取用规则**（2026-10-09 二次取证，逐字）
 
 **证据源**：官方 `deepseek-ai-dsh-client-modules-0.1.7-rc.2.tgz`（宿主侧 `lib/index.js`、浏览器侧 `lib/client.js`）。
