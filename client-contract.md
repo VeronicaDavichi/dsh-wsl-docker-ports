@@ -195,6 +195,39 @@ register(definition: SidebarRightTabDefinition): () => void;   // 幂等 dispose
 - ⇒ **判据改口**：可证的只有「**0.1.7-rc.2 有 9 个，且 `managedTerminal` 未被任何官方包占用 ⇒ 仍安全**」；「官方恰好 6 个」**无实物支撑**，该数字从规格里撤下（真机 `sidebarRightTabs.entries()` 打印后再写死）。
 - ⚠️ 注意第 6 项：官方**已经有一个 `terminal` kind**（`dsh-client-ui-sidebar-terminal`）⇒ 我们选 `managedTerminal` 是对的（**不抢占**官方 kind），且应在设计里写明「与官方 `terminal` 区分」的理由。
 
+### P7 📋 **官方客户端插件的清单参照物**（2026-10-09 六次取证：`dsh-client-ui-sidebar-terminal` 的 package.json）
+
+**证据源**：官方 `deepseek-ai-dsh-client-ui-sidebar-terminal-0.1.7-rc.2.tgz :: package/package.json`（逐字）。这是**唯一一个「官方自己写的浏览器客户端插件」清单**，可直接当我们的比对基准。
+
+```json
+{
+  "name": "@deepseek-ai/dsh-client-ui-sidebar-terminal",
+  "dsh": { "client": {
+    "inject": ["@deepseek-ai/dsh-api-terminal-controller","@deepseek-ai/dsh-client-ui-sidebar-right",
+               "@deepseek-ai/dsh-api-remotes","@deepseek-ai/dsh-client-ui-theme",
+               "@deepseek-ai/dsh-client-shortcuts"],
+    "platform": "web" } },
+  "exports": {
+    ".":        { "types": "./lib/types/index.d.ts",        "default": "./lib/index.js" },
+    "./client": { "types": "./lib/types/client/index.d.ts", "default": "./lib/client.js" },
+    "./src/*": "./src/*", "./package.json": "./package.json" },
+  "main": "lib/index.js",
+  "files": ["lib/index.js", "lib/client.js", "lib/client.*.js", "lib/types/**/*.d.ts"],
+  "peerDependencies": { "@deepseek-ai/cordis": "~4.0.4" }
+}
+```
+
+**可照抄的结论**
+1. **`exports["./client"]` 形状** = `{ types, default: './lib/client.js' }` ✅ 与我们计划一致；主入口 `.` 同时给 `types`/`default`。
+2. 🔴 **`files` 必须覆盖 chunk**：官方写 **`"lib/client.*.js"`** —— **chunk 靠这个 glob 才会进发布包**。我们走 `link:` 交付时不受影响（磁盘上就在 `lib/`），但**将来发布前必须补**（已要求两个代理补 `files`）。
+3. **最小化声明**：官方 `dsh.client` **只有 `inject`（包名数组）+ `platform`** —— **没有 `external`、没有 `manifestVersion`、没有 `immediately`** ⇒ 印证「**零非基线 require**」是官方做法（能只依赖基线就不写 `external`）。
+4. **`peerDependencies` 只有 cordis**（`~4.0.4`）⇒ react / 各 `@deepseek-ai/dsh-client-*` / xterm **全在 devDependencies**（§P2 的结论在此再次印证）。
+5. ⚠️ **别误读**：官方这个包**没有** `dsh.bundle.patch` —— 它是「客户端半」形态；**我们两个包是宿主插件**（要注册服务/工具、要有插件行），所以 **`dsh.bundle.patch` 仍必须保留**，不能因为参照物没有就删。
+
+**rc.1 → rc.2 的差异**（顺带留痕）：`inject` 增加了 `@deepseek-ai/dsh-client-shortcuts`、各 devDep 从 `0.1.7-rc.1` 升到 `rc.2`、版本号变化 —— 即 **`inject` = 所消费的客户端包名清单**（信息性依赖），与 §P5 的类型注释一致。
+
+---
+
 ### P6 📊 **跨版本稳定性弱证据**（2026-10-09 五次取证：0.1.7-rc.1 ↔ 0.1.7-rc.2 逐字节对照）
 
 **动机**：我们离线只有 `0.1.7-*` 的 tarball，而宿主基线是 **0.2.0-rc.2**（§Z6 版本差）⇒ 想知道「这套客户端契约是稳定接口，还是某个 rc 的临时形态」。做法：同包两个版本**逐字节 sha256 对照** + 关键片段双版本命中。
