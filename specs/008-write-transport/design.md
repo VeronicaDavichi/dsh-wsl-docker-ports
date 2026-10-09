@@ -114,3 +114,23 @@
 - `client/host.ts:124 ForwardAction = 'apply' | 'remove' | 'fix-drift' | 'switch-scope'` · `:126 ForwardWriteRequest` · `:134 ForwardWriteReport` · `:146 ElevationInvoker`（**正是 005 `plugin.ts` 记的那个缺口** ✓）
 - `client/page.ts:46 writeGate(snapshot)` · `:192 summarizeWriteReport(…)`
 - `wire.ts:74 SnapshotDeclaration { managedPorts, scopes, elevationPolicy }` ⇒ 本 Spec 的 `target` 就是它的写侧对偶 ✓
+
+## 11. T1.3 落地补充（2026-10-09 · 实证）
+
+**🔴 结论：计划算法不用重写** —— 005 的 `write/plan.ts:345 buildWritePlan()` 已是唯一真相，且**本身就带**
+`steps[].commandText`（REQ-3.2 展示命令原文）与 `port-not-managed` / `eth0-unknown` 等拦下原因
+（`write/types.ts:56 WriteBlockReason`），`WriteBlock.steps` 是**空元组**（前置不满足 ⇒ 一个动作都不产生，类型层就说死）。
+⇒ 008 的 T1.3 只是**薄包装**：`src/transport/plan.ts` 做四件事 —— 白名单解析目标、注入现读事实、
+规范化 + `planId`、盘成 DTO。
+
+**安全命门（有测试钉死）**：目标只认 `action` / `ports` / `scope` / `fromScope`。所有权集合
+（`managedPorts`）、`eth0Ip`、既有规则、防火墙规则名**一律服务端现读** —— 客户端伪造
+`managedPorts:[{start:1,end:65535}]` 也**不能**把 9999 变成「我管的」（实测仍 `port-not-managed`），
+伪造 `eth0Ip` 也不会进 `connectaddress`（实测用服务端现读值）。
+
+**`planId` 口径（与 §2 一致，无订正）**：`SHA-256(canonicalPlanText)`，规范文本**只含会改变系统状态的东西**
+（`action` / `scope` / `fromScope` / 端口**升序** / 每步 `kind`+`port`+`params`**按键升序**），
+**不含** `notes` / `commandText` ⇒ 文案微调不换 id，任何一步实质变化必换 id（有六条断言钉死）。
+`planId` **只在全部端口都可执行且非空时**才给；被拦下 ⇒ `null`（没有可用票据）。
+
+**判据覆盖**：`tests/unit/transport-plan.test.ts` 7 条 ✔（含变异自证：去掉升序排序 ⇒ 排序用例必红）。
