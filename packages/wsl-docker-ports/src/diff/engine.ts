@@ -53,7 +53,15 @@ import {
  * `lan` → `0.0.0.0`，`loopback` → `127.0.0.1`。
  * 落在这个集合之外 ⇒ 这条规则不是我们这种形态的 ⇒ `conflict`（只报告、绝不动）。
  */
-const OUR_LISTEN_ADDRESSES: readonly string[] = ['127.0.0.1', '0.0.0.0'];
+/**
+ * 本插件会写的两种 `listenAddress` —— **全仓唯一一份**。
+ *
+ * ⚠️ 2026-10-09 集成期订正：原先它是**模块私有**的，导致 005 的写路径安全闸门
+ * （`src/write/ownership.ts`）只能**复制一份同名常量** —— 而「形态不符」的判据必须在
+ * 读侧（本引擎）与写侧（005）**逐字一致**，两份会各自漂移（正是「不许各自解释口径」所忌）。
+ * 故在此**开出口**，005 侧改为 import，不再另写一份。
+ */
+export const OUR_LISTEN_ADDRESSES: readonly string[] = ['127.0.0.1', '0.0.0.0'];
 
 /** 某作用域下本插件会写的监听地址 */
 export function expectedListenAddress(scope: Scope): string {
