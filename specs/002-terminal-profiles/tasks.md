@@ -181,6 +181,12 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 
 > 🔵 **2026-10-09 Phase 2 交付时的越界发现（E 只报不改 ⇒ 归口到本阶段处理）**：① 🔴 **`build` 缺口**：本包 T4.2 / T7.3 与 003 T6.4 / 004 T3.2 / 005 T3.4 都引用 `pnpm … build`，而**全仓没有 `build` 脚本**（跨 4 个 Spec 共 **5 处**）⇒ 收口前必须先交付 esbuild 构建，否则那些门当场红。② `tsconfig` 是 `erasableSyntaxOnly` + `exactOptionalPropertyTypes` ⇒ 可选参数必须显式写 `?: T | undefined` 才能在调用点传 `undefined`（Phase 2 唯一的类型噪音源，建议进编码约定）。③ `@xterm/addon-serialize` 的 `.d.ts` import 了**未安装**的 `@xterm/xterm`，靠 `skipLibCheck: true` 掩盖 ⇒ 关掉它立刻炸；本阶段需定「装 `@xterm/xterm` 作 devDependency」还是打 patch。④ 依赖变更会经 **pnpm 11 `verify-deps-before-run`** 自动写回 lockfile（Phase 2 实测）⇒ 见 `AGENTS.md` 的对应条。
 
+> 📌 **2026-10-09 集成方离线核查（把上面③与 T7.3 的未决项各推进一步；**只查不装**，装配留到 Phase 4 与客户端半一起做）**：
+> - ③ **已定案（有实物证据）**：`@xterm/addon-serialize/typings/addon-serialize.d.ts:6` 原文 `import { Terminal, ITerminalAddon, IMarker, IBufferRange } from '@xterm/xterm';` ⇒ 本仓 `skipLibCheck: true` 确实在掩盖它。**处置 = 走前者**（Phase 4 把 `@xterm/xterm` 作为 **devDependency + peerDependency** 装上）：① 客户端半本来就要它（栈已冻结「浏览器 `@xterm/xterm` + `@xterm/addon-fit` 独立懒加载 chunk」）；② 装它同时消掉这个 d.ts 洞，**不用**打 patch。**不提前装**（此刻无消费方 = 悬空依赖）。
+> - **版本可得性（镜像实测）**：`@xterm/xterm` **6.0.0**、`@xterm/addon-fit` **0.11.0**、`esbuild` **0.28.2**、`react@18.2.0`、`react-dom@18.2.0`、`@types/react@18.3.12`、`@types/react-dom@18.3.1` **全部可解析** ⇒ T7.3 的 `peerDependencies.react = ^18.2.0` 可满足（注意镜像 `latest` 已是 React **19.3.0**，**必须显式钉 18**，否则与栈冻结的 React 18 相悖）。
+> - ⚠️ **仍未验证**：`@xterm/addon-fit` / `@xterm/addon-serialize` **都没有声明 `peerDependencies`**（镜像实测为空）⇒ 与 xterm 6 的**兼容性无约束证据**，只能等 Phase 4 真装上跑一次（列入 T4.2 的验证项）。
+> - ⚠️ **仍未完成**：`dsh.client` + `exports["./client"]` + 客户端 chunk（T4.1/T4.2）与配置页（T6.x）**都在等客户端半契约**（宿主客户端 API / 页类型注册 / 打包 external 列表）—— 集成方本轮已派**只读契约研究**代理从本机实物检出（`dsh-whale-pet` / `DeepSeekHarness-MCP-Manager` / `dsh-desktop` 的 `dsh-community-market` 客户端 API 测试 / `dsh-terminal-extension`）挖取，结论回写本 Spec 的 design。
+
 ---
 
 ## 真机验收清单（chrome-devtools MCP，替代 Playwright E2E）
