@@ -152,7 +152,7 @@ Validation checks:
 
 **硬前提**：组件②（WSL Docker 端口转发）要求 **NAT 网络模式** —— mirrored 下 eth0 语义改变、规则会指向失效地址；非 NAT 时 UI 置灰 + 给修复指引，**不自动改** `.wslconfig`。
 
-**真机事实（2026-10-08 实测，五份 Spec 的事实基础）**
+**真机事实（2026-10-08 实测，六份 Spec 的事实基础）**
 
 | 项 | 实测值 |
 | --- | --- |
@@ -166,9 +166,10 @@ Validation checks:
 | 原脚本 5 个坑 | ① `portproxy reset` 清空**全部**规则（含他人）② `0.0.0.0` + 防火墙全量放行，19 个端口暴露给局域网（含 `5432`/`6379`/`5000-5003`）③ 硬编码 19 个端口，不知道 docker 实际映射了什么 ④ `connectaddress` 写成 eth0 IP → WSL 重启后**静默失效** ⑤ portproxy 不支持 UDP |
 | WSL/docker 实测成本与坑（2026-10-08）| `wsl -d` 热 **~200ms**、**冷启动 11–12s**（且每次调用都阻止发行版空闲回收，`vmmemWSL` 实测占 **2,180 MB**）→ 自动探测必须门控；`docker ps --format json` **会挂住**（rc=124 两次）→ 必须 `--format '{{json .}}'` **且加硬超时**；`vmmemWSL` 真名**无 `.exe`**，其 CIM `CreationDate` == 发行版 `btime`；**编码指纹（T0.1 实测）**：`wsl -l -v` = **UTF-16LE** + 行尾 **LF** + 表头**英文**（而 `wsl --version` 表头是**中文** ⇒ 同工具不同子命令本地化不一致，解析器不得依赖表头字面量）、`netsh … show v4tov4` = **纯 ASCII** + **CRLF**（「OEM/GBK 中文表头」假设已被推翻）；**唤醒后第一次 `docker ps` 会被硬超时砍掉**（0 输出；5 s 后第二次 637 ms 成功）⇒ 必须超时 + 重试，不得把空输出当「没有容器」 |
 
-**Spec 类型**：**五份** Spec 均为**需求驱动**（先 REQ-N + EARS，再由需求派生 `design.md`）。
+**Spec 类型**：**六份** Spec 均为**需求驱动**（先 REQ-N + EARS，再由需求派生 `design.md`）。
 **004 于 2026-10-08 从 002 拆出**：Agent 工具面独立成篇（**同包不拆包** —— 两 Spec 的产物都在 `packages/terminal-profiles/`，共享 `session-manager` / `screen-model`）；002 的 **REQ-8/9 与 Phase 5 保留为空位**，以免全部既有引用错位。拆分原因：002 的 `requirements.md` / `design.md` 拆前各 **199 行**，贴着 warn 阈值 200。
 **005 于 2026-10-08 从 003 拆出**：提权写路径独立成篇（**同包不拆包** —— 两 Spec 的产物都在 `packages/wsl-docker-ports/`；003 拥有 `read/` `diff/` `ui/`，005 拥有 `write/` `elevate/`）。**003 的 REQ-4/5/7/8/13 与 NFR-1/3、Phase 4 保留为空位**；`depends_on` 只有 **005 → 003**（反向是同包内代码调用，不建边以免成环）。拆分原因：003 拆前 **199 / 195 / 191 / 165** 行，`requirements.md` 与 `design.md` 双双贴线；且写路径是唯一能改动用户系统状态的部分，需要独立的安全验收（红线断言 + 「他人规则条数不变」）。
+**006 于 2026-10-09 从 001 拆出**：路径翻译独立成篇（**同包不拆包** —— 代码仍在 `packages/wsl-shared/src/pathmap.ts`，`index.ts` 照旧导出 `winToWsl` / `wslToWin`，导出预算仍记在 001）。**001 的 REQ-3 与 Phase 4 保留为空位**；**编号一律保持**（REQ-3.1–3.7 / T4.1–T4.4）—— 与 004/005 的「重编号」不同，因为 `pathmap.ts` 与它的 87 条单测里已有 **20+ 处**按编号追溯。`depends_on`：**006 → 001**（复用 `errors.ts` 的错误模型）；002 → 006 的边**待补**（本机 CLI `rel` / `link` 未迁移，见文末「本机 CLI 现状」）。拆分原因：001 的 `tasks.md` 在 Phase 5 后 **198 行**（warn 200），Phase 6 收口还要写；且路径翻译是**零文件系统、零进程、零宿主**的纯字符串面，独立验收边界清晰。
 
 ## 🚧 开工前置（阻塞项，未打掉不得进实现）
 
@@ -182,8 +183,10 @@ Validation checks:
 
 ## ⚠️ 本机 CLI 现状（与上文命令表的差异）
 
-`lean-spec` 与 `leanspec` 两个 shim 都可用，但本机这一版有 **8 个子命令尚未迁移**，会报 *not yet migrated to the adapter API*（2026-10-08 实测）：
-`analyze` / `check` / `children` / `deps` / `files` / `gantt` / `tokens` / `validate`。
+`lean-spec` 与 `leanspec` 两个 shim 都可用，但本机这一版有 **9 个子命令尚未迁移**，会报 *not yet migrated to the adapter API*（2026-10-08 实测；**2026-10-09 复测新增 `rel`**）：
+`analyze` / `check` / `children` / `deps` / `files` / `gantt` / `rel`（`link` / `unlink` 的替代命令） / `tokens` / `validate`。
+
+- 🔴 **依赖边只在「建 Spec 时」写得进去**：`leanspec create --depends-on` 可用，但**事后加边没有任何工具路径** —— `link` / `rel` 未迁移、MCP `update_spec` 的字段里没有 `depends_on`、`update` 也没有该选项 ⇒ 事后新增依赖边只能**手改 frontmatter（违反硬规则）**或等 CLI 升级。**现存已知缺口：`002 → 006`**（2026-10-09 拆 006 时发现，已在 `stack-decision.md` 变更记录留痕）。
 
 - 已实测可用的检查手段：`leanspec board` / `list` / `view <spec>` / `stats` / `capabilities` / `templates`；行数阈值见 [`.lean-spec/config.json`](./.lean-spec/config.json)（warn 200 / max 400），依赖与引用一致性用本地脚本核对。
 - 建 Spec：`leanspec create <name> -f <body.md>`（正文一次性写入，frontmatter 由 CLI 生成）；状态流转用 `leanspec update <spec> --status <status>`，**不手改 frontmatter**。

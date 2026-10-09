@@ -75,7 +75,7 @@
 - **REQ-1.1** 配置 SHALL 为 `profiles` 数组，每项含 `name`、`command`（必填）与 `args`、`cwd`、`cwdLinux`、`env`（可选；缺省 `[]` / `{}`）。
 - **REQ-1.2** GIVEN 某个 profile 校验失败（缺必填、类型错），THEN 系统 SHALL 跳过该条并记录警告，其余 profile SHALL CONTINUE TO 可用，SHALL NOT 让整个 profile 启动失败。
 - **REQ-1.3** GIVEN 两个 profile 同名，THEN 系统 SHALL 拒绝后者并提示冲突来源，SHALL NOT 静默覆盖。
-- **REQ-1.4** GIVEN WSL profile 只填 `cwd` 未填 `cwdLinux`，THEN 系统 SHALL 经 001 的路径翻译推导 `cwdLinux`；推导失败时该条 SHALL 标记为「需修复」且不可启动，SHALL NOT 猜路径。
+- **REQ-1.4** GIVEN WSL profile 只填 `cwd` 未填 `cwdLinux`，THEN 系统 SHALL 经 **006** 的路径翻译推导 `cwdLinux`；推导失败时该条 SHALL 标记为「需修复」且不可启动，SHALL NOT 猜路径。
 - **REQ-1.5** GIVEN `profiles` 为空或全部无效，THEN 终端页 SHALL 显示配置引导，SHALL NOT 报错或空白。
 
 ### REQ-2 配置存活（编辑不杀终端）

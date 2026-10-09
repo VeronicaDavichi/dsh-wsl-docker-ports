@@ -15,7 +15,7 @@ transitions:
 - status: in-progress
   at: 2026-10-08T13:25:44.483516200Z
 ---
-# 共享底座：WSL 发行版发现 · eth0 IP · 路径翻译 · NAT 判定
+# 共享底座：WSL 发行版发现 · eth0 IP · NAT 判定（路径翻译 → 006）
 
 **类型**: 需求驱动（requirements-first）
 **状态**: in-progress（2026-10-08 主人拍板开工；Phase 0 的 T0.1 / T0.2 **已完成**、Phase 1（错误模型+执行器）与 Phase 2（发行版发现）**已实现并全绿**，B-1 / B-2 均已定案）
@@ -31,7 +31,7 @@ transitions:
 
 1. 机器上有哪几个发行版、默认是哪个、跑没跑（`wsl -l -v`）
 2. NAT 模式下 WSL 的 eth0 地址是多少（portproxy 的 `connectaddress`）
-3. Windows 路径与 WSL 路径怎么互转（`E:\x` ↔ `/mnt/e/x`）
+3. Windows 路径与 WSL 路径怎么互转（`E:\x` ↔ `/mnt/e/x`）→ ✅ **2026-10-09 拆为 [006-path-translation](../006-path-translation/README.md)**（代码仍在本包 `src/pathmap.ts`，Spec 与验收边界独立成篇）
 4. 当前是 NAT 还是 mirrored（**NAT 是组件②的硬前提**）
 5. 一个统一的「跑命令 + 拿结构化结果」封装，不让每个包各写一份 `spawn`
 
@@ -52,7 +52,7 @@ handover 已拍板「三包 —— 两个插件包 + 一个非插件共享包」
 | 能力 | 消费者 | 归属 |
 |---|---|---|
 | 发行版发现 | 2（① 校验发行版名与 `cwdLinux`；② 定 portproxy 目标）| ✅ 本包 |
-| 路径翻译 | 2（① 生成 `cwdLinux`；② 错误文案与日志可读）| ✅ 本包 |
+| 路径翻译 | 2（① 生成 `cwdLinux`；② 错误文案与日志可读）| ✅ 本包（**Spec 已拆为 [006](../006-path-translation/README.md)**，模块与包不变）|
 | networkingMode 判定 | 2（② 硬前提；① 网络异常提示）| ✅ 本包 |
 | 结构化命令执行封装 | 2 | ✅ 本包 |
 | eth0 IPv4 探测 | **1**（只有 ② 需要）| ⚠️ 例外，见下 |
@@ -72,7 +72,7 @@ handover 已拍板「三包 —— 两个插件包 + 一个非插件共享包」
 |---|---|---|---|
 | `distros` | `wsl.exe -l -v` 的原始字节 | `WslDistro[]` | 输出为 **UTF-16LE**；表头可能**本地化**；发行版名可含空格 |
 | `net` | 在发行版内跑 `ip -4 -o addr show dev eth0` | IPv4 字符串 | 多地址取 primary；eth0 缺失必须报错而非回落 |
-| `pathmap` | 路径字符串（+ 可选发行版名）| 对侧路径 | `/mnt/<盘>` 与 `\\wsl.localhost\<distro>\…` 双向；无盘符路径**不许猜**（无发行版名 ⇒ `NoWindowsEquivalent`）；非法字符检查**先于**形态判定；纯字符串变换，不碰 FS |
+| `pathmap`（**属 [006](../006-path-translation/design.md)**）| 路径字符串（+ 可选发行版名）| 对侧路径 | `/mnt/<盘>` 与 `\\wsl.localhost\<distro>\…` 双向；无盘符路径**不许猜**（无发行版名 ⇒ `NoWindowsEquivalent`）；非法字符检查**先于**形态判定；纯字符串变换，不碰 FS |
 | `wslconfig` | `%USERPROFILE%\.wslconfig` | `{ raw, resolved }` | 「文件不存在」= 缺省 NAT；「读不到」= **错误**，不许混为一谈 |
 | `exec` | `argv[]` + 选项 | `{ exitCode, stdout, stderr }` | argv 传参（无 shell）、超时杀进程树、编码由调用方指定 |
 
@@ -93,7 +93,7 @@ handover 已拍板「三包 —— 两个插件包 + 一个非插件共享包」
 
 | 文档 | 内容 |
 |------|------|
-| [requirements.md](./requirements.md) | REQ-1..6 与 EARS 验收标准、NFR、约束与假设 |
+| [requirements.md](./requirements.md) | REQ-1/2/4/5/6 与 EARS 验收标准、NFR、约束与假设（**REQ-3 为空位 → [006](../006-path-translation/requirements.md)**）|
 | [design.md](./design.md) | 架构与依赖方向、模块划分、类型契约、四张解析表、执行器与错误模型、测试策略、决策权衡 |
 | [tasks.md](./tasks.md) | 按阶段拆分的任务、验证方法与完成定义 |
 
@@ -140,9 +140,9 @@ handover 已拍板「三包 —— 两个插件包 + 一个非插件共享包」
 ## 下一步
 
 1. 主人复核本 Spec（重点：REQ-2.4 的「Stopped 不静默冷启动」、REQ-4.6 的「读不到 ≠ 缺省 NAT」两条保守取舍）。
-2. ~~打掉 **B-1** 后把 Spec 转 `planned`，再进 `/leanspec-apply`~~ → ✅ **2026-10-08 已完成**：B-1 五条全部定案，五份 Spec 全部 `planned`。**本 Spec 已 `in-progress`**。
-3. ✅ **Phase 0 / 1 / 2 / 3 已完成**（真机 fixture + 错误模型 + 执行器 + 发行版发现 + eth0 探测 + 通用发行版执行件；`typecheck` / `vitest` **99** / `node --test` **11** / `check:exports` **运行时 5/12** / `check:size` **去注释 16,831 字节** 五道门全绿，真机复验 **115ms**，eth0 冷启动 **12,637ms** / 热 **192–237ms**）。证据见 [tasks.md](./tasks.md) 的「Phase 1–4 完成记录」；**三条口径均已由主人拍板**（导出预算只计运行时；体积按去注释、去空行计；**同日三次拍板把体积阈值 15KB → 25KB → 40KB**，末次定调「再超就是代码或 Spec 拆分有问题」），**三轮自审共 14 项**（11 个真缺陷 —— 8 个 + Phase 4 的 3 个，3 项工具/文档缺陷；另有 1 个"疑似项"被实测推翻，见「复审补强」「Phase 3 完成记录」「Phase 4 完成记录」）。
+2. ~~打掉 **B-1** 后把 Spec 转 `planned`，再进 `/leanspec-apply`~~ → ✅ **2026-10-08 已完成**：B-1 五条全部定案，五份 Spec（当时）全部 `planned`。**本 Spec 已 `in-progress`**。
+3. ✅ **Phase 0 / 1 / 2 / 3 已完成**（真机 fixture + 错误模型 + 执行器 + 发行版发现 + eth0 探测 + 通用发行版执行件；`typecheck` / `vitest` **99** / `node --test` **11** / `check:exports` **运行时 5/12** / `check:size` **去注释 16,831 字节** 五道门全绿，真机复验 **115ms**，eth0 冷启动 **12,637ms** / 热 **192–237ms**）。证据见 [tasks.md](./tasks.md) 的「Phase 1–4 完成记录」；**三条口径均已由主人拍板**（导出预算只计运行时；体积按去注释、去空行计；**同日三次拍板把体积阈值 15KB → 25KB → 40KB**，末次定调「再超就是代码或 Spec 拆分有问题」），**三轮自审共 14 项**（11 个真缺陷 —— 8 个 + Phase 4 的 3 个〔随 006 迁出〕，3 项工具/文档缺陷；另有 1 个"疑似项"被实测推翻，见「复审补强」「Phase 3 完成记录」与 **006 的 Phase 4 完成记录**）。
 4. ✅ **Phase 3 已完成**（T3.1–T3.4 + fixture `ip-eth0.raw`）。**关键收获**：① `wsl -d X -- ip …` 的输出是 **UTF-8**，与 `wsl -l -v` 的 **UTF-16LE** 不同 —— 猜错就是「eth0 没有 IPv4」的假阴性；② **T1.4 结案**：A/B 实测只杀 `wsl.exe` 也能回收发行版侧进程，`taskkill /T` 是保险而非必需；③ **T3.4**：守卫与执行抽成 `execInDistro` 单份实现，003 读层直接复用（避免 REQ-2.4 被重犯）。
-5. ✅ **Phase 4 已完成**（T4.1–T4.4，`src/pathmap.ts` **206 行 / 4.5 KB 代码** + **87 条**单测；`vitest` **187** / 契约 **11** / `check:exports` **运行时 7/12**（类型 15 ⇒ 合计 22 ≤ 软阈值 **25**）/ `check:size` **21,615 / 40,960 字节（余 19,345）**）。**关键收获**：① 动手前实测 `node:path` 抓到 4 条会咬人的语义（`win32.normalize('E:')` → **`'E:.'`** 最典型）⇒ 先测再写；② **自审抓到 3 处真缺陷并实证**（UNC 发行版段是 `.`/`..` 被当正常名字吞掉、错误 message **原样回显控制字符**= ANSI 注入面、发行版名尾随 `.`/空格拼出**不可能存在的共享名**）；③ 曾判定"UNC 里 `..` 越根 = 静默错译"，被实测**推翻**（夹在共享根正是 Win32 语义）⇒ 撤回误修、改 3 条回归用例，并订正了自己那句"`rest` 里不可能再有 `..`"的过头注释；④ 属性化不变量（往返 3000 次 + 垃圾串 6000 次）**固化成常驻用例**（固定种子可复算）。
+5. ✅ **Phase 4 已拆出为 [006-path-translation](../006-path-translation/README.md)**（2026-10-09）：`src/pathmap.ts` **206 行 / 4.5 KB 代码** + **87 条**单测仍在**本包**交付，但**需求 / 设计 / 任务与验收边界**整体迁到 006（**编号保持** REQ-3.x / T4.x，保代码与测试里 20+ 处追溯引用）。四条关键收获（① 先测再写抓到 `node:path` 四条咬人语义；② 自审 3 个真缺陷；③ 被实测**推翻**的「疑似缺陷」；④ 属性化不变量固化成常驻用例）见 006 的 `tasks.md`。
 6. ✅ **Phase 5 已完成**（T5.1–T5.3，`src/wslconfig.ts`；`vitest` **220** / 契约 **16** / `check:exports` **运行时 8/12**（类型 17 ⇒ 合计 **25 = 阈值**，不告警）/ `check:size` **25,859 / 40,960 字节（余 15,101）**）。**关键收获**：① 真机实测 `%USERPROFILE%\.wslconfig` = **32 字节、无 BOM、CRLF、无尾换行**，缺键 ⇒ **NAT 缺省**，组件②的硬前提**成立** ✅；② **「先测再写」又救一次** —— `USERPROFILE=''` 时 `??` 不回落，而 `path.join('', '.wslconfig')` 是**相对路径**（会去读**工作目录**下的同名文件 = 静默错答），且该情形下 `os.homedir()` **自己会抛** `ERR_SYSTEM_ERROR` ⇒ 补三道防线（`?.trim() ||` + try/catch + 绝对路径校验）各配用例；③ 真机抓到文案缺陷：errno **重复两次**（`EISDIR: EISDIR: …`，会被 003 **原样显示**）⇒ 已修 + 回归 + 复验；④ 类型数 15→19 会破软阈值 ⇒ **没抬阈值**，把两个模式别名留在模块内。
 7. 下一步：**Phase 6 收口**（T6.1 公开面复核 · T6.2 的 `scripts/check-scope.mjs` · T6.3 质量门 · T6.4 回写 A-1/A-2/A-3 · `scripts/probe.mjs` 的 5 项真机事实 + 复盘）。**真正的约束回到「单文件 ≤ 400 行 + 文档 ≤ 200 行」**（体积余 **15.1 KB**）。

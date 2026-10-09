@@ -58,15 +58,9 @@
   > **裁量记录（2026-10-08 主人拍板 → 已定案）**：执行 `wsl.exe -d X -- …` 本身就会启动 `X`（实测冷启动 **11–12.5s**，并**连带拉起 dockerd 与用户全部容器**）⇒ **自动路径一律不启动**，REQ-2.4 的保守报错**保留**。**唯一例外**：**用户显式动作**（点「启动并核验」/「用这个发行版」）时 SHALL 允许启动，且 SHALL 在动作前明示代价（约 **10–12 秒**、会拉起 WSL 内服务）。
 - **REQ-2.5** GIVEN 发行版名不存在，THEN 系统 SHALL 返回 typed error（`DistroNotFound`），错误消息 SHALL 含可用发行版名列表。
 
-### REQ-3 路径翻译
+### REQ-3 路径翻译 → ✅ 已迁至 [006-path-translation](../006-path-translation/README.md)
 
-- **REQ-3.1** GIVEN `E:\x\y` 形态的 Windows 路径，WHEN 转 WSL，THEN 系统 SHALL 返回 `/mnt/e/x/y`；盘符 SHALL 归一为小写，分隔符 SHALL 归一为 `/`。
-- **REQ-3.2** GIVEN `/mnt/e/x/y`，WHEN 转 Windows，THEN 系统 SHALL 返回 `E:\x\y`。
-- **REQ-3.3** GIVEN UNC 形态 `\\wsl.localhost\<发行版>\home\u` **或** 旧式 `\\wsl$\<发行版>\home\u`，WHEN 转 WSL，THEN 系统 SHALL 返回 `/home/u`。
-- **REQ-3.4** GIVEN 非 `/mnt/<盘>` 的 Linux 路径（如 `/home/u`），WHEN 未提供发行版名，THEN 系统 SHALL 返回 typed error（`NoWindowsEquivalent`），SHALL NOT 猜测盘符；WHEN 提供了发行版名，THEN 系统 SHALL 返回 `\\wsl.localhost\<发行版>\home\u`。
-- **REQ-3.5** GIVEN 输入为空串、相对路径、含 `<>:"|?*` 等非法字符或不可识别的 UNC（如 `\\server\share`），THEN 系统 SHALL 返回 typed error（`UnmappablePath`），SHALL NOT 抛裸异常。
-- **REQ-3.6** 翻译 SHALL NOT 做引号包装或 shell 转义（结果经 `argv` 数组传递）；含空格与中文的路径 SHALL 原样保留。
-- **REQ-3.7** 翻译 SHALL NOT 触碰文件系统（不 `stat`、不解析符号链接、不展开 `..` 以外的语义）；纯字符串变换，保证可离线单测。
+> REQ-3.1–REQ-3.7（7 条）于 **2026-10-09 原样迁入** 006，**编号不变**（`pathmap.ts` 与它的 87 条单测里有 20+ 处按编号追溯，改号=断链）。本包仍交付 `src/pathmap.ts`（**同包不拆包**）。此处留空位以免既有引用错位 —— 沿用 002 → 004 拆分时的先例。
 
 ### REQ-4 `.wslconfig` 读取与 networkingMode 判定
 

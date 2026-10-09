@@ -10,7 +10,7 @@
       ├─ src/exec.ts             spawn 封装（唯一有副作用的模块，可注入 fake）
       ├─ src/distros.ts          wsl -l -v 解码 + 表格解析
       ├─ src/net.ts              eth0 IPv4 探测
-      ├─ src/pathmap.ts          双向路径翻译（纯字符串）
+      ├─ src/pathmap.ts          双向路径翻译（纯字符串）**→ 交付面属 006**
       ├─ src/wslconfig.ts        .wslconfig 读取 + networkingMode 判定
       ├─ src/errors.ts           typed error 联合类型
       └─ src/index.ts            公开面（**运行时** ≤ 12 导出，REQ-6.4；类型导出另计）
@@ -91,29 +91,9 @@
 **REQ-2.4 的唯一例外**：`allowColdStart: true`（**只允许用户显式动作**传）跳过状态守卫，按冷启动超时执行；
 调用方 SHALL 在动作前明示代价（约 10–12 秒、会拉起 WSL 内服务）。自动路径**不得**传这个开关。
 
-### 3.3 路径翻译（`pathmap.ts`）
+### 3.3 路径翻译（`pathmap.ts`）→ ✅ 已迁至 [006-path-translation](../006-path-translation/design.md)
 
-| 输入形态 | 输出 | 备注 |
-|---|---|---|
-| `E:\x\y`、`e:/x/y`、`E:x` | `/mnt/e/x/y` | 归一盘符小写、`\`→`/`、折叠重复分隔符 |
-| `/mnt/e/x/y` | `E:\x\y` | 用 `path.win32.normalize` 产出反斜杠 |
-| `\\wsl.localhost\Ubuntu2204\home\u` | `/home/u` | 发行版名原样带入 |
-| `\\wsl$\Ubuntu2204\home\u` | `/home/u` | 旧形式，同样接受 |
-| `/home/u`（无发行版名）| ❌ `NoWindowsEquivalent` | **不猜盘符** |
-| `/home/u`（有发行版名）| `\\wsl.localhost\Ubuntu2204\home\u` | 需 `DistroNotRunning` 之外的**显式**发行版名参数 |
-| `\\server\share`、`relative\x`、空串、含 `<>:"｜?*` | ❌ `UnmappablePath` | 非法字符检查**先于**形态判定 |
-
-纯字符串变换，**不碰文件系统**（REQ-3.7）；不做引号包装（REQ-3.6，结果走 `argv`）。
-
-**入参检查先于形态判定**（REQ-3.5）：空串 / 相对路径 / 保留字符 `<>"|?*` / 非盘符位置的 `:` / 控制字符一律 `UnmappablePath`；
-Linux → Windows 方向**额外**拒**反斜杠**（Linux 合法，到 Windows 却会变成分隔符 ⇒ 静默错译）、**非法发行版名**（含分隔符、`.`、`..`、
-**以 `.`/空格结尾** —— Windows 共享名不允许）与**发行版段为 `.`/`..` 的 UNC**（不是可识别的 UNC）。错误 `message` 回显输入前 SHALL
-**可见化控制字符**（ESC/LF 原样进 UI/日志会坏排版、甚至注入 ANSI 转义）并**限长**（≤120 字符 + 总长）—— 三处均来自 Phase 4 自审的实测缺陷。
-
-**实测的 `node:path` 语义（2026-10-08，先测再写 —— 四条都会咬人）**：① `win32.normalize('E:')` → **`'E:.'`**（裸盘符被补 `.`）
-⇒ 盘符必须在 normalize **之前**摘出；② normalize 给**共享根**补尾分隔符（`\\server\share` → `\\server\share\`），三段以上 UNC 不补；
-③ `posix.normalize` **保留尾斜杠**（`/home/u/` 不变）但把 `/..` 夹到 `/`；④ UNC 里的 `..` 被**夹在共享根**
-（`\\wsl.localhost\D\..\..\x` → `\\wsl.localhost\D\x`，与 Win32 的 UNC 语义一致）。逐条理由与踩坑记录见 `src/pathmap.ts` 头注释。
+> 映射表、入参检查规则与 `node:path` 四条实测语义于 **2026-10-09 原样迁入 006**（编号保持）。本包仍交付该模块；**006 是它唯一的 Spec**。
 
 ### 3.4 `.wslconfig`（`wslconfig.ts`）
 
@@ -142,7 +122,7 @@ Linux → Windows 方向**额外**拒**反斜杠**（Linux 合法，到 Windows 
 | 面 | 措施 |
 |---|---|
 | 命令注入 | 只用 `argv` 数组，**任何**用户输入都不进入命令字符串（REQ-5.2）|
-| 路径注入 | 翻译结果只作为参数传递；非法字符前置拒绝（REQ-3.5）|
+| 路径注入 | 翻译结果只作为参数传递；非法字符前置拒绝（**006** REQ-3.5）|
 | 编码混淆 | 编码由调用方声明；解析前先解码，避免「乱码当数据」（REQ-5.5）|
 | 越权 | 本包**不提权**、不写系统配置、不写 `.wslconfig`；提权辅助留在 003 |
 | 信息泄露 | `argv` 进错误对象前做脱敏（不期望有凭据，但保持习惯）；fixture 入库前脱敏 |
@@ -153,7 +133,7 @@ Linux → Windows 方向**额外**拒**反斜杠**（Linux 合法，到 Windows 
 
 | 层 | 载体 | 覆盖 |
 |---|---|---|
-| 纯函数单测 | `vitest` | `parseDistroTable` / `parseWslConfig` / `pathmap` 全分支（含非法输入）；错误码判别 |
+| 纯函数单测 | `vitest` | `parseDistroTable` / `parseWslConfig` 全分支（含非法输入）；错误码判别。**路径翻译的 87 条单测属 [006](../006-path-translation/tasks.md)**（同包同目录，同一套 `vitest` 配置）|
 | 离线契约测试 | `node --test` + `tests/contract/fixtures/*.raw`（**真机原始字节**，不是转写文本） | 真机捕获的输出原文（`wsl -l -v` 原始字节、`ip -a`、`.wslconfig`）逐条断言；**断言对象是 fixture，不是我复述的常量** |
 | 执行器测试 | `vitest` + fake spawn | 超时杀进程、`stderr` 非空 + 退出码 0、`ENOENT`、编码解码 |
 | 真机探测 / UI 验收 | `scripts/probe.mjs` + chrome-devtools MCP | 探针在真机打印 5 项事实，**不**进 CI，作为 002/003 真机验收的输入；**本包无 UI** ⇒ UI 验收归 002/003 |
@@ -188,7 +168,7 @@ Linux → Windows 方向**额外**拒**反斜杠**（Linux 合法，到 Windows 
 10. **PID 复用窗口**：`child.kill()` 与兜底 `taskkill /PID` 之间理论上 PID 可被系统回收给别的进程（毫秒级窗口，Windows 的常见风险）；不额外加防护，记录在案。
 11. **状态守卫的 TOCTOU 窗口（REQ-2.4）**：守卫读的是 `listDistros` 的**快照**，而"读状态"与"执行 `wsl -d`"不可能原子（`wsl.exe` 没这个能力）。若发行版在两者之间被 WSL 空闲回收，`wsl -d` 会**静默冷启动**它（12.6s + 拉起容器），与 REQ-2.4 的字面要求相违。影响有界（窗口毫秒级、且只发生在"读时 Running"的情况下），缓解 = 调用方紧接状态读取后立刻探测（003 的流程如此）。**不做**心跳/守护线程。
 12. **`taskkill /T` 不是回收发行版侧进程的必要条件**（2026-10-08 A/B 实测）：A 臂只 `child.kill()`（注入空 treeKill）、B 臂走默认实现（kill + `taskkill /PID /T /F`），两臂超时后发行版内 `sleep` **都被回收**（control 先确认它在跑）⇒ 只杀 `wsl.exe` 也能让会话内进程消失。`taskkill /T` 因此是**保险**（对更深的 Windows 侧进程树有意义），不是救命稻草；T1.4 的降级方案**不需要启用**。局限：只测了单层直接子进程（`sleep`），未测深进程树。
-13. **路径翻译的 whitespace/前缀/长度取舍**：入参**首尾空白会被 trim**（表单场景常见；段内空格与中文原样保留，REQ-3.6）；`\\?\E:\x` 这类**扩展长度前缀被拒**（`?` 命中保留字符）—— 本包不猜"这是不是长路径前缀"。尾随空格/句点的路径**段**（`E:\x.`）照原样翻译，Windows 自己会在多数 API 里吃掉它们。**不检查 MAX_PATH，也不自动加 `\\?\` 长路径前缀**（实测 401 字符输入照译，输出 796 字符；是否可用取决于目标进程的长路径支持）。
-14. **盘符相对形态按盘根解析**：`E:x` / `E:..\x` → `/mnt/e/x`（REQ-3.1 的字面要求）；严格说"E 盘的当前目录"必须读 FS 才知道，但 Windows 每盘当前目录**默认即根** ⇒ 常见情形正确，读不出真实值时也不猜。
+13. **路径翻译的 whitespace/前缀/长度取舍**（详版 → [006 design §4](../006-path-translation/design.md)）：入参**首尾空白会被 trim**（表单场景常见；段内空格与中文原样保留，REQ-3.6）；`\\?\E:\x` 这类**扩展长度前缀被拒**（`?` 命中保留字符）—— 本包不猜"这是不是长路径前缀"。尾随空格/句点的路径**段**（`E:\x.`）照原样翻译，Windows 自己会在多数 API 里吃掉它们。**不检查 MAX_PATH，也不自动加 `\\?\` 长路径前缀**（实测 401 字符输入照译，输出 796 字符；是否可用取决于目标进程的长路径支持）。
+14. **盘符相对形态按盘根解析**（详版 → 006 design §4）：`E:x` / `E:..\x` → `/mnt/e/x`（REQ-3.1 的字面要求）；严格说"E 盘的当前目录"必须读 FS 才知道，但 Windows 每盘当前目录**默认即根** ⇒ 常见情形正确，读不出真实值时也不猜。
 15. **`/mnt/<盘>` 的存在性不校验**（纯函数不读 FS）：automount 关闭或自定义挂载点时，归属判断由调用方用 `wsl -l -v` / `.wslconfig` 的事实承担 —— 本包只做字符串变换。
 16. **`networkingMode` 写在旧节 `[experimental]`（WSL 2.0 之前的位置）时本包看不到**：REQ-4.5 明确要求「忽略其他节」⇒ 判为 `default/nat`；而 WSL 2.7.3 是否仍读旧节，本机**无法在不改用户配置、不重启 WSL 的前提下验证** ⇒ 记为已知风险（若真读，我们会**误报"可用"**）。缓解：003 不据此自动写规则，且 `mode==='default'` 时仍走「写入前强制现读 + 转发自检」兜底。

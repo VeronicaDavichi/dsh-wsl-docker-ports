@@ -24,7 +24,7 @@ transitions:
 **优先级**: high
 **包名**: `dsh-terminal-profiles`（**插件包**）
 **位置**: `packages/terminal-profiles/`
-**依赖**: [001-wsl-shared](../001-wsl-shared/README.md)（`depends_on`）—— 用它的发行版发现与路径翻译生成 `cwdLinux`
+**依赖**: [001-wsl-shared](../001-wsl-shared/README.md)（`depends_on`）—— 用它的发行版发现生成 `cwdLinux`；**路径翻译自 2026-10-09 起属 [006-path-translation](../006-path-translation/README.md)**（该边**待补**：本机 `leanspec rel` / `link` 未迁移，MCP `update` 不含 `depends_on` ⇒ 见 `stack-decision.md` 变更记录的已知缺口）
 
 ---
 
@@ -64,7 +64,7 @@ transitions:
 | `command` | 可执行文件 | **不经 shell 切词**；`D:\...\pwsh.exe`、`C:\...\wsl.exe` |
 | `args` | 参数数组 | 例：`["-d","Ubuntu2204"]`（发行版名由 001 自动发现，不手打）|
 | `cwd` | Windows 视角工作目录 | 例：`E:\NodeProjects` |
-| `cwdLinux` | WSL 视角工作目录 | 例：`/mnt/e/NodeProjects`；由 001 的路径翻译产出/校验 |
+| `cwdLinux` | WSL 视角工作目录 | 例：`/mnt/e/NodeProjects`；由 **006** 的路径翻译产出/校验 |
 | `env` | 额外环境变量 | WSL2 场景用 |
 
 **为什么整数组标 `.volatile()`**：官方 Loader 的 `equalExceptVolatile` 对 **volatile-only 变更不重挂载**，改走 `_commitVolatile` + `loader/volatile-update`。而 volatile **只在固定对象路径生效**，数组元素内的字段不是固定路径 —— 所以只能整数组标。**不这样做的后果**：用户每改一个 profile 的 cwd，`patchReload: live` 触发 remount，**正在运行的终端全部被杀**（`stack-decision.md` 的配置写入管道图）。**2026-10-08 源码实证**：`equal()` 首行就是 `if (schema?.meta?.volatile) return true` → 整数组标**机制成立**；但两条边界是硬的：① 标进元素内会被 `validateVolatileSchema` **拦下报错** ② schema **必须 Schemastery**，用 Zod 会**静默失效**、每次保存都重挂载。
