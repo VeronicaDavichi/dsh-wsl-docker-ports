@@ -242,3 +242,29 @@ test('T1.3 ⑦ eth0 取不到 ⇒ eth0-unknown（不猜）；现读抛异常 ⇒
     assert.match(failed.message, /未产生任何动作/);
   }
 });
+
+test('T1.7 (a) 声明通道：显式 declaration 才生效；缺省 = 空集 ⇒ 一律 port-not-managed', async () => {
+  const seen: (ManagedPorts | undefined)[] = [];
+  const spy = spyFacts({ managedPorts: (declaration) => { seen.push(declaration); return declaration ?? []; } });
+  const plan = createPlanChannel(spy.facts);
+
+  const withDecl = payloadOf(await plan({ action: 'add', ports: [5432], scope: 'lan', declaration: [{ start: 5432, end: 5432 }] }));
+  assert.equal(withDecl.ready, true, '显式声明后 5432 归我管');
+  assert.deepEqual(seen[0], [{ start: 5432, end: 5432 }], 'declaration 必须原样交给现读事实');
+
+  const withoutDecl = payloadOf(await plan({ action: 'add', ports: [5432], scope: 'lan' }));
+  assert.equal(withoutDecl.ready, false, '缺省声明 = 空集 ⇒ 什么都不做（失败方向安全）');
+  assert.equal(withoutDecl.ports[0]?.blocked?.reason, 'port-not-managed');
+  assert.equal(seen[1], undefined, '没声明时给现读事实的就是 undefined');
+
+  const malformed = payloadOf(await plan({ action: 'add', ports: [5432], scope: 'lan', declaration: [{ start: 9000, end: 100 }] }));
+  assert.equal(malformed.ready, false);
+  assert.match(malformed.notes.join(' '), /start <= end/);
+
+  const notArray = payloadOf(await plan({ action: 'add', ports: [5432], scope: 'lan', declaration: 'all' }));
+  assert.match(notArray.notes.join(' '), /区间数组/);
+
+  const tooMany = payloadOf(await plan({ action: 'add', ports: [5432], scope: 'lan', declaration: Array.from({ length: 65 }, () => ({ start: 1, end: 2 })) }));
+  assert.match(tooMany.notes.join(' '), /最多 64 个区间/);
+  assert.deepEqual(spy.calls.rules, [5432, 5432], '非法声明不得触发规则现读');
+});

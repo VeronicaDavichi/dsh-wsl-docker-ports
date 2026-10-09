@@ -36,12 +36,17 @@ import type { WriteRouteResult } from './routes.ts';
 /** 一次请求里最多处理多少个端口（声明集合可以是几千个端口，但单次写计划不该无界） */
 export const PLAN_MAX_PORTS = 256;
 
+/** 单次请求里最多几个所有权区间（防无界入参） */
+export const PLAN_MAX_RANGES = 64;
+
 /** 解析后的目标（端口已去重并**升序** —— `planId` 与展示都依赖这个稳定次序） */
 export interface PlanTarget {
   readonly action: WriteAction;
   readonly ports: readonly number[];
   readonly scope: Scope;
   readonly fromScope?: Scope | undefined;
+  /** 请求方声明的所有权集合（方案 (a)，同 003 的 query）；缺省 = 空集 */
+  readonly declaration?: ManagedPorts | undefined;
 }
 
 const ACTIONS: readonly WriteAction[] = ['add', 'remove', 'fix', 'switch-scope'];
@@ -93,23 +98,55 @@ export function normalizeTarget(
     return { ok: false, reason: `scope 必须是 ${SCOPES.join(' / ')} 之一，实际 ${JSON.stringify(scope) ?? 'undefined'}` };
   }
 
+  const parsedDeclaration = parseDeclaration(record['declaration']);
+  if (!parsedDeclaration.ok) return { ok: false, reason: parsedDeclaration.reason };
+  const declaration = parsedDeclaration.ports;
+  /** 请求没给声明 ⇒ 交 undefined（给将来的 host 侧默认值留接口）；显式空数组 = 合法空集 */
+  const declared = record['declaration'] === undefined || record['declaration'] === null ? undefined : declaration;
+
   const rawFrom = record['fromScope'];
   if (action === 'switch-scope') {
     if (!isPlanScope(rawFrom)) {
       return { ok: false, reason: 'switch-scope 必须给 fromScope（loopback / lan 之一）' };
     }
-    return { ok: true, target: { action, ports: unique, scope, fromScope: rawFrom } };
+    return { ok: true, target: { action, ports: unique, scope, fromScope: rawFrom, declaration: declared } };
   }
   if (rawFrom !== undefined && !isPlanScope(rawFrom)) {
     return { ok: false, reason: `fromScope 给了但不是合法作用域：${JSON.stringify(rawFrom) ?? 'undefined'}` };
   }
-  return { ok: true, target: { action, ports: unique, scope, fromScope: isPlanScope(rawFrom) ? rawFrom : undefined } };
+  return { ok: true, target: { action, ports: unique, scope, fromScope: isPlanScope(rawFrom) ? rawFrom : undefined, declaration: declared } };
+}
+
+/**
+ * 解析请求方声明的所有权集合（方案 (a)：与 003 的 snapshot?managedPorts=… 同构）。
+ *
+ * 🔴 缺省 = **空集**（不是全集）⇒ 一切都 port-not-managed：失败方向永远是「什么都不做」，
+ * 绝不因为「没声明」而放宽。
+ */
+export function parseDeclaration(
+  raw: unknown,
+): { readonly ok: true; readonly ports: ManagedPorts } | { readonly ok: false; readonly reason: string } {
+  if (raw === undefined || raw === null) return { ok: true, ports: [] };
+  if (!Array.isArray(raw)) return { ok: false, reason: 'declaration 必须是区间数组，形如 [{ start, end }]' };
+  if (raw.length > PLAN_MAX_RANGES) return { ok: false, reason: `declaration 最多 ${String(PLAN_MAX_RANGES)} 个区间` };
+  const ranges: { start: number; end: number }[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'object' || item === null) return { ok: false, reason: 'declaration 的元素必须是 { start, end }' };
+    const range = item as Record<string, unknown>;
+    const start = range['start'];
+    const end = range['end'];
+    if (typeof start !== 'number' || typeof end !== 'number' || !isPortNumber(start) || !isPortNumber(end) || start > end) {
+      return { ok: false, reason: `declaration 区间必须是 1..65535 且 start <= end，实际 ${JSON.stringify(item) ?? 'undefined'}` };
+    }
+    ranges.push({ start, end });
+  }
+  return { ok: true, ports: ranges };
 }
 
 /** 现读事实（**全是读**；T1.4 接真机，单测给固定 fixture ⇒ 两边都零副作用） */
 export interface PlanFacts {
   /** 声明集合（REQ-1.1 所有权判据）—— 只来自服务端配置 */
-  managedPorts(): ManagedPorts;
+  managedPorts(declaration: ManagedPorts | undefined): ManagedPorts;
   /** 当前 eth0（003 REQ-6.4）；`null` = 取不到 ⇒ 由 `buildWritePlan` 拦成 `eth0-unknown` */
   eth0Ip(): Promise<string | null>;
   /** 该端口的全部既有规则（003 的五态输入） */
@@ -228,7 +265,7 @@ export function createPlanChannel(facts: PlanFacts): (target: unknown, problem?:
     const fromScope = normalized.target.fromScope;
 
     try {
-      const managedPorts = facts.managedPorts();
+      const managedPorts = facts.managedPorts(normalized.target.declaration);
       const eth0Ip = await facts.eth0Ip();
       const firewallNames = facts.firewallNames === undefined ? undefined : await facts.firewallNames();
       const localhostForwarding = facts.localhostForwarding === undefined ? undefined : facts.localhostForwarding();
