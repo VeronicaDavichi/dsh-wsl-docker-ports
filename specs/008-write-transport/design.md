@@ -81,3 +81,36 @@
 1. **P1 只读**：路由骨架 + `plan` + `audit`（零写入）—— 先把 G1/G3/G4 拿到手。
 2. **P2 执行**：`apply` + 确认票据 + 幂等 + 回滚上报（G2/G5）。
 3. **P3 界面**：客户端接线（确认对话框展示命令原文 + 结果逐步反馈）—— UI 验收按主人环境自验清单。
+
+## 10. 接口契约（Phase 0 侦察结果 · 2026-10-09 · 全部为文件:行 实证）
+
+**路由（T0.2）** —— 已在 003 里落地、本通道**复用同一套**：
+- `route.ts:115 isWebServerSurface(value: unknown): value is WebServerSurfaceLike`
+- `route.ts:138 pathOf(url: string | undefined): string`
+- `route.ts:173 registerPortsRoute(ctx: RoutePluginContextLike, builder: SnapshotBuilder): PortsRouteRegistration`
+- `wire.ts:37 PORTS_HTTP_PREFIX = '/dsh-wsl-docker-ports'`（**无尾斜杠** ✓）· `wire.ts:104 PortsErrorCode = 'not-found' | 'method-not-allowed' | 'rules-unavailable' | 'internal'`
+- 真机证据（2026-10-09）：前缀带尾斜杠 ⇒ 注册成功但**永不被分派**（宿主兜底 404、零报错）；去掉后同一请求得到我们的 JSON ✓
+
+**提权链（T0.1）**：
+- `elevate/backend.ts:235 detectBackend(deps)` · `:317 probeElevationAvailability(deps)` · `:352 createElevationAvailabilityProbe(deps)` · `:375 resolvePolicy(policy: ElevationPolicy, source: RequestSource): ElevationPolicy`
+- `elevate/invoke.ts:85 buildInvocation(plan: …)` · `:28 DEFAULT_ELEVATE_TIMEOUT_MS = 90_000` · `:44 looksLikeUacRejection(…)`
+- `elevate/outcome.ts` `parseElevatedOut(text | null)` · `ELEVATE_EXIT`（提权失败 999 ✓）
+
+**写步骤构造器（直接给 T2.5 / T2.7 用）**：
+- `write/firewall.ts:34 firewallRuleName(port)` · `:53 firewallAllowArgs(port)` · `:81 buildFirewallAddStep(port)` · `:100 buildFirewallDeleteStep(port)` · `:121 looksLikeWildcardAllow(text)` ⇒ T2.7 的「无通配符」红线**不用自己写正则** ✓
+- `write/cleanup.ts:89 buildCleanupManifest(input)` · `:110 buildCleanupSteps(input)` ⇒ T2.5 的回滚清单 ✓
+
+**所有权集合与读模型（T0.3）** —— 链为**声明式**，与「不建台账文件」的冻结决策一致 ✓：
+```
+调用方声明（query managedPorts / settings）
+  → wire.ts:224 parseSnapshotQuery（读 QUERY_MANAGED_PORTS）
+  → snapshot.ts:161 parseManagedPorts(declaration.managedPorts)
+  → diff/managed-ports-parse.ts:140 parseManagedPorts(decls): ManagedPortsParseResult   // MIN_PORT 1 / MAX_PORT 65535
+  → diff/engine.ts:206 diff(input): DiffOutcome · :67 expectedListenAddress(scope)
+  → diff/expected.ts:41 buildExpectedForwards(…)
+```
+
+**写请求/报告的既有类型（本通道直接复用，不新造口径）**：
+- `client/host.ts:124 ForwardAction = 'apply' | 'remove' | 'fix-drift' | 'switch-scope'` · `:126 ForwardWriteRequest` · `:134 ForwardWriteReport` · `:146 ElevationInvoker`（**正是 005 `plugin.ts` 记的那个缺口** ✓）
+- `client/page.ts:46 writeGate(snapshot)` · `:192 summarizeWriteReport(…)`
+- `wire.ts:74 SnapshotDeclaration { managedPorts, scopes, elevationPolicy }` ⇒ 本 Spec 的 `target` 就是它的写侧对偶 ✓

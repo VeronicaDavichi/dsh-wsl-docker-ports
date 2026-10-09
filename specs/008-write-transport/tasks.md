@@ -4,11 +4,11 @@
 
 ## Phase 0：契约核对（不写产品代码）
 
-- [ ] T0.1 [REQ-4.1] 核对 005 提权链的可用入口签名（`createElevationInvoker` / `detectBackend` / `probeElevationAvailability` 的实际导出与参数），写进 design 的接口小节。
+- [x] T0.1 [REQ-4.1] 核对 005 提权链的可用入口签名（`createElevationInvoker` / `detectBackend` / `probeElevationAvailability` 的实际导出与参数），写进 design 的接口小节。
   - 判据：把真实签名（文件:行 + 形参表）抄进 `design.md`；与代码不符即改文档，不改代码。
-- [ ] T0.2 [REQ-1.1] 核对宿主 `ctx.webServer` 的路由 API：前缀匹配顺序（exact → 最长 prefix → fallback）、`registerUpgrade` 的路径约束、disposer 归属（`ctx.effect`）。
+- [x] T0.2 [REQ-1.1] 核对宿主 `ctx.webServer` 的路由 API：前缀匹配顺序（exact → 最长 prefix → fallback）、`registerUpgrade` 的路径约束、disposer 归属（`ctx.effect`）。
   - 判据：三条结论各配一条源码位置或真机证据；「前缀不带尾斜杠」有实证。
-- [ ] T0.3 [REQ-2.4] 确认「所有权集合」的唯一来源（配置里的 `managedPorts` 解析结果）与读模型的现态入口。
+- [x] T0.3 [REQ-2.4] 确认「所有权集合」的唯一来源（配置里的 `managedPorts` 解析结果）与读模型的现态入口。
   - 判据：写出「集合 → 计划过滤」的调用链（模块:函数）；集合外端口确实进 `port-not-managed`。
 
 ## Phase 1（P1）：**只读通道**（零写入，先拿 G1/G3/G4）
