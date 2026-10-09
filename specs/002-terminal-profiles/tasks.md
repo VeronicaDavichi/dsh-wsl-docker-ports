@@ -207,3 +207,18 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 > ⚠️ **2026-10-09 订正**：上表第 9 行原为**拆分残留** —— 它以裸表格行的形式挂在下方引用块之后、脱离了表头（渲染时会被当成普通文本），已归位并把原编号 `12` 改为 `9`（表内本就只到 8）。
 
 > **Agent 面**的真机清单（`read` 两模式 / `write` 发 `C-c` / `resize` 夹紧 / `read-only` 拒绝 / `kill` 后 `list`）**已迁至 [004-terminal-agent-surface](../004-terminal-agent-surface/tasks.md)**（2026-10-08 拆分），此处不再重复。
+
+### ✅ 2026-10-09 真机复验：缺陷 A / B 修好（探针实例 43311 · 证据为真机原文）
+
+方法：把两个插件 `link:` 装进**临时探针 profile**（备份 5 个 live 文件 → `pnpm install --frozen-lockfile` → 起实例 → 打端点 → 逐字节还原 + 删软链），**未触碰 `desktop`**。真实 CLI 语法教训：`dsh --profile <name> --port N --no-open`（`dsh web` 的 `web` 是 **profile 名**，当子命令写会 `too many arguments` ✗）；**全新 profile 离线起不来**（要装基础 bundle，卡住不监听 ✗）⇒ 用已装好基础 bundle 的探针 profile。
+
+| 请求 | 修前（真机） | 修后（本轮真机原文） |
+| --- | --- | --- |
+| `GET /dsh-managed-terminal/instances` | 宿主兜底 **404**、无 JSON、无正文 | ✅ **403 Forbidden** + `Content-Type: application/json; charset=utf-8` + `Content-Length: 98` ⇒ **路由真的被分派**（403 = 我们的授权判定，未带令牌） |
+| `GET /dsh-managed-terminal/nope` | 宿主兜底 404 | ✅ **404** + 我们的 JSON（91 B）⇒ 前缀内只答自己那一段 |
+| `POST /dsh-managed-terminal/instances` | 宿主兜底 404 | ✅ **405 Method Not Allowed** + JSON（80 B）⇒ 方法判据可达 |
+| `GET /dsh-managed-terminal/ws`（raw 握手：Upgrade/Connection/Key/Version） | 宿主兜底 404 | ✅ **403** + JSON + `Connection: close` ⇒ **upgrade 路由被分派**（403 = 无令牌） |
+| 对照组 `GET /dsh-wsl-docker-ports/snapshot?managedPorts=59999&distro=Ubuntu2204` | 200 | ✅ **200 / 4642 B / application/json; charset=utf-8** |
+| 兜底对照 `GET /nope` | 404 | ✅ 404 |
+
+**仍未验**：① 拿到**令牌后**的 200 与列表正文（需会话令牌，未走）；② **浏览器侧**的 `guide` 入口可点 / 正常启动零 warn / 007 配置页 —— 该探针 profile **不含** `@deepseek-ai/dsh-client-ui-sidebar-right`（`bundles` = `dsh-base` / `dsh-web-app` / 探针插件 + 本仓两包）⇒ 客户端会走**设计好的降级**（`sidebar-right-unavailable`），**验不了 guide 入口**；要验必须用含官方侧栏 bundle 的 profile（需主人授权）。

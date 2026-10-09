@@ -190,6 +190,8 @@ Validation checks:
 `lean-spec` 与 `leanspec` 两个 shim 都可用，但本机这一版有 **9 个子命令尚未迁移**，会报 *not yet migrated to the adapter API*（2026-10-08 实测；**2026-10-09 复测新增 `rel`**）：
 `analyze` / `check` / `children` / `deps` / `files` / `gantt` / `rel`（`link` / `unlink` 的替代命令） / `tokens` / `validate`。
 
+🔴 **跑探针实例的语法（2026-10-09 实测踩坑）**：`dsh --profile <name> --port N --no-open` —— **不是** `dsh --profile <name> web …`（`dsh web` 里的 `web` 是 **profile 名**，写成子命令会报 `error: too many arguments. Expected 0 arguments but got 1: web`，进程照起但**不监听** ✗）。另：**全新 profile 在离线/内网下起不来**（首次启动要装基础 bundle，会长期不监听 ✗）⇒ 探针请用已装好基础 bundle 的 profile；`volatile-probe` 里那个 B-1 探针插件会在探测结束后**自己 SIGINT 退出**（正常行为，别当成崩溃）。
+
 - 🔴 **依赖边只在「建 Spec 时」写得进去**：`leanspec create --depends-on` 可用，但**事后加边没有任何工具路径** —— `link` / `rel` 未迁移、MCP `update_spec` 的字段里没有 `depends_on`、`update` 也没有该选项 ⇒ 事后新增依赖边只能**手改 frontmatter（违反硬规则）**或等 CLI 升级。**2026-10-09 复测加证**：MCP `update_spec` 传 `depends_on` → `validation failed: unknown field 'depends_on' on schema 'leanspec:markdown'`（此时 MCP 的根目录**已修好**，见下条 ⇒ 不是 0-spec 假象）；显式给 `--specs-dir`（相对 + 绝对）、改用目录路径、去掉 `add` 子命令 —— 四种写法**全部**同一句错误 ⇒ 确认是**命令层未实现**，与 cwd / git / specsDir 都无关。
   - ✅ **处置（2026-10-09，主人授权「手工」）**：无工具路径这一条**确认成立**后，主人裁定**手工补边**。边界写死：**只允许改 `depends_on` 列表**（加/删一行），**绝不碰** `status` / `transitions` / 时间戳（那些是工具专属）。本次据此在 `specs/002-terminal-profiles/README.md` 加了一行 `- 006-path-translation`。
   - ✅ **复核通过**：MCP `get_dependencies` → `["001-wsl-shared","006-path-translation"]`；CLI `view` → `Depends on: 001-wsl-shared, 006-path-translation` ⇒ **已知缺口 `002 → 006` 已关闭**。
