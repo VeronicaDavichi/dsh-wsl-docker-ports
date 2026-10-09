@@ -35,6 +35,39 @@ export const PAGE_TITLE = 'WSL Docker 端口';
 export const TAB_SLOT = 'sidebar.right.pane.tab';
 export const TAB_TITLE_SLOT = 'sidebar.right.pane.tab.title';
 
+/**
+ * **guide 空态入口**（真机复验缺陷：页存在但用户在右栏空态里点不到）。
+ *
+ * 官方形状逐字取自离线实物 `0.1.7-rc.2`
+ * `deepseek-ai-dsh-client-ui-sidebar-files-0.1.7-rc.2.tgz` → `package/lib/client.js:22-38`：
+ *
+ *     function filesDefinition(t) {
+ *       return { id: FILES_ID, kind: FILES_KIND, priority: "builtin", title: () => t("type.label"),
+ *         guide: [{ id: "workspace", commandId: "workspace.files", order: 10,
+ *                   title: () => t("guide.title"), description: () => t("guide.description"),
+ *                   icon: _deepseek_ai_dsh_client_ui_primitives.GuideArtworkFiles }] };
+ *     }
+ *
+ * 同形第二/第三例（同一批 `0.1.7-rc.2` 产物，逐字核对）：
+ * - `deepseek-ai-dsh-client-ui-sidebar-terminal-*.tgz` → `lib/client.js:444-451`：
+ *   `{ id: "new", order: 20, title, description, icon }`（该家直接内联在 `apply` 里注册）。
+ * - `deepseek-ai-dsh-client-ui-sidebar-browser-*.tgz` → `lib/client.js`（`browserDefinition`）：
+ *   `{ id: "new", commandId: "browser.new", order: 30, title, description, icon }`。
+ *
+ * 官方 guide 位次**全集**（0.1.7-rc.2，逐包扫过）：`files`=10 / `terminal`=20 / `browser`=30；
+ * `plan` / `schedule` / `subagent` / `documentpreview` / `sidebar-right` 自**不带** guide 入口。
+ * 故本包 `order` 取 **40** —— 排在官方全部入口之后（`refresh()` 是按 `order` 升序排，重复值虽合法
+ * 但会退化成「谁先注册谁在前」，第三方位次不该去挤官方的档）。
+ * `icon` **不写** —— 官方类型只要求 `id`/`order`/`title`，无 `icon` 时 guide 画自己的立方体占位符
+ * （`package/lib/types/client/tab-registry.d.ts:65-66` 原文：
+ * "Optional glyph, drawn before the title; without one the guide draws its cube placeholder."），
+ * 于是也不必为此新增一个 `@deepseek-ai/dsh-client-ui-primitives` 运行时 import。
+ */
+export const GUIDE_ENTRY_ID = 'ports';
+export const GUIDE_ENTRY_ORDER = 40;
+export const GUIDE_ENTRY_TITLE = '端口转发';
+export const GUIDE_ENTRY_DESCRIPTION = '查看容器的端口映射与 portproxy 规则，逐端口应用／移除转发（只读事实层，开页零副作用）';
+
 /** `data-testid` 常量（requirements §2 的控件清单逐条对应，测试与实现共用一个字面量） */
 export const TESTID = {
   refresh: 'btn-refresh',
@@ -78,9 +111,28 @@ export function stateTone(state: PortState): PortTone {
   return STATE_TONES[state];
 }
 
-/** 构建页定义。`priority` **刻意不写**（= `extension` 档）；`multiple:false` + `keepMounted:true` 的理由见 README/report */
+/**
+ * 构建页定义。`priority` **刻意不写**（= `extension` 档）；`multiple:false` + `keepMounted:true` 的理由见 README/report。
+ *
+ * `guide` 是**空态入口**（官方形状，见上方 `GUIDE_ENTRY_*`）：不注册它，页只在程序化 `openTab` 之后
+ * 才出现在页签上，用户在右栏空态里**没有入口可点**。文案一律写成 thunk（官方每次使用都重读）。
+ */
 export function portsTabDefinition(): SidebarRightTabDefinitionLike {
-  return { id: PAGE_ID, kind: PAGE_KIND, title: () => PAGE_TITLE, multiple: false, keepMounted: true };
+  return {
+    id: PAGE_ID,
+    kind: PAGE_KIND,
+    title: () => PAGE_TITLE,
+    multiple: false,
+    keepMounted: true,
+    guide: [
+      {
+        id: GUIDE_ENTRY_ID,
+        order: GUIDE_ENTRY_ORDER,
+        title: () => GUIDE_ENTRY_TITLE,
+        description: () => GUIDE_ENTRY_DESCRIPTION,
+      },
+    ],
+  };
 }
 
 /** 两个 seat 的注册参数（`slots.register({name, key}, Component)`） */

@@ -7,9 +7,12 @@
  *
  * 文件扩展名是 `.tsx` 而不是 `.ts`：本包 `test` 脚本里的 `node --test "tests/**\/*.test.ts"`
  * 会抢走 `.test.ts`（`node:test` 里 import vitest 直接失败）。扩展名就是隔离手段。
+ *
+ * 晚到时序 / 告警可见性的回归在隔壁 `entry-pending.test.tsx`（2026-10-09 第二次真机复验的判据，
+ * 拆出去同时是为了守住「单文件 ≤ 400 行」）。
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import * as entry from '../../src/client/index.ts';
 import type { ClientContextLike } from '../../src/client/host.ts';
@@ -157,75 +160,43 @@ describe('T5.1 降级：缺什么就报什么，且一律不抛异常', () => {
   });
 });
 
-describe('缺陷 C（2026-10-09 真机）：右栏服务**晚到**时也必须在服务到位后注册页', () => {
+describe('② 真机复验缺陷：页类型缺 guide 入口 ⇒ 页存在但用户点不到', () => {
   /**
-   * 真机时序：本包模块级 `inject` 只有 `['slots']` ⇒ 本插件 fiber 早早启动；而 `sidebarRightTabs` /
-   * `sidebarRight` 由官方 `dsh-client-ui-sidebar-right` 提供（那家自己 inject 了 7 个服务、在 apply
-   * **中段**才 provide）⇒ 我们 apply 的时刻它们还没到。
+   * 官方形状（离线实物 `0.1.7-rc.2` `deepseek-ai-dsh-client-ui-sidebar-files-*.tgz`
+   * → `package/lib/client.js:22-38`）：
    *
-   * 旧写法在这一步同步 `softGet` 一次就 `return` ⇒ 紧随其后的 `ctx.inject` 永远执行不到
-   * ⇒ 页不出现、零请求、零告警。本用例在旧代码上**红**（`pending` 长度为 0）。
+   *     guide: [{ id: "workspace", commandId: "workspace.files", order: 10,
+   *               title: () => t("guide.title"), description: () => t("guide.description"),
+   *               icon: ... }]
+   *
+   * 注册表 `refresh()`（`.../sidebar-right/lib/client.js:8845-8849`）会把每条补上 `kind` / `providerId`
+   * 并按 `order` 升序排；`GuideBody` 对每条渲染一张卡片，点它走 `openTab(kind, { replaceTab: true })`。
+   * ⇒ 没有 `guide` 数组这一项，本页就只能靠程序化 `openTab` 出现（真机复现）。
    */
-  it('apply 时服务未到 ⇒ 登记惰性注入 + pending（不是「缺失」），服务到位 ⇒ 页与两个 seat 自动注册', () => {
-    const tabRegistrations: unknown[] = [];
-    const slotRegistrations: { readonly options: Record<string, unknown>; readonly component: unknown }[] = [];
-    const services: Record<string, unknown> = {
-      slots: {
-        register: (options: Record<string, unknown>, component: unknown) => {
-          slotRegistrations.push({ options, component });
-          return () => undefined;
-        },
-        inject: (_name: string, callback: () => (() => void) | void) => {
-          callback();
-          return () => undefined;
-        },
-      },
-    };
-    const pending: { readonly names: readonly string[]; readonly callback: (scope: ClientContextLike) => void }[] = [];
-    const ctx: ClientContextLike = {
-      get: (name: string) => services[name],
-      inject: (names: readonly string[], callback: (scope: ClientContextLike) => void) => {
-        pending.push({ names, callback });
-        return () => undefined;
-      },
-      effect: (callback: () => (() => void) | void) => {
-        callback();
-        return () => undefined;
-      },
-    };
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  it('注册的页定义带 guide[]（官方字段 id/order/title()/description()），且文案是 thunk', () => {
+    const fake = fakeCtx();
+    entry.apply(fake.ctx, { source: source({ count: 0 }) });
+    expect(fake.tabRegistrations).toHaveLength(1);
 
-    const result = entry.apply(ctx, { source: source({ count: 0 }) });
-
-    // ① 必须登记了惰性注入 —— 旧代码在同步判空那一步就 return，这里 `pending` 是空的 ⇒ 红
-    expect(pending).toHaveLength(1);
-    expect(pending[0]?.names).toEqual(['sidebarRightTabs', 'sidebarRight']);
-    expect(tabRegistrations).toHaveLength(0);
-    // ② 此刻没注册就如实说「还没注册」（不是「缺失」）
-    expect(result.registered).toBe(false);
-    if (!result.registered) {
-      expect(result.reason).toBe('sidebar-right-pending');
-      expect(result.deferred).toBe(true);
-      expect(result.missing).toEqual([]);
-    }
-    // ③ 可见性：真机那次是 0 warning，缺陷因此查无可查
-    expect(warn.mock.calls.length).toBeGreaterThan(0);
-
-    // ④ `+755ms`：两个服务到位 ⇒ 注入回调跑 ⇒ 页定义 + 两个 keyed seat 都注册
-    services['sidebarRightTabs'] = {
-      register: (definition: unknown) => {
-        tabRegistrations.push(definition);
-        return () => undefined;
-      },
-    };
-    services['sidebarRight'] = { open: () => undefined };
-    pending[0]?.callback(ctx);
-
-    expect(tabRegistrations).toHaveLength(1);
-    expect(slotRegistrations.map((registration) => registration.options['name'])).toEqual([TAB_SLOT, TAB_TITLE_SLOT]);
-    expect((tabRegistrations[0] as Record<string, unknown>)['id']).toBe(PAGE_ID);
-    warn.mockRestore();
-    console.log(`  · 晚到时序扫了 ${String(pending.length)} 次注入登记 / ${String(tabRegistrations.length)} 个页定义 / ${String(slotRegistrations.length)} 个 seat；apply 时返回 ${JSON.stringify(result.registered ? 'registered' : result.reason)}`);
+    const definition = fake.tabRegistrations[0] as Record<string, unknown>;
+    const guide = definition['guide'] as readonly Record<string, unknown>[] | undefined;
+    expect(Array.isArray(guide)).toBe(true);
+    expect(guide).toHaveLength(1);
+    const pick = guide?.[0] ?? {};
+    // 契约字面量：入口 id 与位次是本包声明的稳定值
+    // （官方 guide 位次全集 files=10 / terminal=20 / browser=30 ⇒ 本包取 40 排在其后）
+    expect(pick['id']).toBe('ports');
+    expect(pick['order']).toBe(40);
+    // 官方要求 **thunk**（每次使用都重读，换语言无需重注册）⇒ 必须是函数，不能是冻结字符串
+    expect(typeof pick['title']).toBe('function');
+    expect(typeof pick['description']).toBe('function');
+    expect((pick['title'] as () => string)()).toBe('端口转发');
+    expect((pick['description'] as () => string)()).toContain('portproxy');
+    // `icon` 官方可选（无 icon 时 guide 画占位立方体）⇒ 本包不为此新增运行时 import
+    expect(pick['icon']).toBeUndefined();
+    // 页类型：不认地址（`patterns` / `canOpen` 都不该出现）
+    expect(definition['patterns']).toBeUndefined();
+    console.log(`  · 页定义字段 ${JSON.stringify(Object.keys(definition).sort())}；guide 入口 ${JSON.stringify(Object.keys(pick).sort())}；order=${String(pick['order'])}`);
   });
 });
 

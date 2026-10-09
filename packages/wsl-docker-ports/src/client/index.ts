@@ -25,7 +25,16 @@
  *
  * 故现在的写法：**不再同步定生死** —— 一律 `ctx.inject([...])` 等，`registered` 只在回调真跑过并注册成功
  * 之后才为 `true`；此刻没注册就如实返回 `sidebar-right-pending`（`deferred: true`），**不谎报缺失**。
- * 并把降级/等待写成 `console.warn`（可见性：真机那次的「0 warning」让缺陷查无可查）。
+ *
+ * ## 🔴 2026-10-09 第二次真机复验：warn 不能打在正常路径上
+ *
+ * 真机探针：插件 `apply` 在 `@1051ms` 时两个宿主服务还是 `undefined`，宿主服务在 **`@1317ms`** 到齐、
+ * 内层 `ctx.inject` **确实 fire**（`tabs=object / sidebar=object`）⇒ **晚到 ~240ms 是常态**。
+ * 而当时的写法在 apply 当下就 `console.warn`「尚未注册」⇒ **每次启动一条假告警**，
+ * 结果是训练人忽略真告警（真缺陷 C 就差点因此查无可查）。
+ * 现在：窗口内到位 = **零 warn**；超过 `pendingWarnMs`（缺省 2000ms，可注入假时钟）仍在等才 warn；
+ * 且若曾 warn 过、之后又注册成功，补一条 `console.info` 说明**已解除**（对照）。
+ * 「真缺服务」的即时可见性没丢：`sidebar-right-unavailable` 那条 warn 原样保留。
  *
  * ## 降级不是一个 catch 分支，而是返回值的一部分
  *
@@ -43,6 +52,7 @@ import {
   type ClientApplyOptions,
   type ClientContextLike,
   type ClientRuntime,
+  type ClientTimers,
   type PortsSource,
   type RemoteSettingsLike,
   type SidebarRightTabsServiceLike,
@@ -84,6 +94,16 @@ function softGet<T>(ctx: ClientContextLike, serviceName: string): T | undefined 
 
 /** 客户端日志前缀：**降级必须可见**（静默不注册 = 「页面莫名其妙不出现」，真机就吃过这个亏） */
 const CLIENT_LOG_TAG = '[dsh-wsl-docker-ports]';
+
+/**
+ * pending 告警的缺省宽限窗口（ms）。
+ *
+ * 🔴 **2026-10-09 第二次真机复验**：右栏两个服务**晚到 ~240 ms 是常态**（探针：插件 `apply` 在
+ * `@1051ms` 时两个宿主服务还是 `undefined`，`@1317ms` 到齐、内层 `ctx.inject` **确实 fire**）。
+ * 于是「apply 时还没到」**是正常路径**，旧写法在正常路径上每次启动都打一条 warn
+ * ⇒ 训练人忽略真告警。现在：窗口内到位 = **零 warn**；超过窗口仍在等才 warn。
+ */
+const DEFAULT_PENDING_WARN_MS = 2000;
 
 /**
  * 客户端半入口。**不抛异常**：任何缺失都从返回值里说清。
@@ -163,8 +183,43 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
   let injectFired = false;
   let lastMissing: string[] = [];
 
+  const timers: ClientTimers = options.timers ?? {
+    setTimeout: (callback, ms) => globalThis.setTimeout(callback, ms),
+    clearTimeout: (handle) => {
+      globalThis.clearTimeout(handle as ReturnType<typeof globalThis.setTimeout>);
+    },
+  };
+  const grace = options.pendingWarnMs ?? DEFAULT_PENDING_WARN_MS;
+  /** 已排定的 pending 告警句柄（`null` = 没排/已撤） */
+  let pendingWarnTimer: unknown = null;
+  /** 那条 pending 告警**真的打出去过** ⇒ 之后注册成功要打一条 info 作对照（不然告警像没恢复） */
+  let warnedPending = false;
+
+  const cancelPendingWarn = (): void => {
+    if (pendingWarnTimer === null) return;
+    timers.clearTimeout(pendingWarnTimer);
+    pendingWarnTimer = null;
+  };
+
+  /**
+   * 排定「等太久了」那条告警。**不在 apply 当下打** —— 服务数百 ms 后到位是常态（见上方常量注释）。
+   * 负值 / 非有限值 = 显式关掉（真缺服务仍有 `sidebar-right-unavailable` 那条即时 warn 兜底）。
+   */
+  const schedulePendingWarn = (): void => {
+    if (!Number.isFinite(grace) || grace < 0) return;
+    pendingWarnTimer = timers.setTimeout(() => {
+      pendingWarnTimer = null;
+      if (injectFired || registeredPage) return;
+      warnedPending = true;
+      console.warn(
+        `${CLIENT_LOG_TAG} 右栏页等待超时（已等 ${String(grace)}ms）：已登记 ctx.inject(['${SIDEBAR_TAB_SERVICE}', '${SIDEBAR_SERVICE}']) 但宿主仍未提供这两个服务 ⇒ 页不会出现，看这一行（正常启动时服务在数百 ms 内到位，不会走到这里）`,
+      );
+    }, grace);
+  };
+
   const register = (scope: ClientContextLike): void => {
     injectFired = true;
+    cancelPendingWarn();
     const tabs = softGet<SidebarRightTabsServiceLike>(scope, SIDEBAR_TAB_SERVICE);
     const sidebar = softGet<unknown>(scope, SIDEBAR_SERVICE);
     const missing: string[] = [];
@@ -187,6 +242,10 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
       collect(disposer);
     }
     registeredPage = true;
+    // 对照：先前那条「等待超时」告警到此**已解除**（否则看到告警的人无从判断它是否还成立）
+    if (warnedPending) {
+      console.info(`${CLIENT_LOG_TAG} 右栏页已注册：${SIDEBAR_TAB_SERVICE} / ${SIDEBAR_SERVICE} 已到位，此前那条「等待超时」告警已解除`);
+    }
   };
 
   // ⑥ 注册（缺陷 C 的修法）：**一律登记惰性注入**，不再同步 `softGet` 一次就早退。
@@ -202,6 +261,8 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
   if (typeof ctx.effect === 'function') {
     ctx.effect(
       () => () => {
+        // 拆插件时连「等太久」的告警一起撤掉（否则卸载后还会冒一条无主的 warn）
+        cancelPendingWarn();
         for (const dispose of disposers.splice(0).reverse()) dispose();
       },
       'dsh-wsl-docker-ports: right-pane tab',
@@ -219,8 +280,10 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
     };
   }
 
-  // 登记了惰性注入但服务还没到：**此刻确实没注册**（不谎报），但这不是失败 —— 服务一到就会注册
-  console.warn(`${CLIENT_LOG_TAG} 右栏页尚未注册：已登记 ctx.inject(['${SIDEBAR_TAB_SERVICE}', '${SIDEBAR_SERVICE}']) 等宿主服务到位（惰性注入的常态；若页面始终不出现，看这一行）`);
+  // 登记了惰性注入但服务还没到：**此刻确实没注册**（不谎报），但这不是失败 —— 服务一到就会注册。
+  // 🔴 这里**不打 warn**：真机上「晚到 ~240ms」是常态（见 DEFAULT_PENDING_WARN_MS），
+  //    正常路径上打 warn 会把真告警训练成噪音。改为排定一条**超时才响**的告警。
+  schedulePendingWarn();
   return {
     registered: false,
     reason: 'sidebar-right-pending',

@@ -51,9 +51,32 @@ export interface SlotsServiceLike {
 }
 
 /**
+ * guide 页上的一枚入口胶囊（**官方形状**，离线实物 `0.1.7-rc.2`
+ * `deepseek-ai-dsh-client-ui-sidebar-right-0.1.7-rc.2.tgz`
+ * → `package/lib/types/client/tab-registry.d.ts:45-67` 的 `SidebarRightGuideEntry`）：
+ * `id` / `order` / `title()` 必填；`description()` / `icon` / `commandId` 可选。
+ *
+ * 注册表在 `refresh()`（同包 `lib/client.js:8845-8849`）里给每条补上 `kind` / `providerId`
+ * 并按 `order` 升序排；`GuideBody` 对每条渲染一张卡片，点它 = `openTab(kind, {replaceTab:true})`。
+ * ⇒ **没有这一项，页就只存在于 `openTab` 之后，用户在右栏空态里点不到它。**
+ */
+export interface SidebarRightGuideEntryLike {
+  /** 提供方内稳定 id（同一定义内重复 ⇒ 官方 `register` 直接抛错） */
+  readonly id: string;
+  /** 全部类型入口之间的升序位次 */
+  readonly order: number;
+  /** 胶囊标题（**thunk**：官方每次使用都重读，换语言无需重注册） */
+  readonly title: () => string;
+  /** 标题下一行说明（条目少时才显示；故实现必须能只靠 `title` 站住） */
+  readonly description?: () => string;
+}
+
+/**
  * 右栏页类型定义。
- * 官方签名（contract §C9，0.1.7-rc.2 `SidebarRightTabDefinition`）：
- * `id` / `kind` / `title(address)` 必填；`priority` **留空** = `'extension'` 档（第三方不抢官方 band）。
+ * 官方签名（contract §C9，0.1.7-rc.2 `SidebarRightTabDefinition`，实物
+ * `package/lib/types/client/tab-registry.d.ts:74-120`）：
+ * `id` / `kind` / `title(address)` 必填；`priority` **留空** = `'extension'` 档（第三方不抢官方 band）；
+ * `guide` 是**空态入口**（官方 `files` 与 `terminal` 两家都注册了它）。
  */
 export interface SidebarRightTabDefinitionLike {
   readonly id: string;
@@ -62,6 +85,7 @@ export interface SidebarRightTabDefinitionLike {
   readonly multiple?: boolean;
   readonly keepMounted?: boolean;
   readonly priority?: 'extension' | 'builtin' | 'fallback';
+  readonly guide?: readonly SidebarRightGuideEntryLike[];
 }
 
 /** `ctx.sidebarRightTabs`：`register(definition): () => void`（幂等 disposer，contract §C9） */
@@ -150,6 +174,15 @@ export interface ClientRuntime {
   readonly exec: ExecServiceLike | undefined;
 }
 
+/**
+ * 定时器面（**可注入**，缺省用全局 `setTimeout` / `clearTimeout`）。
+ * 存在的理由只有一个：pending 宽限窗口要能被**确定性**测试（假时钟推进到边界，不 sleep）。
+ */
+export interface ClientTimers {
+  setTimeout(callback: () => void, ms: number): unknown;
+  clearTimeout(handle: unknown): void;
+}
+
 /** `apply()` 的可选注入（宿主侧数据通道由集成方接线；缺失 ⇒ 不注册 + 给原因） */
 export interface ClientApplyOptions {
   /** 显式注入的只读来源（测试/集成方）；给了就用它，**不再**走自建路由 */
@@ -161,6 +194,16 @@ export interface ClientApplyOptions {
   readonly routeBaseUrl?: string | null;
   /** 注入 fetch（测试用）；默认全局 `fetch` */
   readonly fetchImpl?: FetchLike;
+  /**
+   * pending 告警的**宽限窗口**（ms），缺省 `2000`。
+   *
+   * 语义（照真机事实定）：右栏两个服务**晚到数百 ms 是常态**（实测 `@1051ms` 还是 `undefined`、
+   * `@1317ms` 到齐）⇒ 窗口内到位**一条 warn 都不打**；超过窗口仍在等才 warn（那时才真值得看）。
+   * 传负数（如 `-1`）= **不排定该告警**（真缺服务仍有 `sidebar-right-unavailable` 那条即时 warn 兜底）。
+   */
+  readonly pendingWarnMs?: number;
+  /** 注入定时器（测试用假时钟）；默认全局 `setTimeout` / `clearTimeout` */
+  readonly timers?: ClientTimers;
   readonly elevation?: ElevationInvoker;
   readonly exec?: ExecServiceLike;
 }
