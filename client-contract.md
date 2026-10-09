@@ -195,6 +195,30 @@ register(definition: SidebarRightTabDefinition): () => void;   // 幂等 dispose
 - ⇒ **判据改口**：可证的只有「**0.1.7-rc.2 有 9 个，且 `managedTerminal` 未被任何官方包占用 ⇒ 仍安全**」；「官方恰好 6 个」**无实物支撑**，该数字从规格里撤下（真机 `sidebarRightTabs.entries()` 打印后再写死）。
 - ⚠️ 注意第 6 项：官方**已经有一个 `terminal` kind**（`dsh-client-ui-sidebar-terminal`）⇒ 我们选 `managedTerminal` 是对的（**不抢占**官方 kind），且应在设计里写明「与官方 `terminal` 区分」的理由。
 
+### P6 📊 **跨版本稳定性弱证据**（2026-10-09 五次取证：0.1.7-rc.1 ↔ 0.1.7-rc.2 逐字节对照）
+
+**动机**：我们离线只有 `0.1.7-*` 的 tarball，而宿主基线是 **0.2.0-rc.2**（§Z6 版本差）⇒ 想知道「这套客户端契约是稳定接口，还是某个 rc 的临时形态」。做法：同包两个版本**逐字节 sha256 对照** + 关键片段双版本命中。
+
+| 产物 | rc.1 | rc.2 | 判定 |
+| --- | --- | --- | --- |
+| `dsh-client-modules :: package/lib/client.js` | 40,277 B | 40,277 B | ✅ **逐字节相同**（sha256 前 12 位 `6fa57df9f122`） |
+| `dsh-client-modules :: package/lib/index.js` | 41,704 B | 41,704 B | ✅ 逐字节相同（`03ea21df5562`） |
+| `dsh-package-manifest :: package/lib/types/types.d.ts` | 4,169 B | 4,169 B | ✅ 逐字节相同（`8ce89a258667`） |
+| `dsh-client-ui-sidebar-terminal :: package/lib/client.js` | 18,073 B | 19,887 B | ❌ 有差异（**插件实现变了**） |
+| `dsh-client-ui-sidebar-terminal :: package/package.json` | 2,420 B | 2,520 B | ❌ 有差异 |
+
+| 关键片段 | rc.1 | rc.2 |
+| --- | --- | --- |
+| 宿主 `CLIENT_CHUNK` 正则 | ✅ | ✅ |
+| 宿主 `clientExportOf` 报错文案（`… a string or an object with a string default`） | ✅ | ✅ |
+| 浏览器 `chunkUrl` 的 `!== \`${row.id}/client.js\`` 断言 | ✅ | ✅ |
+| 浏览器 `chunkId(ownerId, fileName)` | ✅ | ✅ |
+
+**解读（谨慎版）**：**插件在变、宿主契约逐字节没变** ⇒ §P3/§P4/§P5 描述的是**稳定接口**（`CLIENT_CHUNK` 命名规则、`chunkUrl` 的 `client.js` 断言、`exports['./client']` 形状校验、`DshClientManifest` 字段集），不是某个 rc 的偶然形态。
+**但这不是真机验证**：① 样本只有 rc.1→rc.2 一步，**不能外推**到 `0.2.0-rc.2`；② 本机 vendor 目录**没有 0.2.0-rc.2 的 tarball**（只有 0.1.5-rc.2 / 0.1.7-alpha.2 / 0.1.7-rc.1 / 0.1.7-rc.2）⇒ **§Z6 / §Z10 的真机项依然成立、依然要做**，本表只用于**排优先级**（先验「产物文件是否被服务」这类形态问题，再怀疑契约本身）。
+
+---
+
 ### P5 📌 **权威 manifest schema**（2026-10-09 四次取证：`dsh-package-manifest` 的 `.d.ts` 逐字）
 
 **证据源**：官方 `deepseek-ai-dsh-package-manifest-0.1.7-rc.2.tgz :: package/lib/types/types.d.ts`（**类型定义**，最高证据级）。
