@@ -195,6 +195,48 @@ register(definition: SidebarRightTabDefinition): () => void;   // 幂等 dispose
 - ⇒ **判据改口**：可证的只有「**0.1.7-rc.2 有 9 个，且 `managedTerminal` 未被任何官方包占用 ⇒ 仍安全**」；「官方恰好 6 个」**无实物支撑**，该数字从规格里撤下（真机 `sidebarRightTabs.entries()` 打印后再写死）。
 - ⚠️ 注意第 6 项：官方**已经有一个 `terminal` kind**（`dsh-client-ui-sidebar-terminal`）⇒ 我们选 `managedTerminal` 是对的（**不抢占**官方 kind），且应在设计里写明「与官方 `terminal` 区分」的理由。
 
+### P5 📌 **权威 manifest schema**（2026-10-09 四次取证：`dsh-package-manifest` 的 `.d.ts` 逐字）
+
+**证据源**：官方 `deepseek-ai-dsh-package-manifest-0.1.7-rc.2.tgz :: package/lib/types/types.d.ts`（**类型定义**，最高证据级）。
+
+```ts
+export interface DshClientManifest {
+    /** Client platform identifier; the Web consumer selects `web`. */
+    platform: string;
+    /** Informational package-name dependencies, not Cordis service injection. */
+    inject?: string[];
+    /** Boot phase-one registration barrier; absent means the shared application batch. */
+    immediately?: boolean;
+    /**
+     * Exact module-table requests beyond the implicit client baseline, including
+     * subpaths such as `<pkg>/client`; absent means baseline externals only.
+     * Type-only imports are erased and create no module request.
+     */
+    external?: string[];
+}
+export interface DshManifest {
+    manifestVersion?: 1;                    // 清单格式版本（与 npm/Session 版本无关）
+    bundle?: DshBundleManifest;             // { patch: string | string[] } —— 相对**声明包根**
+    profile?: DshProfileManifest;           // { bundles?: string[] } —— profile 目录自己的清单
+    client?: DshClientManifest;
+}
+export interface DshPackageManifest {
+    name: string; version: string; description?: string;
+    icon?: string;        // SVG/PNG/JPEG/WebP，**≤ 256 KiB**，相对本清单目录且 realpath 后仍在其内
+    private?: boolean; dependencies?: ...; peerDependencies?: …;
+    engines?: { dsh?: string /* SemVer 区间 */, node?: string, npm?: string, [engine: string]: string | undefined };
+    dsh?: DshManifest;
+}
+```
+
+**🔴 两处口径纠正（此前我混为一谈）**
+1. **`dsh.client.inject` = 包名列表，且注释逐字说明 *"Informational package-name dependencies, **not** Cordis service injection"*** ⇒ 它是**信息性依赖声明**（官方终端页写的正是包名：`@deepseek-ai/dsh-api-terminal-controller` / `…-client-ui-sidebar-right` / `…-api-remotes` / `…-client-ui-theme` / `dsh-client-shortcuts`）。**它不是 Cordis 服务注入** —— 与之同名但**完全不同**的是**客户端入口模块自己导出的 `inject`**（那是 Cordis 服务名数组，我们 = `['slots']`）。两个 `inject` 不要互相抄。
+2. **`immediately`** = *"Boot **phase-one registration barrier**; absent means the shared application batch"* ⇒ 语义定案（原 §Z3 关闭；我们**不写**它 = 走共享批）。
+
+**其它可用于 T0.5 安装接入的字段**：`dsh.manifestVersion = 1`（可选，声明格式版本）· `dsh.bundle.patch` 可为**字符串或有序数组**（相对声明包根）· `engines.dsh` 是 **SemVer 区间**（对 DSH 的兼容声明，读取方是否强制未定）· `private: true` 阻止发布（本仓三包都是 private ✓）。
+
+---
+
 ### P4 📌 manifest 的**第四个字段 `dsh.client.external`** + 机制逐字确认（2026-10-09 三次取证）
 
 **证据源**：官方 `deepseek-ai-dsh-client-modules-0.1.7-rc.2.tgz :: package/README.md`（**规范文档**，非推断）。逐字引用：
