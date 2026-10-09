@@ -72,7 +72,7 @@ function setup(options: SetupOptions = {}) {
     const request = cwdOverride === undefined ? { profile: name } : { profile: name, cwdOverride };
     return mustOk(await host.service.open(request)).id;
   };
-  return { fake, manager, host, service: host.service, profiles, ticks, stops: () => stops, open };
+  return { fake, manager, host, service: host.service, profiles, ticks, stops, open };
 }
 
 describe('T7.1 ① 服务面方法齐全（§5 的 7 行逐条对应）', () => {
