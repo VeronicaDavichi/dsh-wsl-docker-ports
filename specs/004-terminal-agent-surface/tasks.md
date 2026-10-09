@@ -54,7 +54,7 @@
   - 验证：`vitest` —— 所有失败路径返回可读结果且含原因；**口径订正（2026-10-09）**：~~断言 `rejects` 计数为 0~~ → 改为**断言「失败呈现为 `isError:true` 的可读结果、且不中断会话」**（`defineTool` 自身以 `ToolArgsError` 抛出做参数校验，原断言会与宿主内建机制打架）；抽样断言 `hint` 非空
 
 - [ ] T3.2 [NFR-1][NFR-2][NFR-3][NFR-4][NFR-5] 质量门
-  - 验证：`pnpm -C packages/terminal-profiles typecheck` + `test` + `build` 三绿并记录用例数；卸载后**工具数归零**；静态断言本 Spec 目录**无**前端依赖、无 002 逻辑复制；单文件 ≤ 400 行
+  - 验证：`pnpm -C packages/terminal-profiles typecheck` + `test` + `build` 三绿并记录用例数；卸载后**工具数归零**；静态断言本 Spec 目录**无**前端依赖、无 002 逻辑复制；单文件 ≤ 400 行。⚠️ **2026-10-09 预检**：本任务引用的 `build` 脚本**当前不存在**（跨 4 个 Spec 的同一缺口，见 [stack-decision.md](../../stack-decision.md) 的 2026-10-09「插件清单契约审计」行）⇒ 跑本门**前**必须先由 Phase 4/5 交付 `build`（esbuild → CJS 入口 + 客户端 chunk），否则本条会当场红
 
 - [x] T3.3 文档回写 · ✅ **2026-10-09 完成**
   - 内容：T0.1（`defineTool` 契约结论）、T0.2（B-1 继承结论）→ 回写 design/README
