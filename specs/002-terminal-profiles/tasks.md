@@ -181,9 +181,10 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 - [ ] T7.3 [NFR-1..NFR-6] 质量门
   - 验证：`pnpm -C packages/terminal-profiles typecheck` + `test` + `build` 三项全绿；记录用例数、主 bundle 与 xterm chunk 体积；`package.json` 的 `peerDependencies.react` = `^18.2.0` 且**不在** `dependencies`；单文件 ≤ 400 行
 
-- [ ] T7.4 文档回写
+- [x] T7.4 文档回写（2026-10-09 完成）
   - 内容：T0.1（B-1 结论）、T0.3（前缀）、体积基线、REQ-7.4 的顶掉策略 → 回写 README/design
   - 验证：`grep -n "B-1\|B-3\|superseded" specs/002-terminal-profiles/*.md` 可见结论；`leanspec validate` 无新增告警
+  - ✅ **2026-10-09 回写完成（集成方自查，逐项落点）**：**B-1 结论** = README L114/L153/L155 + design L106/L184；**B-3（前缀独占性）** = README L157；**T0.3 独占前缀** = README L115 + design L141；**REQ-7.4 顶掉策略（`superseded`）** = design L65/L185；**体积基线** = README **L120（本轮新增）** —— 主 **11,037 B** + chunk **447,255 B**（官方终端页对照 19,887 / 685,949），并写明「**产物体积必须在构建进程结束后测**」（同日实测到一次 react-dom 被内联的中间态）。⚠️ **判据替代说明**：`leanspec validate` 属本机 **9 个未迁移子命令**之一（已知缺口，见 `AGENTS.md`）⇒ 以 `grep -n` + 行数阈值替代复核：requirements **186** / design **200** / README **165** / tasks **216** —— 本次回写只让 README **+1 行**，**未新增越阈文件**（tasks.md 的 >200 为**存量**，见待拍板项）。
 
 > 🔵 **2026-10-09 Phase 2 交付时的越界发现（E 只报不改 ⇒ 归口到本阶段处理）**：① 🔴 **`build` 缺口**：本包 T4.2 / T7.3 与 003 T6.4 / 004 T3.2 / 005 T3.4 都引用 `pnpm … build`，而**全仓没有 `build` 脚本**（跨 4 个 Spec 共 **5 处**）⇒ 收口前必须先交付 esbuild 构建，否则那些门当场红。② `tsconfig` 是 `erasableSyntaxOnly` + `exactOptionalPropertyTypes` ⇒ 可选参数必须显式写 `?: T | undefined` 才能在调用点传 `undefined`（Phase 2 唯一的类型噪音源，建议进编码约定）。③ `@xterm/addon-serialize` 的 `.d.ts` import 了**未安装**的 `@xterm/xterm`，靠 `skipLibCheck: true` 掩盖 ⇒ 关掉它立刻炸；本阶段需定「装 `@xterm/xterm` 作 devDependency」还是打 patch。④ 依赖变更会经 **pnpm 11 `verify-deps-before-run`** 自动写回 lockfile（Phase 2 实测）⇒ 见 `AGENTS.md` 的对应条。
 
