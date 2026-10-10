@@ -31,17 +31,13 @@
  * ## 为什么没有 `Config`（与 002 的**刻意**差异）
  *
  * 002 必须声明 `Config`，因为它的 `profiles` 是 `volatile` 数组（要 Schemastery 才能让 volatile 生效）。
- * 本包 P0 的四个配置项（`managedPorts` / `distro` / `elevationPolicy` / `scopes`）走**客户端 settings
- * 写回**（`remote.settings.update(ns, patch)`），宿主进程**不持有**它们的活体副本 ⇒ 没有 volatile 需求。
- * 而拿 Schemastery 只能经 `@deepseek-ai/schemastery`（本包**未声明**该依赖）⇒ 声明一个假 schema 比
- * 不声明更坏（002 文件头已记：假 schema 会让 volatile 静默失效）。故 `Config` 交给「真机 T0.5 确认
- * settings 命名空间是否需要宿主侧 schema」这一步决定，**此处不猜**（2026-10-09 集成方裁定：
- * **不许用「先加个依赖试试」解决**）。
+ * 本包 P0 的四个配置项（`managedPorts` / `distro` / `elevationPolicy` / `scopes`）走**客户端 settings 写回**（`remote.settings.update(ns, patch)`），宿主进程**不持有**它们的活体副本 ⇒ 没有 volatile 需求。
+ * 而拿 Schemastery 只能经 `@deepseek-ai/schemastery`（本包**未声明**该依赖）⇒ 声明一个假 schema 比不声明更坏（002 文件头已记：假 schema 会让 volatile 静默失效）。
+ * 故 `Config` 交给「真机 T0.5 确认 settings 命名空间是否需要宿主侧 schema」这一步决定，**此处不猜**（2026-10-09 集成方裁定：**不许用「先加个依赖试试」解决**）。
  *
  * ## 仍然缺的那一件（不静默，写进 `gaps`）
  *
- * **提权写路径的接线**：执行器属 **005**（`runElevate` + `defaultElevationDeps` **已实现**），
- * 缺的是「带 ownership 判定的写计划装配」+「浏览器点击 → 宿主执行」的传输（本波只开了只读 GET）。
+ * **提权写路径的接线**：执行器属 **005**（`runElevate` + `defaultElevationDeps` **已实现**），缺的是「带 ownership 判定的写计划装配」+「浏览器点击 → 宿主执行」的传输（本波只开了只读 GET）。
  * ⇒ 本入口**不做**假的 `ElevationInvoker`：那会让「写成功」变成谎报。如实记成 gap。
  */
 
@@ -257,11 +253,8 @@ export function applyWslDockerPorts(
       };
 
   // ── 提权可用性（缺陷 2 / 005 tasks 的「待办①」）：真探测 = 005 的只读后端探测 ──────────
-  // 🔴 缓存口径（为什么不是每份快照都真探测）：`build()` 每次刷新都问一次可用性，而真探测要起
-  // 1–3 个进程（`where.exe gsudo` + `gsudo status --json`，读不出来再加 `gsudo status`）⇒ 每份
-  // 快照都打进程 = 刷新一次卡一次。故取「**进程内单飞 + 一次缓存**」（`createElevationAvailabilityProbe`）。
-  // **不设 TTL** 的依据：① 真正的后端判定在每次提权时由 `runElevate` 重做一遍 ⇒ 陈旧值不可能
-  // 造成错误的写；② 会话内「有没有提权通道」几乎不翻转（native 永久可回落）。
+  // 🔴 缓存口径（为什么不是每份快照都真探测）：`build()` 每次刷新都问一次可用性，而真探测要起 1–3 个进程（`where.exe gsudo` + `gsudo status --json`，读不出来再加 `gsudo status`）⇒ 每份快照都打进程 = 刷新一次卡一次。故取「**进程内单飞 + 一次缓存**」（`createElevationAvailabilityProbe`）。
+  // **不设 TTL** 的依据：① 真正的后端判定在每次提权时由 `runElevate` 重做一遍 ⇒ 陈旧值不可能造成错误的写；② 会话内「有没有提权通道」几乎不翻转（native 永久可回落）。
   const availability = createElevationAvailabilityProbe({
     executor,
     ...(deps.probeBackend === undefined ? {} : { probeBackend: deps.probeBackend }),

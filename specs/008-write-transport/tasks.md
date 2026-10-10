@@ -37,12 +37,12 @@
 - [x] T2.3 [REQ-4.1] `src/transport/apply.ts`：经 005 后端链执行，回传逐步结果（成功/失败/跳过 + 原因 + 耗时）。
   - 判据：后端返回 gsudo/native 各造一次假执行，逐步结果条数 == 计划条数；耗时字段为数字且 ≥ 0。
 - [ ] T2.4 [REQ-4.2] 幂等：执行前现读，已满足的规则标 `skipped`。
-  - 判据：对同一目标连续 `apply` 两次 ⇒ 第二次 `executed` 为空、`skipped` 全中，且不报错。
+  - 判据（**已订正 2026-10-10**）：**重复 apply 永不重复写规则、永不碰系统** —— 原字面判据「对同一目标连续 `apply` 两次 ⇒ 第二次 `executed` 为空、`skipped` 全中」**不可达**：第二次的 `add` 遇既有规则即被 `state-precondition` 拦下 ⇒ 无 `planId` ⇒ 无票据 ⇒ **409 `plan-mismatch`**（零执行、零重复规则，用例⑦钉住）。
 - [ ] T2.5 [REQ-4.3] 失败与回滚：中途失败 ⇒ 按 005 REQ-3.5 回滚本轮，回传 `{executed, rolledBack, skipped, failed}`。
   - 判据：让第 2 条失败 ⇒ 第 1 条被回滚、返回体三个清单齐全、无「半成品」残留（假后端的状态快照断言）。
-- [ ] T2.6 [REQ-5.1] 每次 `apply`（含拒绝/超时/失败/回滚）落一条审计。
-  - 判据：成功与拒绝各留一条；字段齐全（at/origin/elevationPolicy/backend/ports/scope/action/result/exitCode/durationMs/rolledBack）；无凭据字段。
-  - ⚠️ 本行**判据已部分作废**（2026-10-09 主人裁定：**被拒绝的 apply 不写审计**）。已实现的是：执行尝试（成功/失败/回滚/超时）各一条，字段齐全、无凭据；`disabled` / `no-actions` / 全部拒绝路径**不写**（它们什么都没发生）。判据文字待主人订正后再勾。
+- [ ] T2.6 [REQ-5.1] **真正发生过的动作**各落一条审计（执行尝试：成功/失败/回滚/超时）；🔴 **被拒绝的 apply 不写审计**（2026-10-09 主人裁定，依据见下条）。
+  - 判据（**已订正 2026-10-10**）：执行尝试（成功/失败/回滚/超时）各一条；字段齐全（at/origin/elevationPolicy/backend/ports/scope/action/result/exitCode/durationMs/rolledBack）；无凭据字段；**被拒绝的 apply（未确认 / 错票 / `plan-mismatch` / 401）审计环 size 不变**。
+  - ⚠️ 订正留痕：原文字「每次 `apply`（含拒绝/超时/失败/回滚）落一条审计」「成功与拒绝各留一条」**已作废**（裁定：拒绝 = 没发生）⇒ `disabled` / `no-actions` / 全部拒绝路径**不写**。真机佐证：`confirmed:false` ⇒ 403 且**不留**审计记录（T2.8）；401 不记账（T2.9/T2.10）。
 - [ ] T2.7 [REQ-6.2] 红线单测：无 `portproxy reset`、无通配符防火墙规则、集合外零动作。
   - 判据：对生成的命令**逐条断言**（正则白名单）：不含 `reset`；每条 `New-NetFirewallRule` 都带具体 `-LocalPort`。
 - [ ] T2.8 [REQ-6.1] 真机复验 P2（**需主人在场**；本机 UAC 不弹窗 ⇒ 无需点 UAC，但会真改系统状态）：

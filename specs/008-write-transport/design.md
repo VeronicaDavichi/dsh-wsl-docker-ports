@@ -17,7 +17,7 @@
 
 - **前缀**：`/dsh-wsl-docker-ports/write`（**不带尾斜杠**）。
   - 为什么嵌在 003 的前缀之下：宿主分派顺序是 **exact → 最长 prefix → fallback**，故更长的前缀优先命中本通道，003 的 `/snapshot` 处理器**不会**看到本通道的路径（零改动 003 代码）。
-  - **反例即回归用例**：前缀一旦带上尾斜杠 ⇒ 注册成功但**永不被分派**（真机实证：宿主兜底 404、零报错）。单测必须钉住这条。
+  - **反例即回归用例**：前缀一旦带上尾斜杠 ⇒ 注册成功但**永不被分派**（真机实证见 §10）。单测必须钉住这条。
 - **端点**（全部在 `ctx.inject(['webServer'], …)` 之后注册，幂等，disposer 进 `ctx.effect`）：
 
 | 方法 | 路径 | 语义 | 可否写系统状态 |
@@ -117,28 +117,21 @@
 
 ## 11. T1.3 落地补充（2026-10-09 · 实证）
 
-**🔴 结论：计划算法不用重写** —— 005 的 `write/plan.ts:345 buildWritePlan()` 已是唯一真相，且**本身就带**
-`steps[].commandText`（REQ-3.2 展示命令原文）与 `port-not-managed` / `eth0-unknown` 等拦下原因
-（`write/types.ts:56 WriteBlockReason`），`WriteBlock.steps` 是**空元组**（前置不满足 ⇒ 一个动作都不产生，类型层就说死）。
-⇒ 008 的 T1.3 只是**薄包装**：`src/transport/plan.ts` 做四件事 —— 白名单解析目标、注入现读事实、
+**🔴 结论：计划算法不用重写** —— 005 的 `write/plan.ts:345 buildWritePlan()` 已是唯一真相，且**本身就带** `steps[].commandText`（REQ-3.2 展示命令原文）与 `port-not-managed` / `eth0-unknown` 等拦下原因
+（`write/types.ts:56 WriteBlockReason`），`WriteBlock.steps` 是**空元组**（前置不满足 ⇒ 一个动作都不产生，类型层就说死）。 ⇒ 008 的 T1.3 只是**薄包装**：`src/transport/plan.ts` 做四件事 —— 白名单解析目标、注入现读事实、
 规范化 + `planId`、盘成 DTO。
 
-**安全命门（有测试钉死）**：目标只认 `action` / `ports` / `scope` / `fromScope`。所有权集合
-（`managedPorts`）、`eth0Ip`、既有规则、防火墙规则名**一律服务端现读** —— 客户端伪造
-`managedPorts:[{start:1,end:65535}]` 也**不能**把 9999 变成「我管的」（实测仍 `port-not-managed`），
-伪造 `eth0Ip` 也不会进 `connectaddress`（实测用服务端现读值）。
+**安全命门（有测试钉死）**：目标只认 `action` / `ports` / `scope` / `fromScope`。所有权集合 （`managedPorts`）、`eth0Ip`、既有规则、防火墙规则名**一律服务端现读** —— 客户端伪造
+`managedPorts:[{start:1,end:65535}]` 也**不能**把 9999 变成「我管的」（实测仍 `port-not-managed`）， 伪造 `eth0Ip` 也不会进 `connectaddress`（实测用服务端现读值）。
 
-**`planId` 口径（与 §2 一致，无订正）**：`SHA-256(canonicalPlanText)`，规范文本**只含会改变系统状态的东西**
-（`action` / `scope` / `fromScope` / 端口**升序** / 每步 `kind`+`port`+`params`**按键升序**），
-**不含** `notes` / `commandText` ⇒ 文案微调不换 id，任何一步实质变化必换 id（有六条断言钉死）。
-`planId` **只在全部端口都可执行且非空时**才给；被拦下 ⇒ `null`（没有可用票据）。
+**`planId` 口径（与 §2 一致，无订正）**：`SHA-256(canonicalPlanText)`，规范文本**只含会改变系统状态的东西** （`action` / `scope` / `fromScope` / 端口**升序** / 每步 `kind`+`port`+`params`**按键升序**），
+**不含** `notes` / `commandText` ⇒ 文案微调不换 id，任何一步实质变化必换 id（有六条断言钉死）。 `planId` **只在全部端口都可执行且非空时**才给；被拦下 ⇒ `null`（没有可用票据）。
 
 **判据覆盖**：`tests/unit/transport-plan.test.ts` 7 条 ✔（含变异自证：去掉升序排序 ⇒ 排序用例必红）。
 
 ## 12. 所有权集合的来源：方案 (a)（2026-10-09 · **需主人确认的口径**）
 
-**决策**：写通道的 `target` 仍只认 `action` / `ports` / `scope` / `fromScope`（🔴 因此客户端伪造
-`target.managedPorts` **无效**，有测试钉死）；所有权集合另走一个**显式 `declaration` 字段**
+**决策**：写通道的 `target` 仍只认 `action` / `ports` / `scope` / `fromScope`（🔴 因此客户端伪造 `target.managedPorts` **无效**，有测试钉死）；所有权集合另走一个**显式 `declaration` 字段**
 （`{start,end}[]`，最多 64 个区间）—— 与 003 的 `snapshot?managedPorts=…` 同构，不另开口径。
 
 **缺省语义**：请求没给 `declaration` ⇒ 交给接线方的是 `undefined`（不是空数组）：
@@ -146,10 +139,8 @@
 - 接线方默认按**空集**处理 ⇒ 一切都 `port-not-managed`。**失败方向永远是最保守的「什么都不做」**，
   绝不因为「没声明」而放宽。
 
-🔴 **显式假设（请主人拍板）**：所有权集合是**用户自己声明的护栏**，**不是**防恶意本地调用者的信任边界 ——
-持有 token 的调用方可以把 `declaration` 写宽（这与 003 完全一致）。**真红线在 (a)/(c) 下都成立**：
-绝不 `portproxy reset`、绝不碰集合外规则、绝不建通配符规则、卸载不删东西。
-若要求字面做到「调用方无法写宽集合」⇒ 改走 **(c)**：host 读 `ctx.settings` 优先、请求声明回落。
+🔴 **显式假设（请主人拍板）**：所有权集合是**用户自己声明的护栏**，**不是**防恶意本地调用者的信任边界 —— 持有 token 的调用方可以把 `declaration` 写宽（这与 003 完全一致）。**真红线在 (a)/(c) 下都成立**：
+绝不 `portproxy reset`、绝不碰集合外规则、绝不建通配符规则、卸载不删东西。 若要求字面做到「调用方无法写宽集合」⇒ 改走 **(c)**：host 读 `ctx.settings` 优先、请求声明回落。
 
 **判据**：`tests/unit/transport-plan.test.ts` 共 8 条 ✔（含变异自证：把缺省退化成空集 ⇒ 声明用例必红）。
 
@@ -180,21 +171,16 @@
     ConfirmRequest = { action; port; commandText; steps; reason:'policy-ask'|'agent-passby-downgraded'; message }
     runElevate(request, deps): Promise<ElevateResult>（policy='none' ⇒ SHALL NOT 提权；空 steps ⇒ no-actions）
 
-**票据坐在 `deps.confirm` 位上**：票据有效 ⇔ 「用户已确认命令原文」⇒ `confirm: async () => true`；
-无票/错票/过期 ⇒ **根本不到 `runElevate`**，或注入 `confirm: async () => false` ⇒ 005 按拒绝处理 ⇒ 零提权。
+**票据坐在 `deps.confirm` 位上**：票据有效 ⇔ 「用户已确认命令原文」⇒ `confirm: async () => true`； 无票/错票/过期 ⇒ **根本不到 `runElevate`**，或注入 `confirm: async () => false` ⇒ 005 按拒绝处理 ⇒ 零提权。
 
 **逐文件改法**
-1. `transport/plan.ts`：`PlanResponse` 增 `confirm:{ ticket: string; expiresAt: number }`（由 `createConfirmTickets` 签发，
-   绑定本响应的 `planId`；同一 `planId` 重复规划 ⇒ 旧票作废）；`confirm` 不进 `canonicalPlanText`（不参与 planId 计算）。
+1. `transport/plan.ts`：`PlanResponse` 增 `confirm:{ ticket: string; expiresAt: number }`（由 `createConfirmTickets` 签发， 绑定本响应的 `planId`；同一 `planId` 重复规划 ⇒ 旧票作废）；`confirm` 不进 `canonicalPlanText`（不参与 planId 计算）。
 2. `transport/routes.ts`：apply 依赖签名加 `ticket`（从请求体白名单取，**只加一个字段**，path-first/method-second 与 405/404 语义不动）。
-3. `transport/wire-plugin.ts`：`apply` = ① 重规划（同一 facts）⇒ 得 `planId`/`steps`/`eth0Ip`/`commandText`；
-   ② **票据门**：`consume(planId, ticket)` ⇒ `unknown`/`mismatch`/`expired` 各自错误码 + **零执行**；
-   ③ `facts.firewallNames` 存在性闸门（T2.6）：下发**前**再读一次规则名，目标名已在 ⇒ **整单不下发**（`no-actions` + 全部步骤进 `skipped`、零命令、零审计）；
-   ④ 通过 ⇒ `runElevate({ plan, policy: facts 的 policy, source: origin }, { ...defaultElevationDeps(executor), confirm: async () => true })`；
+3. `transport/wire-plugin.ts`：`apply` = ① 重规划（同一 facts）⇒ 得 `planId`/`steps`/`eth0Ip`/`commandText`； ② **票据门**：`consume(planId, ticket)` ⇒ `unknown`/`mismatch`/`expired` 各自错误码 + **零执行**；
+③ `facts.firewallNames` 存在性闸门（T2.6）：下发**前**再读一次规则名，目标名已在 ⇒ **整单不下发**（`no-actions` + 全部步骤进 `skipped`、零命令、零审计）； ④ 通过 ⇒ `runElevate({ plan, policy: facts 的 policy, source: origin }, { ...defaultElevationDeps(executor), confirm: async () => true })`；
    ⑤ 失败 ⇒ **回滚**刚加的 portproxy（红线：**他人规则条数不变**）⇒ 结果如实回传；⑥ **审计**只记**真正发生过的动作**（执行/回滚/结果），**被拒绝的 apply 不记**（主人 2026-10-09 裁定）。
 4. 单测（离线、零真机）：票据门四种结果；无票 ⇒ **零提权零写入**；执行失败 ⇒ 回滚被调用；拒绝 ⇒ **不进审计环**。
-5. 双门 ⇒ 真机：`plan` ⇒ `apply` ⇒ 断言 `netsh` **19→20** ⇒ `remove` ⇒ 断言 **19**（**同一条命令内连做**，不留多余规则）
-   ⇒ 逐字节还原 `volatile-probe` + 红线段复核（`netsh`=19、防火墙=811、node 回基线、端口空闲、软链 0、frozen exit 0）。
+5. 双门 ⇒ 真机：`plan` ⇒ `apply` ⇒ 断言 `netsh` **19→20** ⇒ `remove` ⇒ 断言 **19**（**同一条命令内连做**，不留多余规则） ⇒ 逐字节还原 `volatile-probe` + 红线段复核（`netsh`=19、防火墙=811、node 回基线、端口空闲、软链 0、frozen exit 0）。
 
 **已具备的前提**：T2.1 票据（`transport/confirm.ts`，5 条判据全绿）；plan 侧真机已验（`planId` 三语义、命令原文可见、所有权闸门）。
 **缺口现状（2026-10-09 补丁轮订正）**：`firewallNames` **已接**（新 `read/firewall-probe.ts` 只读 `Get-NetFirewallRule`；读不到/读不懂 ⇒ 抛 ⇒ 503 / 拒绝执行）⇒ REQ-2.6 有**两层**：计划阶段 `firewall-rule-exists` + `apply.ts` 执行前闸门；`portState` 仍无读取件 ⇒ 该门未启用（偏保守，不因本次而变）。
