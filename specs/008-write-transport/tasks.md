@@ -305,3 +305,28 @@ profile 内 ReparsePoint **0**、`node_modules` 无本包软链；`portproxy` **
 **⚠️ 未验（如实）**：本轮只验「鉴权门」，**未**回归「鉴权通过后的原有语义」（403/409/503 与真写）；
 其中**真写**已由 T2.8 独立验证过（netsh 19→20→19），但「T2.9 鉴权 + 真写」的**组合**尚未在一次运行里同时验证。
 `desktop` 下 `.playwright-mcp\console-*.log` 在测试窗口内 `desktop` mtime 有变动 ⇒ 属**主人正在运行的实例**自身行为（我方对 `desktop` 零写入）。
+
+## ✅ T2.10 组合验收（鉴权 + 提权档 ask + 真写）：PASS（2026-10-10，`volatile-probe` / 43311 / HEAD b64570f）
+
+**一次运行内同时验证「鉴权门」与「真写」**（此前两者分别验过、组合未验）：
+`plan?token` ⇒ 200 且 `elevation.policy:"ask"`（配置真送达）⇒ `apply(add)?token` ⇒ `status:"ok"`、`executed:["portproxy-add","firewall-add"]`、`exitCode:0`；
+`portproxy` **19→20**、我方防火墙 **0→1**（规则文本行实测 `0.0.0.0  5900  172.20.201.152  5900`；
+防火墙 `dsh-wsl-docker-ports-5900`，Inbound/Allow/TCP/`-LocalPort 5900`/`-Group dsh-wsl-docker-ports` = **端口专属，非通配符**）；
+`plan(remove)` + `apply(remove)` ⇒ `executed:["portproxy-delete","firewall-delete"]` ⇒ **20→19**、**1→0**、5900 规则行 **0**。
+`audit?token` ⇒ 恰 **2 条** `result:"applied"`，**审计里无凭据**。
+
+**反面对照（证明令牌是真闸门，不是摆设）**：同一次运行内，`plan` **不带** token ⇒ **401**
+`{"code":"unauthorized","message":"缺少写通道凭据…"}`；`audit?token=deadbeef` ⇒ **401**「写通道凭据不正确…」。
+
+**探针禁用（修正后的确定性做法）**：从 `package.json` 的 `dsh.profile.bundles` 摘除 `dsh-volatile-probe`
+（`dependencies` 不动）⇒ 三条证据：stdout 零 `[PROBE5]`、实例存活 **109.2s**（≫7.5s 自杀点）、
+`cordis.patch.yml` 在 uptime 21.2s 与 109.2s 两次读取 hash 均为注入版本（未被 `settings.update` 重写）。
+
+**还原**：先对 profile 内 2 个 reparse point 用 `[IO.Directory]::Delete(path,false)` **只删链接**（保护链接目标），
+再清空目录、整份复制回 ⇒ 「相对路径→hash」映射 `Compare-Object` **差异 0**（74 文件，带 `-Force`）；
+另比「相对路径|Attributes」差异 **0**。收尾：`portproxy` **19**、我方防火墙（按名与按组两种查法）**0**、5900 规则 **0**、
+node **14**、43311 空闲、profile 内 ReparsePoint **0**、`~/.dsh` 与仓库 `node_modules` 搜我方包名 **0** 命中；
+`cordis.patch.yml` 回到基线 `[]`（hash `8C2D1F55…`）；`pnpm install --frozen-lockfile` exit **0**；`git status` 空。
+
+**⚠️ 未验（如实）**：① `writeToken` **未配置** ⇒ 401 的 fail-safe 分支未上真机（仅离线单测）；② `origin:"agent"` + `passby` 的**降级为 ask** 未验（本次 policy 本就是 `ask`，无法区分）；
+③ 本次为**直接 HTTP 调用**，未经过 008 T3.1 的客户端确认对话框（该期未接线）⇒ 现阶段「人在回路」的证据**只有票据门**（一次性 + 绑 `planId` + TTL 120s），**不是** UI 确认。
