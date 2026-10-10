@@ -8,7 +8,10 @@
  * ④ `localhostForwarding` 取不到 ⇒ `null`（**不猜 `false`**）；拿到了 ⇒ 原样；
  * ⑤ `elevation()` 恒可调（必填字段），来源缺省 ⇒ `{policy:'unknown', backend:'unknown', available:false}`；
  *    给了来源 ⇒ `backend` 原样、`available` 原样、`policy` 走配置档（**不做触发方降级**，那是执行层的活）；
- * ⑥ 声明缺省 ⇒ 空集（design §12 方案 (a)）。
+ *    配置值**认不出**（`bogus` / 空串）⇒ `'unknown'`（不原样透传，否则非法值会像真的选过一样显示出来）；
+ * ⑥ 声明缺省 ⇒ 空集（design §12 方案 (a)）；
+ * ⑦ `firewallNames`（008 T2.6）：给了来源 ⇒ 原样转发（**读失败照样抛**，不许变成空集）；
+ *    没给 ⇒ 键不存在（「该门不启用」≠「机器上没有同名规则」）。
  */
 
 import assert from 'node:assert/strict';
@@ -59,9 +62,26 @@ test('Phase2 ⑤⑥ elevation 恒可调且不做触发方降级；声明缺省 =
   assert.deepEqual(await real.elevation(), { policy: 'ask', backend: 'gsudo', available: true });
   assert.equal((await real.elevation()).policy, 'ask', '只反映配置档 —— Agent 触发的降级归执行层（005 resolvePolicy）');
 
+  // 🔴 认不出的配置值不许原样透传：`policy` 会显示在只读预览里，写错一个字不能看着像「用户选过了」
+  for (const bogus of ['bogus', '', 'NONE', 'none ']) {
+    const facts = createPlanFacts(sources({ elevationPolicy: bogus }));
+    assert.equal((await facts.elevation()).policy, 'unknown', `${JSON.stringify(bogus)} 不是合法档 ⇒ unknown（执行层再落到 none）`);
+  }
   const nullBackend = createPlanFacts(sources({ elevation: () => ({ available: false, backend: null }) }));
   assert.deepEqual(await nullBackend.elevation(), { policy: 'unknown', backend: 'unknown', available: false }, 'backend=null ⇒ unknown，不编造后端名');
 
   assert.deepEqual(fallback.managedPorts(undefined), [], '没声明 ⇒ 空集（失败方向最保守）');
   assert.deepEqual(fallback.managedPorts([{ start: 5432, end: 5432 }]), [{ start: 5432, end: 5432 }]);
+});
+
+test('Phase2 ⑦ firewallNames：原样转发；读失败照样抛；没给来源 ⇒ 键不存在（不假装空集）', async () => {
+  const boom = new Error('powershell 读不到防火墙规则');
+  const facts = createPlanFacts(sources({ firewallNames: () => Promise.resolve(['dsh-wsl-docker-ports-5900']) }));
+  assert.deepEqual(await facts.firewallNames?.(), ['dsh-wsl-docker-ports-5900'], '给什么转发什么（本层不解读规则名）');
+
+  const failing = createPlanFacts(sources({ firewallNames: () => Promise.reject(boom) }));
+  await assert.rejects(() => failing.firewallNames?.() ?? Promise.resolve([]), /读不到防火墙规则/u, '🔴 读失败必须冒泡（不得降级成空集）');
+
+  const missing = createPlanFacts(sources());
+  assert.equal(missing.firewallNames, undefined, '没给来源 ⇒ 不提供该事实 ⇒ 存在性闸门不启用（与接线前一致）');
 });

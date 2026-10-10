@@ -189,12 +189,12 @@
 2. `transport/routes.ts`：apply 依赖签名加 `ticket`（从请求体白名单取，**只加一个字段**，path-first/method-second 与 405/404 语义不动）。
 3. `transport/wire-plugin.ts`：`apply` = ① 重规划（同一 facts）⇒ 得 `planId`/`steps`/`eth0Ip`/`commandText`；
    ② **票据门**：`consume(planId, ticket)` ⇒ `unknown`/`mismatch`/`expired` 各自错误码 + **零执行**；
-   ③ 通过 ⇒ `runElevate({ plan, policy: facts 的 policy, source: origin }, { ...defaultElevationDeps(executor), confirm: async () => true })`；
-   ④ 失败 ⇒ **回滚**刚加的 portproxy（红线：**他人规则条数不变**）⇒ 结果如实回传；
-   ⑤ **审计**只记**真正发生过的动作**（执行/回滚/结果）；**被拒绝的 apply 不记**（主人 2026-10-09 裁定）。
+   ③ `facts.firewallNames` 存在性闸门（T2.6）：下发**前**再读一次规则名，目标名已在 ⇒ **整单不下发**（`no-actions` + 全部步骤进 `skipped`、零命令、零审计）；
+   ④ 通过 ⇒ `runElevate({ plan, policy: facts 的 policy, source: origin }, { ...defaultElevationDeps(executor), confirm: async () => true })`；
+   ⑤ 失败 ⇒ **回滚**刚加的 portproxy（红线：**他人规则条数不变**）⇒ 结果如实回传；⑥ **审计**只记**真正发生过的动作**（执行/回滚/结果），**被拒绝的 apply 不记**（主人 2026-10-09 裁定）。
 4. 单测（离线、零真机）：票据门四种结果；无票 ⇒ **零提权零写入**；执行失败 ⇒ 回滚被调用；拒绝 ⇒ **不进审计环**。
 5. 双门 ⇒ 真机：`plan` ⇒ `apply` ⇒ 断言 `netsh` **19→20** ⇒ `remove` ⇒ 断言 **19**（**同一条命令内连做**，不留多余规则）
    ⇒ 逐字节还原 `volatile-probe` + 红线段复核（`netsh`=19、防火墙=811、node 回基线、端口空闲、软链 0、frozen exit 0）。
 
 **已具备的前提**：T2.1 票据（`transport/confirm.ts`，5 条判据全绿）；plan 侧真机已验（`planId` 三语义、命令原文可见、所有权闸门）。
-**未接的既有缺口（不因本次而变）**：`firewallNames` / `portState` 无读取件 ⇒ 该两门未启用（偏保守）。
+**缺口现状（2026-10-09 补丁轮订正）**：`firewallNames` **已接**（新 `read/firewall-probe.ts` 只读 `Get-NetFirewallRule`；读不到/读不懂 ⇒ 抛 ⇒ 503 / 拒绝执行）⇒ REQ-2.6 有**两层**：计划阶段 `firewall-rule-exists` + `apply.ts` 执行前闸门；`portState` 仍无读取件 ⇒ 该门未启用（偏保守，不因本次而变）。

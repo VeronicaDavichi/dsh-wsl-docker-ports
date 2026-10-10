@@ -21,13 +21,23 @@
  *
  * - `portState`：003 的五态判决需要完整快照上下文，此处不给 ⇒ 计划只用规则事实判（`buildWritePlan` 的
  *   既有能力）。少过一道门 ⇒ **偏保守**（宁可说「需要修」也不说「已经好了」）。
- * - `firewallNames`：本包**没有**防火墙规则读取件（005 的 `existingFirewallNames` 是**入参**）⇒ 该门
- *   未启用 ⇒ 🔴 REQ-2.6 的「同名防火墙规则冲突」目前在**计划阶段**查不出来。这是**已知缺口**，已在
- *   `specs/008-write-transport/tasks.md` 留痕，不假装覆盖。
  */
 
+import type { ElevationPolicy } from '../elevate/types.ts';
 import type { PortproxyRule } from '../read/netsh.ts';
 import type { PlanFacts } from './plan.ts';
+
+const POLICIES: readonly ElevationPolicy[] = ['none', 'ask', 'passby'];
+
+/**
+ * 配置档字符串是否是**可识别**的策略值（唯一一份运行期清单；`policyFor` 也用它）。
+ *
+ * 认不出（含 `'unknown'`、空串、别的东西）⇒ 事实面给 `'unknown'`（不假装知道用户选了什么），
+ * 执行层再把它映射成**最保守**的 `'none'`。⇒ 非法配置的效果 = 不写，不是写。
+ */
+export function isElevationPolicyValue(value: unknown): value is ElevationPolicy {
+  return typeof value === 'string' && (POLICIES as readonly string[]).includes(value);
+}
 
 /** 现读来源（由 `plugin.ts` 用 003/005 既有部件绑定；本文件**不**自己造探针，也不猜签名） */
 export interface PlanFactSources {
@@ -39,7 +49,15 @@ export interface PlanFactSources {
   readonly localhostForwarding?: (() => boolean | null | Promise<boolean | null>) | undefined;
   /** 提权可用性（005 的单飞 + 一次缓存探测）；未跑过时给 `{ available: false, backend: null }` */
   readonly elevation?: (() => { readonly available: boolean; readonly backend: string | null } | Promise<{ readonly available: boolean; readonly backend: string | null }>) | undefined;
-  /** 当前配置的策略；**留空 = `'unknown'`**（不假装知道：`elevationPolicy` 是 P1 完整配置页的字段） */
+  /**
+   * 已存在的防火墙规则名（008 `read/firewall-probe.ts` 的现读）。
+   *
+   * 🔴 **读失败请抛**（同 `rules`）：把「读不到」当「没有规则」⇒ 005 REQ-2.6 的同名冲突门失效 ⇒
+   * 重复 `apply` 会叠第二条同名规则（Windows 允许 `DisplayName` 重名），回滚又只删本轮那条。
+   * 不给来源 ⇒ 该门不启用（`firewallNames === undefined`，**不是**假装空集）。
+   */
+  readonly firewallNames?: (() => Promise<readonly string[]>) | undefined;
+  /** 当前配置的策略（`none` / `ask` / `passby`）；**留空或认不出 = `'unknown'`**（见 `isElevationPolicyValue`） */
   readonly elevationPolicy?: string | undefined;
 }
 
@@ -52,7 +70,9 @@ export interface PlanFactSources {
 export function createPlanFacts(sources: PlanFactSources): PlanFacts {
   const forward = sources.localhostForwarding;
   const elevation = sources.elevation;
-  const policy = sources.elevationPolicy ?? 'unknown';
+  const firewall = sources.firewallNames;
+  // 认不出的配置值 ⇒ `'unknown'`（**不**原样透传：否则非法值会一路显示到只读预览里，像真的选过一样）
+  const policy = isElevationPolicyValue(sources.elevationPolicy) ? sources.elevationPolicy : 'unknown';
 
   return {
     // 缺省 = 空集（design §12 方案 (a)）：没声明 ⇒ 一切都 port-not-managed，失败方向最保守
@@ -60,6 +80,8 @@ export function createPlanFacts(sources: PlanFactSources): PlanFacts {
     eth0Ip: sources.eth0Ip,
     rules: (port) => sources.rules(port),
     ...(forward === undefined ? {} : { localhostForwarding: () => forward() ?? null }),
+    // 不给来源 ⇒ 键不存在（「该门不启用」≠「空集」：假装空集等于宣称「机器上没有同名规则」）
+    ...(firewall === undefined ? {} : { firewallNames: () => firewall() }),
     // `elevation` 在 PlanFacts 里是**必填** ⇒ 没给来源时给「不可用」，绝不省略
     elevation: async () => {
       const current = await elevation?.();

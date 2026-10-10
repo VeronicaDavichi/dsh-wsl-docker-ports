@@ -135,7 +135,7 @@
 > 判据（新增 `tests/unit/transport-apply.test.ts`，12 条全绿；全包 **369/369**）：① 票据四态各自可区分且零执行零写入零审计
 > （假执行器 `calls.length === 0` + 规则集合逐字节不变 + 审计环 0）；② 未确认/畸形/篡改 ⇒ 零执行零审计**且不吃掉真票**；
 > ③ 真执行 ⇒ argv 逐字（`-Action add -Port 5900 -Address 172.20.201.152 -Scope lan`）+ 审计一条 `applied`；
-> ④ `none` ⇒ `disabled` 零进程零审计、`unknown` ⇒ 按 `ask`、`passby`+`agent` ⇒ 降级 `ask`；⑤ 失败 ⇒ 第二次调用是
+> ④ `none` ⇒ `disabled` 零进程零审计、**`unknown` ⇒ 按 `none`**（2026-10-09 主人裁定后的**订正**；原记「按 ask」已作废，见文末补丁轮）、`passby`+`agent` ⇒ 降级 `ask`；⑤ 失败 ⇒ 第二次调用是
 > `-Action remove`、**他人规则一条不动**、条数回到执行前；⑥ 什么都没写（UAC 被拒）⇒ **不回滚**（防误删）；
 > ⑦ 同目标第二次 ⇒ 计划阶段被拦（无票据）⇒ 零执行零重复规则；⑧ 同一 `planId` 重复规划 ⇒ 旧票作废；⑨ HTTP 往返
 > （`plan` 签票 → `apply` 消费 → 票据 `size` 1→0）；⑩ 缺执行器 ⇒ 503「写执行尚未接线」。
@@ -145,6 +145,44 @@
 > `state-precondition` 拦下」的口径下不可能出现（第二次的 `planId` 为 `null` ⇒ 无票据 ⇒ 409）；实际幂等保证 =
 > **重复 apply 永不重复写规则、永不碰系统**（用例⑦钉住）。⇒ T2.4 的验收文字建议主人订正后再勾。
 > ⚠️ **真机未验**：`apply` 的**真写**（netsh 19→20→19）属 T2.8，需主人在场；本轮**零真机动作**（未装插件、未起实例、未跑 netsh）。
-> ⚠️ 另两处既有缺口不因本次而变：`firewallNames` / `portState` 无读取件（该两门未启用，偏保守）；
-> `elevationPolicy` 配置读取未接 ⇒ 生产 `facts.elevation().policy` 恒 `'unknown'` ⇒ 本次按 **`'ask'`** 处理
-> （`policyFor` 一处可改；若主人裁定未接线必须按 `'none'`，改那一行即可 —— 但那样真机将无法写入，直到配置页接线）。
+> ⚠️ 另两处既有缺口**已有变化**（2026-10-09 补丁轮，见文末）：`firewallNames` **已接读取件**（计划阶段 `firewall-rule-exists`
+> 门启用 + `apply` 下发前的存在性闸门）；`portState` 仍无读取件（该门未启用，偏保守）。
+> `elevationPolicy` **已从插件 config 读**（读不到/认不出 ⇒ 事实面 `unknown` ⇒ 执行层按 SSoT 默认落到 **`none`**，不再按 `ask`；
+> 生产清单当前没有 `config:` 块 ⇒ 缺省即不写，要真写须先在清单/配置页给值）。
+
+## 补丁轮：安全默认值 + 防火墙存在性（2026-10-09，离线；零真机动作）
+
+**三项施工**（严格按主人本轮裁定；005（`src/elevate/**`）、005 的 `src/write/**` **一行未改**）：
+
+1. **策略默认值订正（🔴 安全默认）**：`transport/apply.ts:policyFor` 的「认不出 ⇒ `'ask'`」改为 **⇒ `'none'`**。
+   依据 = SSoT（`stack-decision.md` 提权维度：`none`/`ask`/`passby`，**默认 `none`**）；**改默认值就是改技术栈**，
+   只能在 SSoT 里改并留痕 ⇒ 代码不得另立一份口径。语义：`'unknown'` = **配置读不出来**（≠「用户关掉了提权」，
+   ≠「用户选了每次确认」）⇒ fail-safe 取**不写**。⚠️ **为什么不是 `ask`**：`ask` 是用户**显式选择**的
+   「允许提权、但每次确认」；把「读不到」升格成 `ask` = 替用户**打开**他从未打开的开关（真机上是真写 portproxy +
+   防火墙规则）。`'none'` / `'ask'` / `'passby'` 原样透传、`passby`+Agent 仍降级 `ask`（既有行为未动）。
+2. **`firewallNames` 读取件（补 REQ-2.6 的既有缺口）**：新增 `src/read/firewall-probe.ts`（147 行）——
+   `powershell -NoProfile -NonInteractive -Command "Get-NetFirewallRule | Where-Object DisplayName -like 'dsh-wsl-docker-ports-*'
+   | Select-Object -ExpandProperty DisplayName"`，**只读**（无 `New-`/`Set-`/`Remove-`/`netsh`）、零提权；
+   接入 `real-facts.ts`（`PlanFactSources.firewallNames`）与 `wire-plugin.ts:createPluginFacts`。
+   🔴 **读失败/形态不可识别一律抛**（不是空数组）⇒ `plan.ts`/`apply.ts` 回 `rules-unavailable`；
+   只有「进程成功且输出为空」才是事实 `[]`。⇒ 计划阶段的 `firewall-rule-exists` 门**从不可用变为启用**。
+3. **执行前存在性闸门（TOCTOU + 叠规则的真实缺陷）**：`apply.ts` 在票据门之后、`runElevate` 之前**再读一次**规则名；
+   目标 `firewall-add` 的 `displayName` 已在 ⇒ **整单不下发**（连 portproxy 也不写），回 200 + `status:'no-actions'` +
+   `executed:[]` + 全部步骤进 `skipped` + `backend:'not-attempted'` + 可读 `message`/`hint`；**不写审计**（什么都没发生）。
+   为什么**不**只跳过「防火墙那一步」：005 的提权脚本按 `action` + `scope` 放行防火墙（`runner.ts:scriptCallFor` +
+   `script.ts` 的 `add@lan`），**不看 `plan.steps`** ⇒ 单步滤不掉（005 已真机验收、一行不改）。
+   本闸门**永不** Set-/覆盖/删除用户既有规则。读失败 ⇒ 503 + **零提权**（绝不把「读不到」当「没有」）。
+   ⚠️ 未接线 `firewallNames`（降级事实面）⇒ 该门不启用，行为与接线前一致（两处口径一致）。
+
+**配置读取（T3 的可知部分）**：`plugin.ts:PortsPluginConfigLike` 增 `elevationPolicy?: string`（**同线编辑、零行增长**：
+`plugin.ts` 仍 **399/400 行**），并把它传进 `createPluginFacts`；`real-facts.ts` 校验只认 `none`/`ask`/`passby`，
+**认不出（含空串/大小写不符）⇒ 事实面 `unknown`**（不原样透传，免得非法值显示得像真选过）。
+⚠️ **未证的部分（如实标注，不猜 API）**：客户端 `settings-pipe.ts` 的 `remote.settings.update('dsh-wsl-docker-ports', {elevationPolicy})`
+是否投递到 bundle 条目的 `config:`（宿主 settings/`remote.settings` 实现不在本地可读范围：只有打包的 `app.asar`）
+⇒ 配置页接线前，生产缺省仍是 `unknown` ⇒ **不写**（绝不为了「能写」而放宽默认值）。
+
+**判据**：`tsc -p tsconfig.json` exit 0；全包 `node --test --test-concurrency=1 "tests/**/*.test.ts"` **381/381 绿**
+（基线 369 + 新增 12：`tests/unit/firewall-probe.test.ts` 6 条 + `transport-apply` 4 条（④ 改判 + ⑪/⑪b/⑪c/⑫）+
+`transport-real-facts` 1 条 + `plugin-entry` 1 条）。新增/改动文件行数：`read/firewall-probe.ts` 147（新）、
+`apply.ts` 395、`real-facts.ts` 91、`wire-plugin.ts` 151、`plugin.ts` 399（**未涨**）、`design.md` 200（**未涨**）。
+🔴 **真机未验**：真写（netsh 19→20→19）与真防火墙现读都属需主人在场的验收；本轮**未装插件、未起实例、未跑任何写命令**。

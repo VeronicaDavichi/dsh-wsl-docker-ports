@@ -178,10 +178,10 @@ export interface WslDockerPortsPluginHandle {
   dispose(): void;
 }
 
-/** 插件配置（P0 只用到 `distro`；清单当前**没有** `config:` 块 ⇒ 生产上是空对象） */
+/** 插件配置（`distro` = 目标发行版，留空按 001 的四级优先级解析；`elevationPolicy` = `none`/`ask`/`passby`，🔴 缺省/认不出 ⇒ 事实面 `'unknown'` ⇒ 执行层按 SSoT 默认落到 `none`（不写），见 `transport/apply.ts` 文件头；清单当前**没有** `config:` 块 ⇒ 生产上是空对象） */
 export interface PortsPluginConfigLike {
-  /** 目标发行版；留空则按 001 的四级优先级解析 */
   readonly distro?: string | undefined;
+  readonly elevationPolicy?: string | undefined;
 }
 
 /** 宿主入口（cordis 调用；返回值被忽略） */
@@ -287,7 +287,8 @@ export function applyWslDockerPorts(
   // ② 路由：**注册发生在宿主可用时机**（`ctx.inject(['webServer'])`），此处不再同步 `ctx.get` 定生死
   const route: PortsRouteRegistration = registerPortsRoute(ctx, builder);
   // ③ 写通道（008 T1.7）：接线在独立文件里（wire-plugin.ts），此处只留一行调用 ⇒ 不挤爆 400 行 SHALL
-  const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({ executor, netsh: deps.netsh, probeEth0: () => service.probeEth0(false), probeElevation: () => availability.probe(), probeLocalhostForwarding: createDefaultLocalhostForwarding() }), executor);
+  // `elevationPolicy` 从 config 读（缺省/认不出 ⇒ 事实面 'unknown' ⇒ 执行层按 SSoT 默认落到 'none'，fail-safe）
+  const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({ executor, netsh: deps.netsh, probeEth0: () => service.probeEth0(false), probeElevation: () => availability.probe(), probeLocalhostForwarding: createDefaultLocalhostForwarding(), elevationPolicy: config?.elevationPolicy }), executor);
 
   /**
    * webServer 缺口：**每次读都按 `route` 的当前状态算**。
@@ -325,10 +326,9 @@ export function applyWslDockerPorts(
     {
       what: 'ElevationInvoker',
       reason:
-        '提权执行器**已实现**（005 的 `elevate/runner.ts` `runElevate` + `defaultElevationDeps`）' +
-        '且写通道的执行层已接线（008 `transport/apply.ts`：一次性票据门 ⇒ 提权链 ⇒ 失败回滚 ⇒ 审计）。' +
-        '仍未接线的是**客户端确认对话框**（008 T3.1：按钮 → 先 plan 拿命令原文与票据）与 `elevationPolicy` ' +
-        '的配置读取（P1 配置页）：前者没接 ⇒ 页面上点不到写入口；后者没接 ⇒ 策略档恒为 unknown（按 ask 处理）。',
+        '提权执行器**已实现**（005 的 `elevate/runner.ts` `runElevate` + `defaultElevationDeps`）且写通道的执行层已接线（008 `transport/apply.ts`：' +
+        '票据门 ⇒ 存在性闸门 ⇒ 提权链 ⇒ 失败回滚 ⇒ 审计）；仍未接线的是**客户端确认对话框**（008 T3.1）⇒ 页面上点不到写入口；' +
+        '`elevationPolicy` 已从插件 config 读，缺省/认不出 ⇒ 策略档为 `unknown` ⇒ 按 SSoT 默认落到 `none`（不写，fail-safe）。',
     },
   ];
 

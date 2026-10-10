@@ -11,13 +11,15 @@
  * | ① 票据门 | 无票 / 错票 / 未知 / 过期 **四种可区分**拒绝 ⇒ 零执行 + 零写入 + 零审计 |
  * | ② 确认门 | `confirmed !== true` / 畸形 body / 篡改 target ⇒ 零执行 + 零审计（**不吃掉票据**）|
  * | ③ 真执行 | 票据有效 ⇒ `runElevate` 被调一次、argv 逐字对、审计一条 `applied` |
- * | ④ 策略 | `none` ⇒ `disabled` 零进程零审计；`unknown` ⇒ 按 `ask`；`passby` + agent ⇒ 降级 `ask` |
+ * | ④ 策略 | `none` ⇒ `disabled` 零进程零审计；**`unknown` ⇒ 按 `none`（SSoT 默认，2026-10-09 裁定）**；`passby` + agent ⇒ 降级 `ask` |
  * | ⑤ 回滚 | 执行失败 ⇒ 第二次调用是 `remove`，**他人规则一条不动**、条数回到执行前 |
  * | ⑥ 不回滚 | 什么都没写（UAC 被拒）⇒ **不做任何回滚**（防误删） |
  * | ⑦ 幂等 | 同目标第二次 ⇒ 计划阶段被拦（无票据）⇒ 零执行、零重复规则、审计不增 |
  * | ⑧ 旧票作废 | 同一 `planId` 重复规划 ⇒ 旧票 `mismatch`、新票可用 |
  * | ⑨ 接线 | HTTP 往返：`/write/plan` 签发的票据能被 `/write/apply` 消费（wire-plugin 同实例）|
  * | ⑩ 降级 | 没给执行器 ⇒ `apply` 不接线（503「写执行尚未接线」），不假装能写 |
+ * | ⑪ 存在性闸门 | 计划后机器上冒出同名防火墙规则 ⇒ **整单不下发**（零命令、零审计）；读失败 ⇒ 503 且零执行 |
+ * | ⑫ 规则名不存在 | 闸门不误拦：照常 `-Action add -Scope lan` 下发，两步都执行 |
  *
  * 假执行器模拟的是**脚本对系统状态的影响**（同端口先清后加），回滚判据则完全依赖 005 的前后快照
  * ⇒ 「删得对」这件事是被**结构**证明的，不是被我用例凑出来的。
@@ -91,7 +93,7 @@ function scriptSteps(scope: 'loopback' | 'lan', action: 'add' | 'remove'): { nam
 }
 
 interface RigOptions {
-  /** 事实面给的**配置档字符串**（真实生产里 `unknown` = 配置页还没接线） */
+  /** 事实面给的**配置档字符串**（真实生产里 `unknown` = 配置读不到 ⇒ 按 `none` 处理） */
   readonly policy?: string | undefined;
   /** 后端探测结果（`gsudo` 走 stdio 回传 ⇒ argv 是独立元素，便于逐字断言） */
   readonly probe?: typeof NATIVE_CHOICE | undefined;
@@ -100,6 +102,8 @@ interface RigOptions {
   /** 完全自定义的应答（用于「脚本根本没跑起来」这类场景） */
   readonly respond?: Responder | undefined;
   readonly ttlMs?: number | undefined;
+  /** 已存在的防火墙规则名来源（008 T2.6）；不给 ⇒ 存在性闸门不启用（与接线前一致） */
+  readonly firewallNames?: (() => Promise<readonly string[]>) | undefined;
 }
 
 interface Rig {
@@ -132,6 +136,7 @@ function createRig(options: RigOptions = {}): Rig {
     elevation: () => Promise.resolve({ policy: options.policy ?? 'ask', backend: 'gsudo', available: true }),
     // `false` = loopback 也要显式规则 ⇒ 每个端口都至少有一步，便于断言「跳过了哪一步」
     localhostForwarding: () => false,
+    ...(options.firewallNames === undefined ? {} : { firewallNames: options.firewallNames }),
   };
 
   const fs = createFakeFs();
@@ -349,13 +354,15 @@ test('T2.3 ③ 合法票据 ⇒ runElevate 真被调用且 argv 逐字正确；�
   assert.deepEqual(rig.rules, [foreignRule(), { listenAddress: '0.0.0.0', listenPort: PORT, connectAddress: ETH0, connectPort: PORT }]);
 });
 
-test('T2.3 ④ 策略映射：none ⇒ disabled（零进程零审计）；unknown ⇒ 按 ask 真执行；passby + agent ⇒ 降级 ask', () => {
+test('T2.3 ④ 策略映射：none ⇒ none；unknown/认不出 ⇒ none（SSoT 默认，fail-safe）；passby 原样', () => {
   assert.equal(policyFor('none'), 'none');
   assert.equal(policyFor('ask'), 'ask');
   assert.equal(policyFor('passby'), 'passby');
-  assert.equal(policyFor('unknown'), 'ask', '🔴 未接线不等于「用户关掉了提权」：按 ask（确认闸门 = 票据门）');
-  assert.equal(policyFor(''), 'ask');
-  assert.equal(policyFor('auto'), 'ask', '认不出的值一律按最保守的可执行档，绝不升格成 passby');
+  // 🔴 2026-10-09 主人裁定：默认值 none 是 SSoT（stack-decision.md 提权维度）定的 ⇒「读不到配置」
+  // 只能落到**不写**；把 unknown 当 ask 等于替用户**打开**他从未打开过的提权开关（真机会真写）。
+  assert.equal(policyFor('unknown'), 'none', '配置读不到 ⇒ 按 SSoT 默认 none（不是 ask、更不是 passby）');
+  assert.equal(policyFor(''), 'none');
+  assert.equal(policyFor('auto'), 'none', '认不出的值一律落到最保守档（不写），绝不升格成 ask / passby');
 });
 
 test('T2.3 ④b `none`：005 在执行前返回 disabled ⇒ 零提权调用、零审计（不是失败）', async () => {
@@ -372,7 +379,7 @@ test('T2.3 ④b `none`：005 在执行前返回 disabled ⇒ 零提权调用、�
   assert.match(report.message, /none/u);
 });
 
-test('T2.3 ④c `unknown` 与 `passby`+agent：都真的执行，但生效档分别是 ask / ask（降级留痕）', async () => {
+test('T2.3 ④c `unknown`（配置读不到）⇒ 生效档 none ⇒ 零提权零写入零审计；passby+agent ⇒ 降级 ask 照常执行', async () => {
   const unknown = createRig({ policy: 'unknown', probe: GSUDO_CHOICE });
   const plannedByUnknown = await planOk(unknown);
   const reportByUnknown = reportOf(
@@ -384,9 +391,12 @@ test('T2.3 ④c `unknown` 与 `passby`+agent：都真的执行，但生效档分
       ticket: ticketOf(plannedByUnknown),
     }),
   );
-  assert.equal(reportByUnknown.status, 'ok', 'unknown ⇒ 按 ask 处理（否则真机永远写不了）');
-  assert.equal(reportByUnknown.elevationPolicy, 'ask');
-  assert.equal(unknown.fake.calls.length, 1);
+  assert.equal(reportByUnknown.status, 'disabled', 'unknown ⇒ 按 none（SSoT 默认）⇒ 005 直接 disabled');
+  assert.equal(reportByUnknown.elevationPolicy, 'none');
+  assert.equal(unknown.fake.calls.length, 0, '🔴 读不到配置 ⇒ 零进程（真机上就是不写）');
+  assert.equal(unknown.audit.size(), 0, '零动作 ⇒ 零审计');
+  assert.deepEqual(unknown.rules, [foreignRule()], '系统状态逐字节不变');
+  assert.match(reportByUnknown.message, /none/u);
 
   const agent = createRig({ policy: 'passby', probe: GSUDO_CHOICE });
   const plannedByAgent = await planOk(agent);
@@ -414,6 +424,103 @@ test('T2.3 ④c `unknown` 与 `passby`+agent：都真的执行，但生效档分
   );
   assert.equal(reportAnon.elevationPolicy, 'ask', '缺省 origin ⇒ 按 agent（降级方向）');
   assert.equal(anon.audit.tail(1)[0]?.origin, 'agent', '审计按**生效**来源记，不按「猜是用户」记');
+});
+
+/* ── ⑪/⑫ 存在性闸门（REQ-2.6 第二层）：防火墙规则名的现读 + 执行前再读一次 ── */
+
+/** 按调用次序应答的规则名来源（`[]` = 还没有；`Error` = 读失败）——用来复刻 TOCTOU 窗口 */
+function readScript(script: readonly (readonly string[] | Error)[]): () => Promise<readonly string[]> {
+  let index = 0;
+  return () => {
+    const item = script[Math.min(index, script.length - 1)] ?? [];
+    index += 1;
+    return item instanceof Error ? Promise.reject(item) : Promise.resolve(item);
+  };
+}
+
+test('T2.6 ⑪ 执行前闸门：计划发出后机器上冒出同名防火墙规则 ⇒ **整单不下发**（零命令、零审计）', async () => {
+  // 读次序：① `/write/plan` 那次（还没有）② apply 的重规划（还没有）③ 执行前的闸门（冒出来了）
+  const rig = createRig({
+    probe: GSUDO_CHOICE,
+    firewallNames: readScript([[], [], ['dsh-wsl-docker-ports-5900']]),
+  });
+  const response = await planOk(rig);
+  assert.equal(response.ports[0]?.ready, true, '计划阶段当时确实没有同名规则 ⇒ 可执行');
+
+  const report = reportOf(
+    await rig.applyChannel({ target: TARGET, planId: response.planId, confirmed: true, origin: 'user', ticket: ticketOf(response) }),
+  );
+
+  assert.equal(report.status, 'no-actions', '整单不做（005 的脚本按 action+scope 放行防火墙，滤不掉单步）');
+  assert.deepEqual(report.executed, [], '一条都没执行');
+  assert.deepEqual([...report.skipped].sort(), ['firewall-add', 'portproxy-add'], '两步都如实进 skipped');
+  assert.equal(report.backend, 'not-attempted');
+  assert.match(report.message, /已存在/u);
+  assert.match(report.message, /不新增、不覆盖、也不删除/u);
+  assert.match(report.hint, /DisplayName 重名/u, '要把「为什么整单不做」说清');
+
+  // 🔴 红线：不是「少做一步」，而是**一条命令都没下发**（否则会叠第二条同名规则）
+  assert.equal(rig.fake.calls.length, 0, `零提权：实际 ${String(rig.fake.calls.length)} 条`);
+  assert.equal(rig.fake.calls.some((call) => textOf(call).includes('New-NetFirewallRule')), false);
+  assert.deepEqual(rig.rules, [foreignRule()], '转发规则也没写（连 portproxy 都不动）');
+  assert.equal(rig.audit.size(), 0, '什么都没发生 ⇒ 不写审计（与 disabled / no-actions 同口径）');
+});
+
+test('T2.6 ⑪b 执行前读到**失败**（不是空集）⇒ 503 rules-unavailable、零执行、零审计', async () => {
+  const rig = createRig({
+    probe: GSUDO_CHOICE,
+    firewallNames: readScript([[], [], new Error('powershell 读失败：服务未启动')]),
+  });
+  const response = await planOk(rig);
+  const refusal = refusalOf(
+    await rig.applyChannel({ target: TARGET, planId: response.planId, confirmed: true, origin: 'user', ticket: ticketOf(response) }),
+  );
+
+  assert.equal(refusal.code, 'rules-unavailable');
+  assert.match(refusal.message, /读不到防火墙规则名/u);
+  assert.match(refusal.message, /服务未启动/u, '原因要原样带出来（可诊断）');
+  assert.equal(rig.fake.calls.length, 0, '读不到 ⇒ 零提权（绝不把「读不到」当「没有」）');
+  assert.equal(rig.audit.size(), 0);
+  assert.deepEqual(rig.rules, [foreignRule()]);
+});
+
+test('T2.6 ⑪c 计划阶段就发现同名 ⇒ 计划被拦（`firewall-rule-exists`）⇒ apply 拒绝且零提权', async () => {
+  const rig = createRig({ probe: GSUDO_CHOICE, firewallNames: readScript([['dsh-wsl-docker-ports-5900']]) });
+  const response = await planOk(rig);
+
+  assert.equal(response.planId, null, '计划阶段（第一层）就该拦下：不产生任何步骤');
+  const planned = response.ports[0];
+  assert.equal(planned?.ready, false);
+  assert.match(planned?.blocked?.reason ?? '', /firewall-rule-exists/u);
+  assert.equal(planned?.steps.length, 0, '被拦下的计划恒为空步骤（REQ-1.2）');
+
+  const refusal = refusalOf(
+    await rig.applyChannel({ target: TARGET, planId: response.planId, confirmed: true, origin: 'user', ticket: 'tk-1' }),
+  );
+  assert.equal(refusal.code, 'plan-mismatch', '没有可执行计划 ⇒ 连票据都签发不出来');
+  assert.equal(rig.fake.calls.length, 0);
+  assert.equal(rig.audit.size(), 0);
+});
+
+test('T2.6 ⑫ 规则名不存在（同名判定按前缀+端口，别的端口不算）⇒ 闸门不误拦，照常下发', async () => {
+  const rig = createRig({
+    probe: GSUDO_CHOICE,
+    firewallNames: readScript([['dsh-wsl-docker-ports-6379', '别人的规则']]),
+  });
+  const response = await planOk(rig);
+  const report = reportOf(
+    await rig.applyChannel({ target: TARGET, planId: response.planId, confirmed: true, origin: 'user', ticket: ticketOf(response) }),
+  );
+
+  assert.equal(report.status, 'ok', '别的端口的规则名不该拦住本端口');
+  assert.deepEqual(report.executed, ['portproxy-add', 'firewall-add']);
+  assert.deepEqual(report.skipped, []);
+  assert.equal(rig.fake.calls.length, 1, '一次提权调用（脚本自身完成两步）');
+  const argv = textOf(rig.fake.calls[0] as RecordedCall);
+  assert.match(argv, /-Action add/u);
+  assert.match(argv, /-Scope lan/u, 'portproxy 腿的行为一字未变（作用域照旧原样传）');
+  assert.equal(rig.rules.length, 2, '真写了本端口的转发规则（他人规则仍在）');
+  assert.equal(rig.audit.size(), 1);
 });
 
 test('T2.5 ⑤ 执行失败 ⇒ 只回滚**本轮刚加的**规则：他人规则一条不动、条数回到执行前', async () => {

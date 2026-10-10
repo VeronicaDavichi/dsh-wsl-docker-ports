@@ -30,6 +30,7 @@ import type { AuditLog } from './audit.ts';
 import { createConfirmTickets } from './confirm.ts';
 import type { ConfirmTickets } from './confirm.ts';
 import { readLocalhostForwarding } from '../read/localhost-forwarding.ts';
+import { probeFirewallRuleNames } from '../read/firewall-probe.ts';
 import { probePortproxyRules } from '../read/netsh-probe.ts';
 import { createPlanFacts } from './real-facts.ts';
 import { createPlanChannel } from './plan.ts';
@@ -111,6 +112,10 @@ export interface PluginReadParts {
  *
  * 🔴 `rules` 读失败**必须抛**（`message` 原样带上去）⇒ `plan.ts` 回 `rules-unavailable` 503；
  * 只有「确实没有规则」才回空数组。按端口过滤用实测字段 `PortproxyRule.listenPort`（`read/netsh.ts:17`）。
+ *
+ * 🔴 `firewallNames` 同理（008 T2.6 补的读取件）：`read/firewall-probe.ts` 只读 `Get-NetFirewallRule`，
+ * **读不到 / 读不懂一律抛** ⇒ 005 REQ-2.6 的同名冲突门（计划阶段）与 `apply.ts` 的执行前闸门才不会失效 ——
+ * 把「读不到」当「没有同名规则」正是「重复 apply 叠第二条同名规则 + 回滚删不掉」那个真实缺陷的成因。
  */
 /**
  * 默认的 localhostForwarding 读取（.wslconfig，读一次）。ok:false ⇒ null：取不到就**不猜 false**，
@@ -135,6 +140,11 @@ export function createPluginFacts(parts: PluginReadParts): PlanFacts {
       return outcome.ok === true && typeof outcome.ip === 'string' ? outcome.ip : null;
     },
     elevation: () => parts.probeElevation(),
+    firewallNames: async () => {
+      const outcome = await probeFirewallRuleNames(parts.executor);
+      if (!outcome.ok) throw new Error(`防火墙规则名读失败：${outcome.message}`);
+      return outcome.names;
+    },
     ...(parts.probeLocalhostForwarding === undefined ? {} : { localhostForwarding: parts.probeLocalhostForwarding }),
     ...(parts.elevationPolicy === undefined ? {} : { elevationPolicy: parts.elevationPolicy }),
   });
