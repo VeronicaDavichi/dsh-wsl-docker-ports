@@ -278,3 +278,30 @@
 config 真送达，但 `writeToken` 本身未在真机验过）；③ 客户端拿到 401 时的 UX（客户端确认对话框属 T3.1，
 当前客户端**根本不调**写端点 ⇒ 401 不会影响现有页面）。
 
+
+## ✅ T2.9 写通道鉴权 · 真机验证：PASS（2026-10-10，`volatile-probe` / 43311 / HEAD 37ed40e）
+
+**实测矩阵（11 项，10 项符合期望；第 7 项「带正确凭据调 apply」按红线故意未调用）**：
+`plan` 无凭据 ⇒ **401** ✓；`plan` 错凭据 ⇒ **401** ✓；`plan` `?token=<正确>` ⇒ **200** ✓；`plan` `Authorization: Bearer <正确>` ⇒ **200** ✓；
+`apply` 无凭据 ⇒ **401** ✓；`apply` 错凭据 ⇒ **401** ✓；`audit` 无凭据 ⇒ **401** ✓；错凭据 ⇒ **401** ✓；正确（两种携带方式）⇒ **200** ✓。
+401 文案为 `unauthorized`，且**不回显凭据本体/期望值/长度**；401 发生在路径/方法/请求体判定**之前**（未鉴权方拿不到本前缀下有哪些路径与方法）。
+正向证据：实测文案是「**缺少**写通道凭据…」而非「**未配置**…」⇒ 证明 `config.writeToken` 被插件**真读到**（投递链路在上机层面证实）。
+
+**零真实写入的证据（逐次 + 内容级）**：11 次调用逐次采集 `portproxy` 恒 **19**、我方防火墙恒 **0**；
+且 `netsh interface portproxy show v4tov4` **全文 SHA256 前后逐字节相同** ⇒ 不只条数不变，表内容也没变。
+`GET /write/audit?token=<正确>` ⇒ `{"ok":true,"records":[],"size":0,"dropped":0}` ⇒ **401 不记账、只读 plan 不记账**（合 2026-10-09 裁定）。
+
+**还原与红线**：`volatile-probe` 与快照 `Compare-Object` **差异 0**（74 文件；相对路径→hash 映射 diff = 0）；
+`cordis.patch.yml` 回到原始 `[]`（hash `8C2D1F55…`）；`package.json` 回到原样（bundles 无本插件）；
+profile 内 ReparsePoint **0**、`node_modules` 无本包软链；`portproxy` **19**、我方防火墙 **0**、node **14**、43311 空闲；
+`pnpm install --frozen-lockfile` exit **0**、`git status --porcelain` **空**。
+
+**⚠️ 本轮修正了我此前的一条探针配方错误**：B-1 探针**不在** `cordis.patch.yml` 里（该文件是 `[]`），
+而是经 `package.json` 的 `dsh.profile.bundles`（`link:…\Temp\dsh-volatile-probe`）装载 ⇒ 它才在运行中
+`settings.update` 写脏 `cordis.patch.yml`、并在 ~7.5s 后 SIGINT 自杀。**确定性做法 = 从 `dsh.profile.bundles` 摘除该 bundle**
+（探针未加载的三条独立证据：stdout 零 `[PROBE5]`、存活 ~100s 远超 7.5s、patch 文件未被重写）。
+（「`- id: dsh-volatile-probe` + `disabled: true`」是否等效 —— **未验证**，如实记录。）
+
+**⚠️ 未验（如实）**：本轮只验「鉴权门」，**未**回归「鉴权通过后的原有语义」（403/409/503 与真写）；
+其中**真写**已由 T2.8 独立验证过（netsh 19→20→19），但「T2.9 鉴权 + 真写」的**组合**尚未在一次运行里同时验证。
+`desktop` 下 `.playwright-mcp\console-*.log` 在测试窗口内 `desktop` mtime 有变动 ⇒ 属**主人正在运行的实例**自身行为（我方对 `desktop` 零写入）。
