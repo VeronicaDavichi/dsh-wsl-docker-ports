@@ -155,7 +155,7 @@ export interface WslDockerPortsPluginHandle {
   readonly snapshotBuilder: SnapshotBuilder;
   /** T6.8 的快照路由注册结果（`registered:false` ⇒ 看 `state`：`pending` = 等服务，`missing` = 确实缺） */
   readonly route: PortsRouteRegistration;
-  /** 008 写通道路由注册结果（pending 不是失败，与 oute 同理） */
+  /** 008 写通道路由注册结果（pending 不是失败，与 route 同理） */
   readonly writeRoute: WriteRouteRegistration;
   /**
    * 本次装载的降级原因（空数组 = 一切齐备）。

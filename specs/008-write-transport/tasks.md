@@ -1,6 +1,7 @@
 # 008 写入通道 —— 任务
 
 > 每行一个任务；`[REQ-N]` 指向 [requirements.md](./requirements.md)。**「判据」必须是可二值判定的**（跑得出来、看得见）。分期见 design §9。
+> **行数门口径（2026-10-10 主人裁定）**：warn **200 只是提示、不强制压缩**；硬门 = **LeanSpec max 400 行**（本文件当前 **333**，余量 **67**）；🔴 一旦**接近 / 超过 400** ⇒ **必须拆 Spec（新增一篇）**，**不得**删已验证结论 / 未验项 / 裁定依据 / 命令原文证据。
 
 ## Phase 0：契约核对（不写产品代码）
 
@@ -65,6 +66,7 @@
   - 判据：README 链接可达；本文件所有 REQ-N 都在 requirements 里存在。
 - [ ] **T4.3 [NFR-1]** 依赖未增：`package.json` 依赖项数与写前一致；未引 E2E/HTTP 框架。
   - 判据：`git diff` 里 `package.json` 的 dependencies/devDependencies 无新增；`pnpm install --frozen-lockfile` exit 0。
+- [ ] **T4.4 [NFR-2]** 改 `apply.ts` 前**先腾出行余量**（当前 **396/400**，仅剩 **4** 行；`plugin.ts` **393**）—— 腾不动就按顶部行数门口径**拆 Spec**；本轮**只记录、不动 `apply.ts`**。
 
 > **T1.7 施工口径（2026-10-09 实测后定）**：`plugin.ts` 已达 **389 行**，直接内联接线会涨到 **418 行 ⇒ 违反
 > 「单文件 ≤ 400 行」SHALL**（`tests/unit/client-structure.test.ts` 当场判红 ✓ 该门**绝不放宽**）。
@@ -75,8 +77,8 @@
 > 这些是**如实更新**（断言的是数量，行为由各自用例守着），不是放宽阈值。
 
 > **T1.4/T1.7 完成留痕（2026-10-09）**：`plugin.ts` **399/400 行** —— 🔴 **只剩 1 行余量**，此后任何新增
-> 一律进独立文件（`transport/wire-plugin.ts` 即范例），**绝不再往 `plugin.ts` 里塞**；下次若必须动它，
-> 先把既有段落外移腾额度（400 行是 SHALL）。
+> 一律进独立文件（`transport/wire-plugin.ts` 即范例），**绝不再往 `plugin.ts` 里塞**；下次若必须动它，先把既有段落外移腾额度（400 行是 SHALL）。
+> 🔴 **当前口径（2026-10-10 实测，含 59b7301）**：`plugin.ts` **393**、`apply.ts` **396/400**（**全包最大文件，仅剩 4 行余量**）、`design.md` **187**、`tasks.md` **333** ⇒ 上文 **399/400** 是**按轮次的过往记录**（诚实演进史），**保留不动**。
 > 判据（`tests/unit/plugin-entry.test.ts` 新增用例 + 全包 **349/349** 绿）：写通道路由 `registered=true`、
 > `registrationCount()=1`、两条独占前缀（`/dsh-wsl-docker-ports` + `/dsh-wsl-docker-ports/write`）、
 > **装载期 `fake.calls.length === 0`（T1.4 的零外部命令判据）**、`requestCount()=0`、卸载后两路由注册数归零。
@@ -214,8 +216,7 @@
 `~/.dsh` 递归搜我方包名 **0** 命中、`dir /AL` 无软链、`pnpm install --frozen-lockfile` exit **0**、`git status` 空。
 未做：UAC/注册表改动、`portproxy reset`、通配符防火墙规则、PATH/gsudo 配置改动。`desktop`/`web` 未被碰（mtime + 0 命中双证）。
 
-**⚠️ 计数口径陷阱（本次实测踩到，留痕以免后人误判）**：`netsh … show v4tov4` 的**朴素 4-token 正则会把表头
-`Address Port Address Port` 与分隔行 `----- ---- ----- ----` 也数进去** ⇒ 会得出 **21** 而非 19。
+**⚠️ 计数口径陷阱（本次实测踩到，留痕以免后人误判）**：`netsh … show v4tov4` 的**朴素 4-token 正则会把表头 `Address Port Address Port` 与分隔行 `----- ---- ----- ----` 也数进去** ⇒ 会得出 **21** 而非 19。
 真规则数必须用严格 IPv4 行匹配 `^\s*\d{1,3}(\.\d{1,3}){3}\s+\d+\s+\d{1,3}(\.\d{1,3}){3}\s+\d+\s*$`。
 （我此前多轮报的 19 均为严格口径。）
 
@@ -277,7 +278,6 @@
 ② 「patch 里 `config.writeToken` 真被读到」的**投递链路**（T2.8 已用 `elevationPolicy: ask` 间接证明同一处
 config 真送达，但 `writeToken` 本身未在真机验过）；③ 客户端拿到 401 时的 UX（客户端确认对话框属 T3.1，
 当前客户端**根本不调**写端点 ⇒ 401 不会影响现有页面）。
-
 
 ## ✅ T2.9 写通道鉴权 · 真机验证：PASS（2026-10-10，`volatile-probe` / 43311 / HEAD 37ed40e）
 
