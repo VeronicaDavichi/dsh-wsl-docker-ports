@@ -55,7 +55,7 @@
   - 判据：单测断言「未点确认 ⇒ 零网络请求」；对话框文本含每条命令原文（不是「即将执行」这种空话）。
 - [ ] T3.2 [REQ-4.1] 结果逐步反馈：成功/失败/跳过/回滚分色展示，失败给出可读原因。
   - 判据：四种结果的渲染分支各有单测用例；失败态一定带原因文本。
-- [ ] T3.3 主人环境自验清单（与 002 的 V1–V3 同格式：安装命令 + 判据 + 回归信号）。
+- [x] T3.3 主人环境自验清单（与 002 的 V1–V3 同格式：安装命令 + 判据 + 回归信号）。
   - 判据：清单写进本文件；当前状态标注「未通过（未验）」。
 
 ## Phase 4：收口
@@ -330,3 +330,37 @@ node **14**、43311 空闲、profile 内 ReparsePoint **0**、`~/.dsh` 与仓库
 
 **⚠️ 未验（如实）**：① `writeToken` **未配置** ⇒ 401 的 fail-safe 分支未上真机（仅离线单测）；② `origin:"agent"` + `passby` 的**降级为 ask** 未验（本次 policy 本就是 `ask`，无法区分）；
 ③ 本次为**直接 HTTP 调用**，未经过 008 T3.1 的客户端确认对话框（该期未接线）⇒ 现阶段「人在回路」的证据**只有票据门**（一次性 + 绑 `planId` + TTL 120s），**不是** UI 确认。
+
+## 📋 T3.3 主人环境自验清单（2026-10-10；**当前状态：未通过（未验）**）
+
+> **为什么本轮只做 T3.3**（Phase 3 未勾选者：T3.1 / T3.2 / T3.3）：T3.1（确认对话框）与 T3.2（结果四态分色）都要求客户端先接上写通道，
+> 而 `plugin.ts:324` 明记「仍未接线 ⇒ **页面上点不到写入口**」，且客户端侧连 `ElevationInvoker` 都还是 gap（`plugin.ts:321`）
+> ⇒ 两者**不能独立完成**（还要先定客户端如何拿写通道凭据：T2.9 后无 `writeToken` 一律 401）。T3.3 不依赖它们，故为**最小且可独立完成**的一个。
+> 格式与 002 的 V1–V3 同构：**安装命令 + 判据 + 回归信号**。代理**不碰任何 profile** ⇒ 安装/卸载由主人自己跑。
+> 🔴 **CLI 不能操作 `desktop`**（002 已证：`rejectElectronProfile` ⇒ `error: profile "desktop" is managed exclusively by the Electron application`）
+> ⇒ 桌面实例请在**应用内**安装；命令行的 `<profile>` 只能填非 `desktop` 的 profile。
+> 判据来源 = T2.8 / T2.10 的真机记录（**等价断言已验过**），本节把它固化成**可重复跑**的清单 ⇒ 但**清单本身尚未按此格式整份跑过**，故状态记「未通过（未验）」。
+
+**安装（主人自己跑）**：
+
+    dsh plugin --profile <profile> add "dsh-wsl-docker-ports@link:E:\NodeProjects\dsh-wsl-toolkit\packages\wsl-docker-ports"
+
+**配置（`profiles/<profile>/cordis.patch.yml` 里 `- id: dsh-wsl-docker-ports` 的 `config:`）** —— 两道闸门都得给值，缺任一即进 fail-safe（写通道 401 / 策略认不出 ⇒ `none` ⇒ 不写）：
+
+    config: { elevationPolicy: ask, writeToken: "<随机长串>" }
+
+**端点基址**：`http://127.0.0.1:<GUI端口>/dsh-wsl-docker-ports/write/{plan,apply,audit}`；凭据走 `?token=<writeToken>`（或 `Authorization: Bearer`）。
+
+| # | 判据（可二值判定） | 通过 | 回归信号 |
+| --- | --- | --- | --- |
+| V1 | `GET …/write/audit` **不带**凭据 ⇒ **401** `unauthorized`；带正确凭据 ⇒ **200**；错凭据 ⇒ **401** | 三态各就各位 | 不带凭据也 200（鉴权门失效） |
+| V2 | `POST …/write/plan?token=…`：`planId` = 64 位 hex 且同入参重放**一致**；`steps[].commandText` 含**具体端口**、**无通配符**；调用前后 `netsh … show v4tov4` 条数**不变** | 见左 | 命令里出现 `*` 或 `reset`；只读调用后条数变化 |
+| V3 | `apply(add)`（`confirmed:true` + 票据）⇒ `status:"ok"`、`executed` 含 `portproxy-add`+`firewall-add`；`portproxy` **19→20**、我方防火墙 **0→1**（规则为 `-LocalPort <port>`，**非通配符**） | 三处同时变化 | 建出通配符规则 / 他人 19 条被动过 |
+| V4 | 同端口 `apply(remove)` ⇒ `portproxy` **20→19**、我方防火墙 **1→0**、该端口规则行 **0**，且 `netsh … show v4tov4` 全文 SHA-256 回到 V2 之前 | 逐字节回到写前 | 残留规则 / 条数不回落 |
+| V5 | `apply` 不带 `confirmed:true` ⇒ **403**；随后 `GET …/write/audit?token=…` 的 `size` **不变**（拒绝不记账） | 403 + size 不变 | 被拒绝的 apply 也进审计环 |
+| V6 | 🔴 **未接线、不可验（待 T3.1/T3.2）**：客户端确认对话框（逐条命令原文）与结果四态分色 | —— | 页面上**点得到**写入口却**没有**对话框 ⇒ 回归 |
+
+**收尾复算（每次必查）**：`portproxy` 严格 IPv4 行数回 **19**（⚠️ 朴素 4-token 正则会数进表头/分隔行 ⇒ 误报 **21**；口径见 T2.8 留痕）；
+我方防火墙规则 **0**；规则名与听端口的残留 **0**；node 进程回 **14**；探针端口空闲；`pnpm install --frozen-lockfile` exit **0**；`git status --porcelain` 空。
+
+⚠️ **未验（如实）**：① 本节**尚未整份跑过**（V1–V5 的等价断言由 T2.8/T2.10 当场验过，但**不是**在「按本清单逐条」的形式下）；② V6 依赖 T3.1/T3.2 ⇒ **未接线、不可验**；③ `writeToken` **未配置**时 401 的 fail-safe 分支只有离线单测（未上真机）；④ `origin:"agent"` + `passby` 的降级为 `ask` 未验。
