@@ -356,6 +356,9 @@ test('T1.7/T1.4 写通道路由：装载期零外部命令、两条独占前缀�
 
 const encoder = new TextEncoder();
 
+/** T2.9 写通道凭据（走真插件的 config ⇒ 证明「配置真被读到并用于鉴权」；缺它一切写请求 401） */
+const WRITE_TOKEN = 'tk-entry-8d2c40';
+
 /** 走一次真的 `/write/plan` 处理器（假宿主面 + 假执行器 ⇒ 零真进程、零真机） */
 async function dispatchPlan(
   routes: readonly WebServerRoute[],
@@ -369,7 +372,8 @@ async function dispatchPlan(
   assert.notEqual(route, undefined, `宿主应当已注册 ${WRITE_PLAN_PATH} 处理器`);
   const box = { status: 0, body: '' };
   const request = {
-    url: WRITE_PLAN_PATH,
+    // T2.9：`plan` 也要凭据（与 apply / audit 同一份；缺配置或凭据不符 ⇒ 401）
+    url: `${WRITE_PLAN_PATH}?token=${WRITE_TOKEN}`,
     method: 'POST',
     [Symbol.asyncIterator]: async function* (): AsyncIterator<Uint8Array> {
       yield encoder.encode(body);
@@ -392,7 +396,7 @@ async function dispatchPlan(
 }
 
 /** 装配一套「有 webServer」的宿主面，返回注册到的路由（每个用例各造一套，互不干扰） */
-function attachedRoutes(config: { readonly elevationPolicy?: string } | undefined): { readonly routes: WebServerRoute[]; readonly fake: ReturnType<typeof createFakeExecutor> } {
+function attachedRoutes(config: { readonly elevationPolicy?: string; readonly writeToken?: string } | undefined): { readonly routes: WebServerRoute[]; readonly fake: ReturnType<typeof createFakeExecutor> } {
   const routes: WebServerRoute[] = [];
   const surface = {
     register: (route: WebServerRoute) => {
@@ -411,8 +415,8 @@ function attachedRoutes(config: { readonly elevationPolicy?: string } | undefine
 
 const PLAN_BODY = JSON.stringify({ action: 'add', ports: [5900], scope: 'lan', declaration: [{ start: 5900, end: 5900 }] });
 
-test('008 T3 配置读取：`elevationPolicy` 从插件 config 进事实面（缺省 ⇒ `unknown` ⇒ 执行层按 `none`）', async () => {
-  const configured = attachedRoutes({ elevationPolicy: 'ask' });
+test('008 T3 配置读取：`elevationPolicy` 从插件 config 进事实面（缺省 ⇒ `unknown` ⇒ 执行层按 `none`）；T2.9 未配 `writeToken` ⇒ 401', async () => {
+  const configured = attachedRoutes({ elevationPolicy: 'ask', writeToken: WRITE_TOKEN });
   const asked = await dispatchPlan(configured.routes, PLAN_BODY);
   assert.equal(asked.status, 200, `计划必须成功（否则下面的断言恒真）：${JSON.stringify(asked.payload)}`);
   const elevation = asked.payload['elevation'] as { policy?: string; available?: boolean } | undefined;
@@ -424,10 +428,21 @@ test('008 T3 配置读取：`elevationPolicy` 从插件 config 进事实面（�
   assert.equal(ports?.[0]?.blocked?.reason, 'firewall-rule-exists', '`createPluginFacts` 必须真接防火墙规则名现读');
   assert.equal(asked.payload['planId'], null, '被拦下的计划不给 planId（没有票据可用）');
 
-  const unconfigured = attachedRoutes(undefined);
+  const unconfigured = attachedRoutes({ writeToken: WRITE_TOKEN });
   const plain = await dispatchPlan(unconfigured.routes, PLAN_BODY);
   const plainElevation = plain.payload['elevation'] as { policy?: string } | undefined;
-  assert.equal(plainElevation?.policy, 'unknown', '没配置 ⇒ unknown（**不假装**用户选过；执行层据此按 none 不写）');
+  assert.equal(plainElevation?.policy, 'unknown', '没配置 elevationPolicy ⇒ unknown（**不假装**用户选过；执行层据此按 none 不写）');
+
+  // 🔴 T2.9：**没配 writeToken** ⇒ 同一个真插件装配下，写通道自己的鉴权把请求挡在 401（fail-safe）
+  const noCredential = attachedRoutes({ elevationPolicy: 'ask' });
+  const refused = await dispatchPlan(noCredential.routes, PLAN_BODY);
+  assert.equal(refused.status, 401, '未配置 writeToken ⇒ plan 也 401（fail-safe：默认「通道不可用」而非「裸奔」）');
+  assert.equal(
+    (refused.payload['error'] as { code?: string } | undefined)?.code,
+    'unauthorized',
+    '拒绝必须用 `unauthorized`（与 404/405/503 的语义不重叠）',
+  );
+  assert.equal(noCredential.fake.calls.length, 0, '🔴 被鉴权拒掉的计划**一条只读命令都不跑**（判据在一切副作用之前）');
 
   // 🔴 零写入：两次计划都只跑了只读探针（netsh show / Get-NetFirewallRule / eth0 / wsl -l -v）
   for (const rig of [configured, unconfigured]) {
@@ -439,5 +454,5 @@ test('008 T3 配置读取：`elevationPolicy` 从插件 config 进事实面（�
   }
   const sawFirewallRead = configured.fake.calls.some((call) => call.file === 'powershell.exe' && call.argv.join(' ').includes('Get-NetFirewallRule'));
   assert.equal(sawFirewallRead, true, '防火墙规则名现读必须真被触发（只读 Get-NetFirewallRule）');
-  console.log(`  · plan 真读了 ${String(configured.fake.calls.length)} 条只读命令；policy=ask / 缺省 unknown；firewallNames 已接线`);
+  console.log(`  · plan 真读了 ${String(configured.fake.calls.length)} 条只读命令；policy=ask / 缺省 unknown；firewallNames 已接线；未配 writeToken ⇒ 401 且零命令（T2.9）`);
 });

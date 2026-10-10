@@ -18,16 +18,26 @@
  * 状态是**活 getter**；宿主不会自动收编 `register()` 返回的 disposer ⇒ 必须交给 `ctx.effect`，
  * 否则「插件卸载了、路由还在」，再次挂载会因重复 `(kind,path)` 直接抛错。
  *
- * ## 错误码：四个只读码 + 两个写侧码
+ * ## 判据顺序：鉴权 → 路径 → 方法 → 请求体
+ *
+ * T2.9 起 **401 最靠前**：未带凭据的请求连「本前缀下存在哪些路径/方法」都读不到，也**不会**被读
+ * 请求体（⇒ 未鉴权方无法拿 1MB 体逼我们分配），且 `deps` **一次都不被调用**、审计**一条都不写**。
+ * 凭据校验见 `./write-auth.ts`（插件自有凭据；宿主没有可用的鉴权面 —— 侦察证据在 tasks.md T2.9）。
+ * 已鉴权的请求进入下面的既有顺序 ⇒ 404 / 405 / 503 / 403 / 409 的语义**逐字不变**。
+ *
+ * ## 错误码：四个只读码 + 三个写侧码
  *
  * 复用 003 的 `not-found` / `method-not-allowed` / `rules-unavailable` / `internal`，
- * 写侧另加 **`confirm-required`(403)** 与 **`plan-mismatch`(409)** —— 见 design §4（未确认零写入、
- * 客户端篡改目标 ⇒ 拒绝）。四个只读码的语义与状态码**一字不改**。
+ * 写侧另加 **`confirm-required`(403)** 与 **`plan-mismatch`(409)**（见 design §4：未确认零写入、
+ * 客户端篡改目标 ⇒ 拒绝）以及 **`unauthorized`(401)**（T2.9；与前三者语义不重叠）。
+ * 四个只读码的语义与状态码**一字不改**。
  */
 
 import { isWebServerSurface, pathOf } from '../route.ts';
 import type { HttpRequestLike, HttpResponseLike, RoutePluginContextLike, WebServerSurfaceLike } from '../route.ts';
 import type { PortsErrorCode } from '../wire.ts';
+import { createWriteAuthenticator } from './write-auth.ts';
+import type { WriteHeaderBag } from './write-auth.ts';
 import {
   WRITE_APPLY_METHOD,
   WRITE_APPLY_PATH,
@@ -39,11 +49,13 @@ import {
   WRITE_PLAN_PATH,
 } from './constants.ts';
 
-/** 写侧错误码 = 003 的四个只读码 + 两个写侧码（语义见文件头） */
-export type WriteErrorCode = PortsErrorCode | 'confirm-required' | 'plan-mismatch';
+/** 写侧错误码 = 003 的四个只读码 + 三个写侧码（语义见文件头） */
+export type WriteErrorCode = PortsErrorCode | 'confirm-required' | 'plan-mismatch' | 'unauthorized';
 
-/** 请求面：`url` / `method` 与 003 一致，另加「可异步迭代的请求体」（Node `IncomingMessage` 的形状） */
+/** 请求面：`url` / `method` 与 003 一致，另加「可异步迭代的请求体」（Node `IncomingMessage` 的形状）
+ *  与 `headers`（T2.9 鉴权要读 `Authorization`；可选 ⇒ 只带 `?token=` 的客户端与既有测试不受影响） */
 export interface WriteRequestLike extends HttpRequestLike {
+  readonly headers?: WriteHeaderBag | undefined;
   [Symbol.asyncIterator]?(): AsyncIterator<Uint8Array | string>;
 }
 
@@ -70,6 +82,11 @@ export interface WriteRouteDeps {
     | undefined;
   /** 审计尾部（T1.6）；缺省 ⇒ 503 */
   readonly audit?: ((limit: unknown) => WriteRouteResult) | undefined;
+  /**
+   * 写通道凭据（T2.9）：`plan` / `apply` / `audit` **共用同一份**。
+   * 🔴 **缺省 = 未配置 = 一律 401**（fail-safe；不是「放行」）—— 见 `./write-auth.ts`。
+   */
+  readonly writeToken?: string | undefined;
 }
 
 /** 与 003 同名的活状态（惰性注入的回调可能晚于返回才跑） */
@@ -80,6 +97,8 @@ export interface WriteRouteRegistration {
   readonly registered: boolean;
   readonly state: WriteRouteState;
   readonly reason?: string | undefined;
+  /** 写通道凭据是否已配置（`false` ⇒ 三个端点恒 401，fail-safe；**不泄露**凭据本体） */
+  readonly authConfigured: boolean;
   readonly paths: {
     readonly prefix: string;
     readonly plan: string;
@@ -101,13 +120,14 @@ const WEB_SERVER_SERVICE = 'webServer';
 
 const encoder = new TextEncoder();
 
-/** 写侧状态码映射（四个只读码与 003 逐字一致；写侧两码见 design §4） */
+/** 写侧状态码映射（四个只读码与 003 逐字一致；写侧三码见 design §4 与 T2.9） */
 export function statusForWrite(code: WriteErrorCode): number {
   if (code === 'not-found') return 404;
   if (code === 'method-not-allowed') return 405;
   if (code === 'rules-unavailable') return 503;
   if (code === 'confirm-required') return 403;
   if (code === 'plan-mismatch') return 409;
+  if (code === 'unauthorized') return 401;
   return 500;
 }
 
@@ -170,6 +190,8 @@ export function registerWriteRoute(ctx: RoutePluginContextLike, deps: WriteRoute
     apply: WRITE_APPLY_PATH,
     audit: WRITE_AUDIT_PATH,
   } as const;
+  // 凭据在**注册期**定下来（T2.9）：请求期不再读配置 ⇒ 不存在「半个请求换了一份配置」的窗口
+  const auth = createWriteAuthenticator(deps.writeToken);
   let requests = 0;
   let live = 0;
   let state: WriteRouteState = 'missing';
@@ -184,6 +206,13 @@ export function registerWriteRoute(ctx: RoutePluginContextLike, deps: WriteRoute
   const handler = async (request: WriteRequestLike, response: HttpResponseLike): Promise<void> => {
     requests += 1;
     try {
+      // 🔴 T2.9 鉴权**最靠前**：未带凭据 ⇒ 401，且不认路径/方法、不读请求体、不调 deps、不写审计
+      const decision = auth.authorize(request);
+      if (!decision.ok) {
+        fail(response, decision.code, decision.message);
+        return;
+      }
+
       // 🔴 先认路径（未知路径不管方法一律 404），已知路径才谈方法 ⇒ 405 才可达
       const path = pathOf(request.url);
       const endpoint = ENDPOINTS.find((item) => item.path === path);
@@ -314,6 +343,7 @@ export function registerWriteRoute(ctx: RoutePluginContextLike, deps: WriteRoute
     get reason(): string | undefined {
       return reason;
     },
+    authConfigured: auth.configured,
     paths,
     requestCount: () => requests,
     registrationCount: () => live,

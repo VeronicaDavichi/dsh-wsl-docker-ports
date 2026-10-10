@@ -621,6 +621,9 @@ test('T2.2 ⑧ 同一 planId 重复规划 ⇒ 旧票即刻作废（新票可用�
 /* ── ⑨ 接线：HTTP 往返（证明 wire-plugin 里 plan 与 apply 用的是**同一个**票据注册表） ── */
 const encoder = new TextEncoder();
 
+/** T2.9 写通道凭据（缺省 ⇒ 401；这两个往返用例证明「带对凭据 ⇒ 执行链逐字不变」） */
+const WRITE_TOKEN = 'tk-apply-4b7e19';
+
 function fakeSurface(): { readonly surface: WebServerSurfaceLike; readonly routes: WebServerRoute[] } {
   const routes: WebServerRoute[] = [];
   return {
@@ -652,7 +655,9 @@ function fakeCtx(surface: WebServerSurfaceLike): RoutePluginContextLike {
 function request(path: string, body: string): HttpRequestLike {
   const chunks = [encoder.encode(body)];
   return {
-    url: path,
+    // T2.9：写通道要凭据 ⇒ 这两个 HTTP 往返用例一律带对（`?token=`）；401 的判据在
+    // `transport-write-auth.test.ts`，本文件只证明「带对凭据 ⇒ 票据门/执行链逐字不变」
+    url: `${path}?token=${WRITE_TOKEN}`,
     method: 'POST',
     [Symbol.asyncIterator]: async function* (): AsyncIterator<Uint8Array> {
       for (const chunk of chunks) yield chunk;
@@ -695,9 +700,10 @@ async function roundTrip(
 test('T2.2 ⑨ HTTP 往返：/write/plan 签发的票据能被 /write/apply 消费并真执行（wire-plugin 同实例）', async () => {
   const rig = createRig({ probe: GSUDO_CHOICE });
   const fake = fakeSurface();
-  const handle = attachWriteChannel(fakeCtx(fake.surface), rig.facts, rig.fake.executor, rig.elevationDeps);
+  const handle = attachWriteChannel(fakeCtx(fake.surface), rig.facts, rig.fake.executor, rig.elevationDeps, WRITE_TOKEN);
   // 🔴 attachWriteChannel 自己造审计环与票据注册表 ⇒ 本用例断言「plan 签的票 = apply 认的票」
   assert.equal(handle.writeRoute.registered, true);
+  assert.equal(handle.writeRoute.authConfigured, true, 'T2.9：凭据已配 ⇒ 带对凭据的请求正常走票据门');
   assert.equal(handle.tickets.size(), 0, '装载期不签发任何票据');
   assert.equal(rig.fake.calls.length, 0, '装载期零外部命令');
 
@@ -731,7 +737,7 @@ test('T2.2 ⑨ HTTP 往返：/write/plan 签发的票据能被 /write/apply 消�
 
 test('T2.2 ⑩ 没给执行器 ⇒ apply 不接线：503 + 「写执行尚未接线」，零执行零审计', async () => {
   const fake = fakeSurface();
-  const handle = attachWriteChannel(fakeCtx(fake.surface), createRig().facts);
+  const handle = attachWriteChannel(fakeCtx(fake.surface), createRig().facts, undefined, undefined, WRITE_TOKEN);
   const planned = await roundTrip(fake.routes, WRITE_PLAN_PATH, JSON.stringify(TARGET));
   const out = await roundTrip(fake.routes, WRITE_APPLY_PATH, JSON.stringify({ target: TARGET, planId: planned.payload['planId'], confirmed: true, ticket: 'tk-1' }));
 

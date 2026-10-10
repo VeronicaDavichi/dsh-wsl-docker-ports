@@ -182,6 +182,8 @@ export interface WslDockerPortsPluginHandle {
 export interface PortsPluginConfigLike {
   readonly distro?: string | undefined;
   readonly elevationPolicy?: string | undefined;
+  /** 写通道凭据（008 T2.9）；🔴 缺省/空白 ⇒ 写通道**一律 401**（fail-safe，plan 也一样），见 `transport/write-auth.ts` */
+  readonly writeToken?: string | undefined;
 }
 
 /** 宿主入口（cordis 调用；返回值被忽略） */
@@ -286,9 +288,8 @@ export function applyWslDockerPorts(
 
   // ② 路由：**注册发生在宿主可用时机**（`ctx.inject(['webServer'])`），此处不再同步 `ctx.get` 定生死
   const route: PortsRouteRegistration = registerPortsRoute(ctx, builder);
-  // ③ 写通道（008 T1.7）：接线在独立文件里（wire-plugin.ts），此处只留一行调用 ⇒ 不挤爆 400 行 SHALL
-  // `elevationPolicy` 从 config 读（缺省/认不出 ⇒ 事实面 'unknown' ⇒ 执行层按 SSoT 默认落到 'none'，fail-safe）
-  const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({ executor, netsh: deps.netsh, probeEth0: () => service.probeEth0(false), probeElevation: () => availability.probe(), probeLocalhostForwarding: createDefaultLocalhostForwarding(), elevationPolicy: config?.elevationPolicy }), executor);
+  // ③ 写通道（008 T1.7 + T2.9）：接线在 wire-plugin.ts，此处只留一行调用（⇒ 不挤爆 400 行 SHALL）；config 的 `elevationPolicy` / `writeToken` 都在这一行透传（缺省 ⇒ fail-safe：事实面 'unknown' ⇒ 不写；凭据未配置 ⇒ 401）
+  const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({ executor, netsh: deps.netsh, probeEth0: () => service.probeEth0(false), probeElevation: () => availability.probe(), probeLocalhostForwarding: createDefaultLocalhostForwarding(), elevationPolicy: config?.elevationPolicy }), executor, undefined, config?.writeToken);
 
   /**
    * webServer 缺口：**每次读都按 `route` 的当前状态算**。

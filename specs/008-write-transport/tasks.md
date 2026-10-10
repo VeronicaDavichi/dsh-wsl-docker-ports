@@ -227,3 +227,54 @@
 并经 `settings.update` 往 `cordis.patch.yml` 写入测试条目（`- id: volatile-probe` + `label/profiles`）——
 本次`[]` 起始的 patch 就是被它写脏的；② `dsh plugin add` 会把 `node_modules` 下的包目录换成 **SymbolicLink**
 （旧目录改名为 `.ignored_*`）⇒ 探针流程必须「整目录删除 + 快照整份还原」，不能只删 yml 条目。
+
+## ✅ T2.9 写通道鉴权：宿主无可接的鉴权面 ⇒ 插件自有凭据（2026-10-10，离线判据全绿）
+
+**缺口来源**：T2.8 的 A4 真机观察 —— 不带宿主 GUI 的 `?token=` 时，`/dsh-wsl-docker-ports/write/{plan,apply,audit}`
+仍返回 **200** ⇒ 插件的具名路由**不被**宿主 token 门覆盖，本机任意进程都能调写端点。
+
+**第一步侦察（只读；🔴 全程未读 `app.asar`）⇒ 结论：宿主没有可用的鉴权/凭据 API，走方案 (B)**
+- 证据①（本仓的注册契约）：`src/route.ts:57-65` 的 `WebServerRoute` **只有** `kind` / `path` / `handler`；
+  `WebServerSurfaceLike` **只有** `register(route)` ⇒ 没有 auth / token / guard / authorize 字段
+  （该对象式签名已由 `client-contract.md:408` 的真机实测钉住，不是我猜的）。
+- 证据②（可读依赖面）：`node_modules/.pnpm` 共 **154** 个包，`@deepseek-ai/*` **23** 个；对其中
+  **1,816** 个 js/d.ts/json 产物跑 `Select-String -Pattern webServer` ⇒ **零命中**
+  ⇒ 宿主的 web-server 插件**不在可读依赖面内**，它的 `.d.ts` 读不到。
+- 证据③（`ctx` 侧）：可读声明里**没有** `ctx.auth` / `ctx.webServer.token` 之类成员；`AGENTS.md` /
+  `client-contract.md` 也没记录任何面向插件的 token 投递 API（宿主 token 只以 GUI 入口 `?token=` 的形态出现）。
+- ⇒ **不臆造 API**：改用「插件自有凭据」；若日后发现宿主其实有机制，本条目应改判为 (A)。
+
+**实现（新增 `src/transport/write-auth.ts` 161 行；`routes.ts` 362 / `wire-plugin.ts` 155）**
+- 事实来源：插件 config 的 **`writeToken`**（`PortsPluginConfigLike`，与 `elevationPolicy` 同一处；
+  `plugin.ts` 一行透传且**同线压缩了一行注释 ⇒ 零行增长**）。
+- **fail-safe 默认**：未配置/空白 ⇒ `plan` / `apply` / `audit` **一律 401**
+  （`{ok:false,error:{code:'unauthorized',message:…}}`），文案含「未配置写通道凭据」并给出配置方法
+  （patch 里 `config: { writeToken: "<随机长串>" }`，与 `elevationPolicy` 同一处）。
+- 已配置 ⇒ **常量时间比较**：两侧先 `sha256` 再 `timingSafeEqual` ⇒ 任何长度**走同一条路径、不抛**
+  （002 的 `safeEqual` 是长度不等直接 false；这里刻意更强）。凭据读法沿用既有习惯：`?token=`（优先）
+  → `Authorization: Bearer`（与 002 `readHandshakeToken` 同序；**不新造头名**）。
+- 🔴 凭据**不进**日志/审计/响应：拒绝文案是**固定文本**（不含凭据本体与期望值）；`audit.ts` 的白名单
+  拷贝从结构上杜绝凭据入环；允许记录的只有布尔事实 `WriteAuthFailure.presented`（是否带凭据）。
+- 判定顺序：**鉴权最先**（早于路径/方法/请求体）⇒ 未带凭据时连 404/405 都不给、请求体一个字节不读、
+  `deps` 一次不调、审计一条不写；已鉴权 ⇒ 404/405/503/403/409 语义**逐字不变**。
+- `unauthorized` 只加在 008 自己的 `WriteErrorCode` 上（**未动** 003 的 `PortsErrorCode` ⇒ 只读契约零变化）。
+
+**判据（离线，全绿）**：新增 `tests/unit/transport-write-auth.test.ts` **5 条**（386 − 381）：
+① 未配置 ⇒ 三端点 401 + `authConfigured:false` + **零 deps 调用**（连带上凭据也拒）；
+② 缺失/错误/长/超长凭据 ⇒ 401 且**不回显**凭据（含畸形 url 不抛）；
+③ 凭据正确 ⇒ plan 200 / apply 走到既有票据门 / audit 200，且 **401 优先于 404/405**（未鉴权时连路径/方法都不泄露）；
+④ **401 不写审计**（真审计环 `size()===0`、也不签发确认票据）+ **真插件装配**下「未配 `writeToken` ⇒ plan 401 且零外部命令」；
+⑤ 取凭据的优先级与边界（query 优先于头、空串 = 没带、空白 = 未配置）。
+既有用例一律改为「已配置 + 每请求带对凭据」⇒ 它们的断言**逐字未改**（等于反证「已鉴权行为与今天一致」）。
+
+**终值**：`tsc -p tsconfig.json` exit **0**；`node --test --test-concurrency=1 "tests/**/*.test.ts"` =
+**386 tests / 386 pass / 0 fail**（基线 381 ⇒ +5）；vitest **31 pass / 0 fail**。
+单文件行数：`plugin.ts` **399**（**零增长**，SHALL ≤400）、`routes.ts` 362、`write-auth.ts` 161（新）、
+`design.md` **200**（**未变长**）。未改：`src/elevate/**`、`src/write/**`、`package.json`、`pnpm-lock.yaml`、
+`stack-decision.md`（本轮未跑 `pnpm run`，故 lockfile 未被动过）。
+
+🔴 **未验**：① 真机的 401 行为（需起实例/探针 profile；本轮**未装插件、未起实例、未跑任何写命令**）；
+② 「patch 里 `config.writeToken` 真被读到」的**投递链路**（T2.8 已用 `elevationPolicy: ask` 间接证明同一处
+config 真送达，但 `writeToken` 本身未在真机验过）；③ 客户端拿到 401 时的 UX（客户端确认对话框属 T3.1，
+当前客户端**根本不调**写端点 ⇒ 401 不会影响现有页面）。
+

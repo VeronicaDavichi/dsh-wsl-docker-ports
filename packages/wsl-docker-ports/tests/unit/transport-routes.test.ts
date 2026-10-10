@@ -11,7 +11,10 @@
  *    deps 缺失 503 / deps 抛异常 500；
  * ④ **参数透传**：`plan` 收到解析后的 body；畸形 JSON 与超限**不抛**，作为 `problem` 传给 `plan`；
  *    `apply` 只收到四个白名单字段（客户端塞别的一律忽略）；
- * ⑤ **缺 webServer** ⇒ 不注册 + 记原因（不是失败，也不谎报缺失）。
+ * ⑤ **缺 webServer** ⇒ 不注册 + 记原因（不是失败，也不谎报缺失）；
+ * ⑥ **T2.9 鉴权**：本文件的既有用例一律走「已配置凭据 + 每请求带对凭据」⇒ 404/405/503/500 的判据
+ *    **逐字不变**；401 的判据（无凭据/错凭据 ⇒ 401 且零执行零写入、不回显凭据）单独在
+ *    `transport-write-auth.test.ts`，本文件只断言「带上凭据不再被挡」。
  */
 
 import assert from 'node:assert/strict';
@@ -27,6 +30,9 @@ import {
 } from '../../src/transport/constants.ts';
 import { registerWriteRoute, statusForWrite } from '../../src/transport/routes.ts';
 import type { WriteRequestLike, WriteRouteDeps, WriteRouteResult } from '../../src/transport/routes.ts';
+
+/** T2.9 的写通道凭据（本文件只走「已配置 + 带对凭据」这条路径 ⇒ 其余判据不受影响） */
+const WRITE_TOKEN = 'tk-routes-9c1f2a';
 
 const encoder = new TextEncoder();
 
@@ -106,8 +112,10 @@ function fakeResponse(): HttpResponseLike & { readonly headers: Record<string, s
 
 function request(url: string, method: string, body?: string): WriteRequestLike {
   const chunks = body === undefined ? [] : [encoder.encode(body)];
+  // T2.9：每个请求都带对凭据（`?token=`）⇒ 鉴权门放行，下面判的还是路径/方法/请求体
+  const separator = url.includes('?') ? '&' : '?';
   return {
-    url,
+    url: `${url}${separator}token=${WRITE_TOKEN}`,
     method,
     [Symbol.asyncIterator]: async function* (): AsyncIterator<Uint8Array> {
       for (const chunk of chunks) yield chunk;
@@ -118,7 +126,7 @@ function request(url: string, method: string, body?: string): WriteRequestLike {
 const never = (): Promise<WriteRouteResult> => Promise.resolve({ ok: true, payload: { unused: true } });
 
 function deps(overrides: Partial<WriteRouteDeps> = {}): WriteRouteDeps {
-  return { plan: () => never(), ...overrides };
+  return { plan: () => never(), writeToken: WRITE_TOKEN, ...overrides };
 }
 
 /** 走一遍宿主分派 + 处理器（含「无匹配 ⇒ 宿主兜底 404」的返回 `undefined`） */
@@ -144,6 +152,7 @@ test('T1.1 ① 注册形状：prefix + 独占前缀（不带尾斜杠）+ 装载
 
   assert.equal(registration.registered, true);
   assert.equal(registration.registrationCount(), 1);
+  assert.equal(registration.authConfigured, true, 'T2.9：配了 writeToken ⇒ 通道可用（仍是「带对凭据才放行」）');
   assert.equal(fake.routes.length, 1);
   assert.equal(fake.routes[0]?.kind, 'prefix');
   assert.equal(fake.routes[0]?.path, WRITE_HTTP_PREFIX);
@@ -245,9 +254,10 @@ test('T1.1 ③ HTTP 语义：404 / 405 / 404 优先 / 503 / 500 / 字节精确�
     assert.match(crashed.response.body, /boom/);
   }
 
-  // 写侧两码的状态码（design §4）
+  // 写侧三码的状态码（design §4 + T2.9）
   assert.equal(statusForWrite('confirm-required'), 403);
   assert.equal(statusForWrite('plan-mismatch'), 409);
+  assert.equal(statusForWrite('unauthorized'), 401);
   assert.equal(statusForWrite('not-found'), 404);
   assert.equal(statusForWrite('method-not-allowed'), 405);
   assert.equal(statusForWrite('rules-unavailable'), 503);

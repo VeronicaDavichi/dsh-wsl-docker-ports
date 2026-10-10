@@ -66,12 +66,15 @@ export function degradedPlanFacts(): PlanFacts {
  *   `rules-unavailable`「写执行尚未接线」）—— 缺执行器就不假装能写，绝不谎报成功。
  * @param elevationDeps 005 依赖面的覆盖（离线测试注入假快照/假文件表；生产与 `plugin.ts` 都留空）
  *   —— ⚠️ 只影响**执行层**的 IO 替身，不改任何安全判据（票据门/白名单/回滚红线都在 apply.ts 里）
+ * @param writeToken 写通道凭据（T2.9，来自插件 config 的 `writeToken`）；🔴 **缺省 = 未配置 = 三个端点
+ *   一律 401**（fail-safe）—— 绝不因为「忘了配」而让写通道裸奔
  */
 export function attachWriteChannel(
   ctx: RoutePluginContextLike,
   facts?: PlanFacts | undefined,
   executor?: Executor | undefined,
   elevationDeps?: Partial<ElevationDeps> | undefined,
+  writeToken?: string | undefined,
 ): WriteChannelHandle {
   const effective = facts ?? degradedPlanFacts();
   const audit = createAuditLog();
@@ -84,6 +87,7 @@ export function attachWriteChannel(
   const writeRoute = registerWriteRoute(ctx, {
     plan: createPlanChannel(effective, tickets),
     apply,
+    writeToken,
     // 审计尾部只读：最近 50 条 + 环状态（`size` / `dropped` 让「尾部」语义可解释）
     audit: () => ({
       ok: true,
