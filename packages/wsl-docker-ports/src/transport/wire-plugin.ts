@@ -9,9 +9,10 @@
  *
  * ## 装载期零外部命令（T1.4 的判据）
  *
- * 本函数只做三件事：造审计环、造计划通道、注册路由。**一条命令都不跑**：`writeFacts` 里全是闭包，
- * 请求到了才现读；缺省事实面更是**保守降级**（零 IO、`eth0Ip` 为 `null` ⇒ 计划恒被拦成 `eth0-unknown`，
- * 绝不因为「没接好」而误动作）。
+ * 本函数只做四件事：造审计环、造票据注册表、造计划/执行通道、注册路由。**一条命令都不跑**：
+ * `writeFacts` 里全是闭包，请求到了才现读；缺省事实面更是**保守降级**（零 IO、`eth0Ip` 为 `null`
+ * ⇒ 计划恒被拦成 `eth0-unknown`，绝不因为「没接好」而误动作）。`apply` 只在**给了执行器**时才接线
+ * （缺执行器 ⇒ 路由回 503「写执行尚未接线」，不假装能写）。
  *
  * ## 所有权集合的来源（design §12 的方案 (a)）
  *
@@ -19,9 +20,15 @@
  * 失败方向永远是最保守的「什么都不做」。
  */
 
+import type { Executor } from 'dsh-wsl-shared';
+
 import type { RoutePluginContextLike } from '../route.ts';
+import type { ElevationDeps } from '../elevate/types.ts';
+import { createApplyChannel } from './apply.ts';
 import { createAuditLog } from './audit.ts';
 import type { AuditLog } from './audit.ts';
+import { createConfirmTickets } from './confirm.ts';
+import type { ConfirmTickets } from './confirm.ts';
 import { readLocalhostForwarding } from '../read/localhost-forwarding.ts';
 import { probePortproxyRules } from '../read/netsh-probe.ts';
 import { createPlanFacts } from './real-facts.ts';
@@ -33,6 +40,8 @@ import type { WriteRouteRegistration } from './routes.ts';
 export interface WriteChannelHandle {
   readonly writeRoute: WriteRouteRegistration;
   readonly audit: AuditLog;
+  /** 确认票据注册表（T2.1）：**plan 签发 / apply 消费必须是同一个实例**，故在这里长住 */
+  readonly tickets: ConfirmTickets;
   /** 实际生效的现读事实面（集成方/测试可读：确认自己注入的那份真被用上） */
   readonly facts: PlanFacts;
 }
@@ -52,12 +61,28 @@ export function degradedPlanFacts(): PlanFacts {
  *
  * @param ctx 宿主插件上下文（与只读路由共用；`inject` / `effect` 语义一致）
  * @param facts 现读事实面；缺省 = `degradedPlanFacts()`（安全降级，不是失败）
+ * @param executor 提权执行器（005 经 001 的 `Executor`）；**缺省 ⇒ `apply` 不接线**（仍回 503
+ *   `rules-unavailable`「写执行尚未接线」）—— 缺执行器就不假装能写，绝不谎报成功。
+ * @param elevationDeps 005 依赖面的覆盖（离线测试注入假快照/假文件表；生产与 `plugin.ts` 都留空）
+ *   —— ⚠️ 只影响**执行层**的 IO 替身，不改任何安全判据（票据门/白名单/回滚红线都在 apply.ts 里）
  */
-export function attachWriteChannel(ctx: RoutePluginContextLike, facts?: PlanFacts | undefined): WriteChannelHandle {
+export function attachWriteChannel(
+  ctx: RoutePluginContextLike,
+  facts?: PlanFacts | undefined,
+  executor?: Executor | undefined,
+  elevationDeps?: Partial<ElevationDeps> | undefined,
+): WriteChannelHandle {
   const effective = facts ?? degradedPlanFacts();
   const audit = createAuditLog();
+  // 🔴 **同一实例**同时喂给 plan（签发）与 apply（消费）：换一个实例 = 票据永远查不到
+  const tickets = createConfirmTickets();
+  const apply =
+    executor === undefined
+      ? undefined
+      : createApplyChannel({ facts: effective, tickets, audit, executor, ...(elevationDeps === undefined ? {} : { elevationDeps }) });
   const writeRoute = registerWriteRoute(ctx, {
-    plan: createPlanChannel(effective),
+    plan: createPlanChannel(effective, tickets),
+    apply,
     // 审计尾部只读：最近 50 条 + 环状态（`size` / `dropped` 让「尾部」语义可解释）
     audit: () => ({
       ok: true,
@@ -65,7 +90,7 @@ export function attachWriteChannel(ctx: RoutePluginContextLike, facts?: PlanFact
       payload: { ok: true, records: audit.tail(50), size: audit.size(), dropped: audit.dropped() },
     }),
   });
-  return { writeRoute, audit, facts: effective };
+  return { writeRoute, audit, tickets, facts: effective };
 }
 
 /** 现读部件的**结构化**入参（用 `Parameters<>` 取真实签名 ⇒ 不猜、不复制类型） */

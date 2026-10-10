@@ -287,9 +287,14 @@ test('T1.1 ④ 参数透传：plan 收到解析后的 body；畸形/超限作为
 
   await roundTrip(
     fake.routes,
-    request(WRITE_APPLY_PATH, 'POST', JSON.stringify({ target: { ports: [5432] }, planId: 'abc', confirmed: true, origin: 'agent', commands: ['rm -rf /'] })),
+    request(WRITE_APPLY_PATH, 'POST', JSON.stringify({ target: { ports: [5432] }, planId: 'abc', confirmed: true, origin: 'agent', ticket: 'tk-1', commands: ['rm -rf /'] })),
   );
-  assert.deepEqual(Object.keys(applied[0] ?? {}).sort(), ['confirmed', 'origin', 'planId', 'problem', 'target'], '只透传白名单字段 ⇒ 客户端塞的 commands 被忽略');
+  assert.deepEqual(
+    Object.keys(applied[0] ?? {}).sort(),
+    ['confirmed', 'origin', 'planId', 'problem', 'target', 'ticket'],
+    '只透传白名单字段（T2.2 起多一个 `ticket`）⇒ 客户端塞的 commands 被忽略',
+  );
+  assert.equal(applied[0]?.['ticket'], 'tk-1', '票据必须原样到达 apply（T2.1 签发 / T2.2 消费）');
   assert.equal(applied[0]?.['commands'], undefined, '🔴 绝不接受客户端传来的命令');
 });
 

@@ -63,6 +63,8 @@ export interface WriteRouteDeps {
         readonly planId: unknown;
         readonly confirmed: unknown;
         readonly origin: unknown;
+        /** 一次性确认票据（T2.1 签发 / T2.2 消费）：**只加这一个字段**，其余语义一律不动 */
+        readonly ticket: unknown;
         readonly problem?: string | undefined;
       }) => Promise<WriteRouteResult>)
     | undefined;
@@ -232,6 +234,7 @@ export function registerWriteRoute(ctx: RoutePluginContextLike, deps: WriteRoute
         planId: record['planId'],
         confirmed: record['confirmed'],
         origin: record['origin'],
+        ticket: record['ticket'],
         problem,
       });
       if (!outcome.ok) {

@@ -30,11 +30,11 @@
 
 ## Phase 2（P2）：**执行**（G2/G5/G6）
 
-- [ ] T2.1 [REQ-3.1] `src/transport/confirm.ts`：`planId` = 规范化计划 SHA-256（端口升序/键序固定/剔除 notes）；一次性票据 + TTL 120 s + 绑定 `planId`。
+- [x] T2.1 [REQ-3.1] `src/transport/confirm.ts`：`planId` = 规范化计划 SHA-256（端口升序/键序固定/剔除 notes）；一次性票据 + TTL 120 s + 绑定 `planId`。
   - 判据：同一目标两次 `plan` 得到**相同** `planId`；端口顺序不同但集合相同 ⇒ 仍相同；票据二次使用被拒绝。
-- [ ] T2.2 [REQ-3.2–3.4] `apply` 校验：body 只允许 `{ target, planId, confirmed, origin }`；服务端**重新推导**计划并比对 `planId`；`confirmed !== true` ⇒ 拒绝。
+- [x] T2.2 [REQ-3.2–3.4] `apply` 校验：body 只允许 `{ target, planId, confirmed, origin, ticket }`；服务端**重新推导**计划并比对 `planId`；`confirmed !== true` ⇒ 拒绝。
   - 判据：① 未确认 ⇒ 提权 spy 全 0；② 篡改 `target` ⇒ `plan-mismatch`、零执行；③ 客户端塞 `commands:[…]` 字段 ⇒ **被忽略**（服务端仍按 `target` 推导）；④ `origin:'agent'` 时不能绕过确认。
-- [ ] T2.3 [REQ-4.1] `src/transport/apply.ts`：经 005 后端链执行，回传逐步结果（成功/失败/跳过 + 原因 + 耗时）。
+- [x] T2.3 [REQ-4.1] `src/transport/apply.ts`：经 005 后端链执行，回传逐步结果（成功/失败/跳过 + 原因 + 耗时）。
   - 判据：后端返回 gsudo/native 各造一次假执行，逐步结果条数 == 计划条数；耗时字段为数字且 ≥ 0。
 - [ ] T2.4 [REQ-4.2] 幂等：执行前现读，已满足的规则标 `skipped`。
   - 判据：对同一目标连续 `apply` 两次 ⇒ 第二次 `executed` 为空、`skipped` 全中，且不报错。
@@ -42,6 +42,7 @@
   - 判据：让第 2 条失败 ⇒ 第 1 条被回滚、返回体三个清单齐全、无「半成品」残留（假后端的状态快照断言）。
 - [ ] T2.6 [REQ-5.1] 每次 `apply`（含拒绝/超时/失败/回滚）落一条审计。
   - 判据：成功与拒绝各留一条；字段齐全（at/origin/elevationPolicy/backend/ports/scope/action/result/exitCode/durationMs/rolledBack）；无凭据字段。
+  - ⚠️ 本行**判据已部分作废**（2026-10-09 主人裁定：**被拒绝的 apply 不写审计**）。已实现的是：执行尝试（成功/失败/回滚/超时）各一条，字段齐全、无凭据；`disabled` / `no-actions` / 全部拒绝路径**不写**（它们什么都没发生）。判据文字待主人订正后再勾。
 - [ ] T2.7 [REQ-6.2] 红线单测：无 `portproxy reset`、无通配符防火墙规则、集合外零动作。
   - 判据：对生成的命令**逐条断言**（正则白名单）：不含 `reset`；每条 `New-NetFirewallRule` 都带具体 `-LocalPort`。
 - [ ] T2.8 [REQ-6.1] 真机复验 P2（**需主人在场**；本机 UAC 不弹窗 ⇒ 无需点 UAC，但会真改系统状态）：
@@ -125,3 +126,25 @@
 > 纯内存、零 IO、零进程、零定时器（签发时顺带清扫过期项 ⇒ 不会无界增长；时间可注入 ⇒ 边界可测）。
 > `mismatch` **不吃掉**真票（一次手滑不必重新规划）。全包 node --test 357/357 绿。
 > ⏳ 待接：`/write/plan` 响应回传票据、`/write/apply` 消费票据 + 真执行（T2.2/T2.3）。
+
+> **T2.2 / T2.3 接线完成（2026-10-09，离线）**：严格按 `design.md` §14 蓝图施工（**未改设计口径**）。
+> 改动：`plan.ts` 抽出 `computePlan`（plan/apply **唯一**规划代码路径 ⇒ `planId` 不可能分叉）+ `confirm` 字段按
+> `planId` 签发；`routes.ts` 白名单**只加** `ticket` 一个字段；新增 `transport/apply.ts`（321 行）：确认门 ⇒ 重规划 ⇒
+> `planId` 比对 ⇒ 票据门（三态分开报）⇒ `runElevate` ⇒ 失败回滚 ⇒ 审计；`wire-plugin.ts` 造**同一实例**的票据注册表
+> 并喂给 plan 与 apply（缺执行器 ⇒ 不接线，仍回 503）；`plugin.ts` **同线编辑零行增长**（399/400 行不变）。
+> 判据（新增 `tests/unit/transport-apply.test.ts`，12 条全绿；全包 **369/369**）：① 票据四态各自可区分且零执行零写入零审计
+> （假执行器 `calls.length === 0` + 规则集合逐字节不变 + 审计环 0）；② 未确认/畸形/篡改 ⇒ 零执行零审计**且不吃掉真票**；
+> ③ 真执行 ⇒ argv 逐字（`-Action add -Port 5900 -Address 172.20.201.152 -Scope lan`）+ 审计一条 `applied`；
+> ④ `none` ⇒ `disabled` 零进程零审计、`unknown` ⇒ 按 `ask`、`passby`+`agent` ⇒ 降级 `ask`；⑤ 失败 ⇒ 第二次调用是
+> `-Action remove`、**他人规则一条不动**、条数回到执行前；⑥ 什么都没写（UAC 被拒）⇒ **不回滚**（防误删）；
+> ⑦ 同目标第二次 ⇒ 计划阶段被拦（无票据）⇒ 零执行零重复规则；⑧ 同一 `planId` 重复规划 ⇒ 旧票作废；⑨ HTTP 往返
+> （`plan` 签票 → `apply` 消费 → 票据 `size` 1→0）；⑩ 缺执行器 ⇒ 503「写执行尚未接线」。
+> 🔴 与 §14 的两点**如实偏差**（不假装达标）：**(a) T2.3「逐步耗时」做不到** —— 005 的 `StepReport` 只有
+> `name/ok/stderr`（005 已真机验收，**一行未改**）⇒ 只回**整单** `durationMs` + 每步 name/ok/reason；
+> **(b) T2.4 的字面判据不可达** —— 「同目标连续 apply 两次 ⇒ 第二次 `executed` 为空、`skipped` 全中」在「add 遇到既有规则即
+> `state-precondition` 拦下」的口径下不可能出现（第二次的 `planId` 为 `null` ⇒ 无票据 ⇒ 409）；实际幂等保证 =
+> **重复 apply 永不重复写规则、永不碰系统**（用例⑦钉住）。⇒ T2.4 的验收文字建议主人订正后再勾。
+> ⚠️ **真机未验**：`apply` 的**真写**（netsh 19→20→19）属 T2.8，需主人在场；本轮**零真机动作**（未装插件、未起实例、未跑 netsh）。
+> ⚠️ 另两处既有缺口不因本次而变：`firewallNames` / `portState` 无读取件（该两门未启用，偏保守）；
+> `elevationPolicy` 配置读取未接 ⇒ 生产 `facts.elevation().policy` 恒 `'unknown'` ⇒ 本次按 **`'ask'`** 处理
+> （`policyFor` 一处可改；若主人裁定未接线必须按 `'none'`，改那一行即可 —— 但那样真机将无法写入，直到配置页接线）。

@@ -287,7 +287,7 @@ export function applyWslDockerPorts(
   // ② 路由：**注册发生在宿主可用时机**（`ctx.inject(['webServer'])`），此处不再同步 `ctx.get` 定生死
   const route: PortsRouteRegistration = registerPortsRoute(ctx, builder);
   // ③ 写通道（008 T1.7）：接线在独立文件里（wire-plugin.ts），此处只留一行调用 ⇒ 不挤爆 400 行 SHALL
-  const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({ executor, netsh: deps.netsh, probeEth0: () => service.probeEth0(false), probeElevation: () => availability.probe(), probeLocalhostForwarding: createDefaultLocalhostForwarding() }));
+  const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({ executor, netsh: deps.netsh, probeEth0: () => service.probeEth0(false), probeElevation: () => availability.probe(), probeLocalhostForwarding: createDefaultLocalhostForwarding() }), executor);
 
   /**
    * webServer 缺口：**每次读都按 `route` 的当前状态算**。
@@ -320,15 +320,15 @@ export function applyWslDockerPorts(
     return { what: 'elevationAvailable', reason: `${result.reason}；快照的 elevationAvailable 因此为 false（写控件置灰）` };
   };
 
-  // ③ 提权写路径：**执行器已实现**（005 的 `runElevate`），未接线的是「计划装配 + 浏览器→宿主传输」
+  // ③ 提权写路径：**执行器已实现 + 执行已接线**（008 T2.2–T2.4：票据门 → 提权链 → 回滚 → 审计）
   const tailGaps: PluginGap[] = [
     {
       what: 'ElevationInvoker',
       reason:
         '提权执行器**已实现**（005 的 `elevate/runner.ts` `runElevate` + `defaultElevationDeps`）' +
-        '⇒ 本入口的职责只是接线，不是实现。未接线的原因：`ElevateRequest.plan` 需要一份**带 ownership ' +
-        '判定的写计划**，而「浏览器点击 → 宿主执行」的传输（本波只做了 GET 只读路由）尚未开；' +
-        '在没有它之前接线，只会得到一个「按钮可点但拿不到合法计划」的假入口 —— 故不接，也不造假实现。',
+        '且写通道的执行层已接线（008 `transport/apply.ts`：一次性票据门 ⇒ 提权链 ⇒ 失败回滚 ⇒ 审计）。' +
+        '仍未接线的是**客户端确认对话框**（008 T3.1：按钮 → 先 plan 拿命令原文与票据）与 `elevationPolicy` ' +
+        '的配置读取（P1 配置页）：前者没接 ⇒ 页面上点不到写入口；后者没接 ⇒ 策略档恒为 unknown（按 ask 处理）。',
     },
   ];
 

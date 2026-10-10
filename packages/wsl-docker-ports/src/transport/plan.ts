@@ -31,7 +31,8 @@ import type { PortproxyRule } from '../read/netsh.ts';
 import { isPortNumber } from '../write/firewall.ts';
 import { buildWritePlan } from '../write/plan.ts';
 import type { WriteAction, WriteBlockReason, WritePlanInput, WriteStep } from '../write/types.ts';
-import type { WriteRouteResult } from './routes.ts';
+import type { ConfirmTickets } from './confirm.ts';
+import type { WriteRouteResult, WriteErrorCode } from './routes.ts';
 
 /** 一次请求里最多处理多少个端口（声明集合可以是几千个端口，但单次写计划不该无界） */
 export const PLAN_MAX_PORTS = 256;
@@ -198,6 +199,12 @@ export interface PlanResponse {
   readonly commandText: string;
   readonly notes: readonly string[];
   readonly elevation: { readonly policy: string; readonly backend: string; readonly available: boolean };
+  /**
+   * 确认票据（REQ-4 / T2.2）：**只有拿到 `planId` 才签发**，且**绑定本响应的 `planId`**；
+   * 被拦下 / 非法目标 / 没装票据注册表 ⇒ `null`（没有票据可用 ⇒ `apply` 必被票据门拦下）。
+   * 🔴 票据**不进** `canonicalPlanText` ⇒ 它不参与 `planId` 计算（文案不进指纹的同一条口径）。
+   */
+  readonly confirm: { readonly ticket: string; readonly expiresAt: number } | null;
   /** 整单层面的原因（畸形请求 / 非法目标）；单端口原因在各 `ports[].blocked` 里 */
   readonly blockedReason: string | null;
 }
@@ -236,9 +243,26 @@ export function planIdOf(input: Parameters<typeof canonicalPlanText>[0]): string
   return createHash('sha256').update(canonicalPlanText(input), 'utf8').digest('hex');
 }
 
+/** 一次规划的**内部**结果（不含票据：票据是通道层按 `planId` 签发的一次性凭据） */
+export interface PlanComputation {
+  /** 计划响应（`confirm` 字段由通道层按 `planId` 补上） */
+  readonly response: Omit<PlanResponse, 'confirm'>;
+  /**
+   * 🔴 只服务于**执行层**（T2.3）：`ElevateRequest.plan` 要 `eth0Ip: string`，而 DTO **不下发**本机地址
+   * ⇒ 执行层用**同一次规划**算出的它，不重复现读（两次读之间地址可能漂移 ⇒ 指纹与实际就不一致了）。
+   */
+  readonly eth0Ip: string | null;
+  /** 本次规划用的提权**配置档**（执行层据此算策略 ⇒ 一次 apply 只探测一次，不会拿到另一份值） */
+  readonly policy: string;
+}
+
+export type PlanComputationOutcome =
+  | { readonly ok: true; readonly plan: PlanComputation }
+  | { readonly ok: false; readonly code: WriteErrorCode; readonly message: string };
+
 /** 空计划：**零步骤 + 可读原因**（REQ-2.3 的形态，不是错误码） */
-function emptyPlan(reason: string, elevation: PlanResponse['elevation']): WriteRouteResult {
-  const payload: PlanResponse = {
+function emptyPlan(reason: string, elevation: PlanResponse['elevation']): PlanComputationOutcome {
+  const response: Omit<PlanResponse, 'confirm'> = {
     ok: true,
     planId: null,
     ready: false,
@@ -251,90 +275,115 @@ function emptyPlan(reason: string, elevation: PlanResponse['elevation']): WriteR
     elevation,
     blockedReason: reason,
   };
-  return { ok: true, status: 200, payload };
+  return { ok: true, plan: { response, eth0Ip: null, policy: elevation.policy } };
 }
 
-/** 造只读计划通道（注入的是路由的 `plan` 依赖） */
-export function createPlanChannel(facts: PlanFacts): (target: unknown, problem?: string) => Promise<WriteRouteResult> {
-  return async (target: unknown, problem?: string): Promise<WriteRouteResult> => {
-    let elevation: PlanResponse['elevation'];
-    try {
-      elevation = await facts.elevation();
-    } catch {
-      elevation = { policy: 'unknown', backend: 'unknown', available: false };
-    }
+/**
+ * 算一份计划 —— **plan 与 apply 的唯一代码路径**（两边都调它 ⇒ `planId` 不可能分叉）。
+ *
+ * 🔴 被拦下 / 非法输入**不是错误**：`ok: true` + 空计划 + 可读原因（REQ-2.3）；
+ * 只有「现读事实失败」才是通道级错误（`rules-unavailable` ⇒ 503）。
+ */
+export async function computePlan(facts: PlanFacts, target: unknown, problem?: string): Promise<PlanComputationOutcome> {
+  let elevation: PlanResponse['elevation'];
+  try {
+    elevation = await facts.elevation();
+  } catch {
+    elevation = { policy: 'unknown', backend: 'unknown', available: false };
+  }
 
-    if (problem !== undefined) return emptyPlan(problem, elevation);
-    const normalized = normalizeTarget(target);
-    if (!normalized.ok) return emptyPlan(normalized.reason, elevation);
+  if (problem !== undefined) return emptyPlan(problem, elevation);
+  const normalized = normalizeTarget(target);
+  if (!normalized.ok) return emptyPlan(normalized.reason, elevation);
 
-    const { action, ports, scope } = normalized.target;
-    const fromScope = normalized.target.fromScope;
+  const { action, ports, scope } = normalized.target;
+  const fromScope = normalized.target.fromScope;
 
-    try {
-      const managedPorts = facts.managedPorts(normalized.target.declaration);
-      const eth0Ip = await facts.eth0Ip();
-      const firewallNames = facts.firewallNames === undefined ? undefined : await facts.firewallNames();
-      const localhostForwarding = facts.localhostForwarding === undefined ? undefined : await facts.localhostForwarding();
+  try {
+    const managedPorts = facts.managedPorts(normalized.target.declaration);
+    const eth0Ip = await facts.eth0Ip();
+    const firewallNames = facts.firewallNames === undefined ? undefined : await facts.firewallNames();
+    const localhostForwarding = facts.localhostForwarding === undefined ? undefined : await facts.localhostForwarding();
 
-      const dtos: PlanPortDto[] = [];
-      for (const port of ports) {
-        const rules = await facts.rules(port);
-        const portState = facts.portState?.(port);
-        // ⚠️ `exactOptionalPropertyTypes`：可选字段**只能缺席**，不能显式给 `undefined`
-        const input: WritePlanInput = {
-          action,
-          port,
-          scope,
-          managedPorts,
-          eth0Ip,
-          rules,
-          ...(fromScope === undefined ? {} : { fromScope }),
-          ...(localhostForwarding === undefined || localhostForwarding === null ? {} : { localhostForwarding }),
-          ...(firewallNames === undefined ? {} : { existingFirewallNames: firewallNames }),
-          ...(portState === undefined ? {} : { portState }),
-        };
-        const outcome = buildWritePlan(input);
-        dtos.push(
-          outcome.ok
-            ? { port, ready: true, steps: outcome.steps, commandText: outcome.commandText, notes: outcome.notes }
-            : {
-                port,
-                ready: false,
-                steps: [],
-                commandText: '',
-                notes: [],
-                blocked: {
-                  reason: outcome.reason,
-                  message: outcome.message,
-                  hint: outcome.hint,
-                  conflictRules: outcome.conflictRules,
-                },
-              },
-        );
-      }
-
-      const ready = dtos.length > 0 && dtos.every((item) => item.ready);
-      const response: PlanResponse = {
-        ok: true,
-        planId: ready ? planIdOf({ action, scope, fromScope, ports: dtos }) : null,
-        ready,
+    const dtos: PlanPortDto[] = [];
+    for (const port of ports) {
+      const rules = await facts.rules(port);
+      const portState = facts.portState?.(port);
+      // ⚠️ `exactOptionalPropertyTypes`：可选字段**只能缺席**，不能显式给 `undefined`
+      const input: WritePlanInput = {
         action,
+        port,
         scope,
-        fromScope: fromScope ?? null,
-        ports: dtos,
-        commandText: dtos
-          .map((item) => item.commandText)
-          .filter((text) => text !== '')
-          .join('\n'),
-        notes: dtos.flatMap((item) => item.notes),
-        elevation,
-        blockedReason: ready ? null : '至少一个端口被拦下（见 ports[].blocked）',
+        managedPorts,
+        eth0Ip,
+        rules,
+        ...(fromScope === undefined ? {} : { fromScope }),
+        ...(localhostForwarding === undefined || localhostForwarding === null ? {} : { localhostForwarding }),
+        ...(firewallNames === undefined ? {} : { existingFirewallNames: firewallNames }),
+        ...(portState === undefined ? {} : { portState }),
       };
-      return { ok: true, status: 200, payload: response };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { ok: false, code: 'rules-unavailable', message: `现读事实失败，未产生任何动作：${message}` };
+      const outcome = buildWritePlan(input);
+      dtos.push(
+        outcome.ok
+          ? { port, ready: true, steps: outcome.steps, commandText: outcome.commandText, notes: outcome.notes }
+          : {
+              port,
+              ready: false,
+              steps: [],
+              commandText: '',
+              notes: [],
+              blocked: {
+                reason: outcome.reason,
+                message: outcome.message,
+                hint: outcome.hint,
+                conflictRules: outcome.conflictRules,
+              },
+            },
+      );
     }
+
+    const ready = dtos.length > 0 && dtos.every((item) => item.ready);
+    const response: Omit<PlanResponse, 'confirm'> = {
+      ok: true,
+      planId: ready ? planIdOf({ action, scope, fromScope, ports: dtos }) : null,
+      ready,
+      action,
+      scope,
+      fromScope: fromScope ?? null,
+      ports: dtos,
+      commandText: dtos
+        .map((item) => item.commandText)
+        .filter((text) => text !== '')
+        .join('\n'),
+      notes: dtos.flatMap((item) => item.notes),
+      elevation,
+      blockedReason: ready ? null : '至少一个端口被拦下（见 ports[].blocked）',
+    };
+    return { ok: true, plan: { response, eth0Ip, policy: elevation.policy } };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, code: 'rules-unavailable', message: `现读事实失败，未产生任何动作：${message}` };
+  }
+}
+
+/**
+ * 造只读计划通道（注入的是路由的 `plan` 依赖）。
+ * 给了 `tickets` 才签发确认票据；**缺省不签发**（`confirm: null` ⇒ `apply` 过不了票据门，失败方向安全）。
+ */
+export function createPlanChannel(
+  facts: PlanFacts,
+  tickets?: ConfirmTickets | undefined,
+): (target: unknown, problem?: string) => Promise<WriteRouteResult> {
+  return async (target: unknown, problem?: string): Promise<WriteRouteResult> => {
+    const computed = await computePlan(facts, target, problem);
+    if (!computed.ok) return { ok: false, code: computed.code, message: computed.message };
+    const { response } = computed.plan;
+    const planId = response.planId;
+    const issued = planId === null || tickets === undefined ? null : tickets.issue(planId);
+    return {
+      ok: true,
+      status: 200,
+      payload: { ...response, confirm: issued === null ? null : { ticket: issued.ticket, expiresAt: issued.expiresAt } },
+    };
   };
 }
