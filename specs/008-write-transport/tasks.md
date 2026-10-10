@@ -186,3 +186,44 @@
 `transport-real-facts` 1 条 + `plugin-entry` 1 条）。新增/改动文件行数：`read/firewall-probe.ts` 147（新）、
 `apply.ts` 395、`real-facts.ts` 91、`wire-plugin.ts` 151、`plugin.ts` 399（**未涨**）、`design.md` 200（**未涨**）。
 🔴 **真机未验**：真写（netsh 19→20→19）与真防火墙现读都属需主人在场的验收；本轮**未装插件、未起实例、未跑任何写命令**。
+
+## ✅ T2.8 真机写入验收：PASS（2026-10-10，探针 profile `volatile-probe`，端口 43311）
+
+**投递面（此前唯一未证的一环）已证实**：探针 profile 的 `cordis.patch.yml` 里
+`- id: dsh-wsl-docker-ports` + `config: { elevationPolicy: ask }` ⇒ `plan` 响应实测
+`elevation:{"policy":"ask","backend":"gsudo","available":true}`（三次一致）⇒ **配置真被插件读到并传到事实面**；
+此前 `unknown` 的投递缺口**闭合**。
+
+**真写确实发生，且完整回滚**（同一条命令内连做 add → remove）：
+
+| 时点 | portproxy 规则 | 我方防火墙规则 |
+| --- | --- | --- |
+| apply 前 | **19** | **0** |
+| apply（add）后 | **20** ⬆ | **1** ⬆ |
+| apply（remove）后 | **19** ⬇ | **0** ⬇ |
+
+- apply#1：`status:"ok"`、`exitCode:0`、`executed:["portproxy-add","firewall-add"]`、`backend:"gsudo"`、`elevationPolicy:"ask"`；
+- apply#2：`status:"ok"`、`exitCode:0`、`executed:["portproxy-delete","firewall-delete"]`；
+- 建的规则是**端口专属**（`-LocalPort 5900`，非通配符），`connectaddress` = 现读 eth0 `172.20.201.152`；
+- `audit` 恰 **2 条** `result:"applied"`（内存环 + 一行日志）；额外验拒绝路径：`confirmed:false` ⇒ **403 `confirm-required`** 且 **不留审计记录**（符合 2026-10-09 裁定）；
+- 命令原文（REQ-3.2）两条逐字：`netsh interface portproxy add v4tov4 listenport=5900 listenaddress=0.0.0.0 connectport=5900 connectaddress=172.20.201.152`
+  与 `New-NetFirewallRule -DisplayName "dsh-wsl-docker-ports-5900" … -LocalPort 5900 …`；remove 侧为 `… delete v4tov4 listenport=5900 listenaddress=0.0.0.0` + `Remove-NetFirewallRule -DisplayName "dsh-wsl-docker-ports-5900"`。
+
+**还原与红线**：`volatile-probe` 与快照 **四种哈希对比全 0**（74 文件，含与改动前基线的交叉验证）；
+收尾 `portproxy` **19**、我方防火墙 **0**、`listenport=5900` **0**、node 回 **14**、43311 空闲、
+`~/.dsh` 递归搜我方包名 **0** 命中、`dir /AL` 无软链、`pnpm install --frozen-lockfile` exit **0**、`git status` 空。
+未做：UAC/注册表改动、`portproxy reset`、通配符防火墙规则、PATH/gsudo 配置改动。`desktop`/`web` 未被碰（mtime + 0 命中双证）。
+
+**⚠️ 计数口径陷阱（本次实测踩到，留痕以免后人误判）**：`netsh … show v4tov4` 的**朴素 4-token 正则会把表头
+`Address Port Address Port` 与分隔行 `----- ---- ----- ----` 也数进去** ⇒ 会得出 **21** 而非 19。
+真规则数必须用严格 IPv4 行匹配 `^\s*\d{1,3}(\.\d{1,3}){3}\s+\d+\s+\d{1,3}(\.\d{1,3}){3}\s+\d+\s*$`。
+（我此前多轮报的 19 均为严格口径。）
+
+**⚠️ 未处置的安全观察（A4，交主人裁定，本轮未扩大范围）**：`/dsh-wsl-docker-ports/write/{plan,apply,audit}`
+在**不带 GUI `?token=`** 时也返回 200 ⇒ 虽只绑 `127.0.0.1`，但**本机任意进程都可调用写端点**。
+建议：给写通道挂宿主鉴权（或要求与宿主同源的 token），并把「无凭据 ⇒ 401」写成判据。
+
+**探针 profile 的既有副作用（与 008 无关，仅记录）**：① B-1 探针插件会在首启后 ~7.5s 自己 SIGINT，
+并经 `settings.update` 往 `cordis.patch.yml` 写入测试条目（`- id: volatile-probe` + `label/profiles`）——
+本次`[]` 起始的 patch 就是被它写脏的；② `dsh plugin add` 会把 `node_modules` 下的包目录换成 **SymbolicLink**
+（旧目录改名为 `.ignored_*`）⇒ 探针流程必须「整目录删除 + 快照整份还原」，不能只删 yml 条目。
