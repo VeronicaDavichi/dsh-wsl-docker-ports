@@ -7,7 +7,7 @@
 
 ## 0. 来源（SSoT）
 
-`docs/` 为空，本 Spec 的事实来源与 002 一致：`stack-decision.md` 的维度键 —— 主要引用 `plugin.agentSurface`、`plugin.agentReadModel`、`plugin.agentPermission`、`plugin.terminalEngine`（复用）、`plugin.agentPermission`（🔧 **键名订正 2026-10-12**：原文写的是 `plugin.sandboxPolicy`，但该字面键**从未存在**（基线 `git show HEAD:stack-decision.md` 已查 = False）；真实落点是维度键 **`plugin.agentPermission`**，而该维度选择文本里的 **`ctx.sandboxPolicy`** 才是沙箱策略服务。旧写法**保留**于此、不删）。
+`docs/` 为空，本 Spec 的事实来源与 002 一致：`stack-decision.md` 的维度键 —— 主要引用 `plugin.agentSurface`、`plugin.agentReadModel`、`plugin.agentPermission`、`plugin.terminalEngine`（复用）、`plugin.agentPermission`（**与第 3 项同键**：原文此处把同一维度**重抄**了一遍。🔧 **键名订正 2026-10-12**：原文写的是 `plugin.sandboxPolicy`，但该字面键**从未存在**（基线 `git show HEAD:stack-decision.md` 命中 **0** 次，`plugin.agentPermission` 命中 **2** 次）；真实落点是维度键 **`plugin.agentPermission`**，而该维度选择文本里的 **`ctx.sandboxPolicy`** 才是沙箱策略服务。旧写法**保留**于此、不删）。
 
 ---
 
