@@ -85,11 +85,25 @@ function errorMessage(error: unknown): string {
 /**
  * 纯函数：`ownerProps.view === 'summary'` ⇒ 摘要组件，否则整页（contract §D12 的分派口径）。
  * 未识别的 `view`（含 `undefined`）一律给**整页** —— 摘要信息不足时宁可多给，别给一个空白面板。
+ *
+ * 🔴 **2026-10-12 真机修复（缺陷：007 配置页在真机上是空的）**：分派函数的返回值必须是**元素**。
+ * 旧实现 `return view === 'summary' ? components.summary : components.page` 返回的是**组件本身**
+ * （一个函数）：宿主把它当 React 子节点渲染时，`function` 不是合法子节点 ⇒ **生产构建下不报错、
+ * 直接渲染出空面板**（真机 `[data-slot="plugins.row.config"]` 的 `innerHTML` 恒为 `""`，
+ * 且 fiber 树里能看到分派层已挂载、它下面**没有**页面节点）。
+ *
+ * 现在**调用**选中的组件拿元素（`chosen(ownerProps)`）——与入口 `ConfigPageBound` 里
+ * `ConfigPage({ pipe })` 的写法同一口径，且本文件**仍然不 import react**（组件依旧由入口注入）。
+ * 分派层自己不带 hooks，`view` 对同一个 outlet 恒定 ⇒ 复用同一 fiber 不改变 hooks 次序。
  */
 export function buildConfigComponent(
   components: ConfigSlotComponents,
 ): (ownerProps?: ConfigSlotOwnerProps) => unknown {
-  return (ownerProps) => (ownerProps?.view === 'summary' ? components.summary : components.page);
+  return (ownerProps) => {
+    const chosen = ownerProps?.view === 'summary' ? components.summary : components.page;
+    // 非函数的注入物（已经是元素 / 字符串）原样返回：分派层只负责选，不负责造
+    return isFunction(chosen) ? chosen(ownerProps as never) : chosen;
+  };
 }
 
 /** 从 scope 上取 `settings` 表单服务（属性优先，其次 `get('settings')`） */

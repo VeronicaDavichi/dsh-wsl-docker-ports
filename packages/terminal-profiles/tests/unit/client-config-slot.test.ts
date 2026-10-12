@@ -3,6 +3,7 @@
  *
  * 判据要点（每条都能被一个变异杀死）：
  *   - 注册 key **逐字**是 `<包名>#<行 id>`，槽位名逐字 `plugins.row.config`；
+ *   - 🔴 分派结果必须是**元素**（组件被**调用**过），不是组件本身 —— 2026-10-12 真机空面板成因；
  *   - 宿主**没有**这个槽位 ⇒ 不注册、不抛、原因非空（「不拖垮启动」）；
  *   - `configure({ auto: false }, ctx.fiber)` 的**实参个数与内容**都被钉住（REQ-10.1 逐字）；
  *   - `configure` 抛错 / 缺服务 ⇒ 页面**照常注册**（关不掉自动表单不该弄丢配置页）。
@@ -22,16 +23,29 @@ function expectThat(label: string, actual: unknown, expected: unknown): void {
   expect(actual, label).toStrictEqual(expected);
 }
 
-const PAGE = { kind: 'page' };
-const SUMMARY = { kind: 'summary' };
+const PAGE = (props?: unknown) => ({ kind: 'page', props });
+const SUMMARY = (props?: unknown) => ({ kind: 'summary', props });
 
 describe('T6.1 视图分派（ownerProps.view）', () => {
   it('view=summary ⇒ 摘要；其余（含 undefined / 未知值）⇒ 整页', () => {
     const pick = buildConfigComponent({ page: PAGE, summary: SUMMARY });
-    expectThat('summary', pick({ view: 'summary' }), SUMMARY);
-    expectThat('undefined', pick(undefined), PAGE);
-    expectThat('为空对象', pick({}), PAGE);
-    expectThat('未知 view', pick({ view: 'full' }), PAGE);
+    expectThat('summary', pick({ view: 'summary' }), { kind: 'summary', props: { view: 'summary' } });
+    expectThat('undefined', pick(undefined), { kind: 'page', props: undefined });
+    expectThat('为空对象', pick({}), { kind: 'page', props: {} });
+    expectThat('未知 view', pick({ view: 'full' }), { kind: 'page', props: { view: 'full' } });
+  });
+
+  it('🔴 分派结果必须是**元素**（调用组件拿元素），不是组件本身 —— 真机空面板的成因', () => {
+    // 2026-10-12 真机缺陷：旧实现 `return view === 'summary' ? summary : page` 把**组件函数**当子节点
+    // 交给 React ⇒ 生产构建静默渲染空面板。这条断言就是「不许再返回组件本身」的哨兵。
+    const pick = buildConfigComponent({ page: PAGE, summary: SUMMARY });
+    expectThat('整页不是组件本身', pick({ view: 'page' }) === PAGE, false);
+    expectThat('摘要不是组件本身', pick({ view: 'summary' }) === SUMMARY, false);
+    expectThat('整页是 page 的调用结果', pick({ view: 'page' }), PAGE({ view: 'page' }));
+    expectThat('摘要是 summary 的调用结果', pick({ view: 'summary' }), SUMMARY({ view: 'summary' }));
+    // 非函数注入物（已经是元素）原样穿过：分派层只负责选
+    const element = { kind: 'element' };
+    expectThat('非函数原样返回', buildConfigComponent({ page: element, summary: SUMMARY })({}), element);
   });
 });
 
