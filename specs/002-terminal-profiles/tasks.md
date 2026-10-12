@@ -281,3 +281,13 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 - **回归门 + 变异哨兵**：`tests/unit/client-tab-guide.test.ts`（4 例 / **14 断言**）用**同一份判据函数**同时判「定义对象里那一份」与「真注册给宿主的那一份」（防只在纯函数里好看）；哨兵逐字复刻修复前的定义（无 `guide`）并打印 `旧实现（无 guide）⇒ 违反 1 条：页类型没有 guide ⇒ 右栏开始页里没有入口，用户点不到（缺陷 B 的真机症状）；修好后 ⇒ 违反 0 条`。
 - **离线门（cwd = `packages/terminal-profiles`，实测）**：`tsc` **exit 0** · `vitest` **37 文件 / 440 passed | 1 skipped（441）· exit 0** · `check-size` **exit 0** · `verify-client-loader` **exit 0**（60 条判据；⚠️ 校验对象是**未重建**的 `lib/`）。
 - ⏳ **未验，且本修复不关闭上文 V1**（「胶囊出现 + 点得进去」）—— V1 按上面三条证据（E1–E3）**只能在应用内验**，本轮**零真机** ⇒ 真机点开对照（DOM/a11y 前后）**延后到下一批**。先例诚实标注：003 的 `680a445` 用**同一形状**修过同款缺陷，但其「点了能开」**同样尚无真机取证**；本轮依据 = 官方 bundle 的 guide 形状引文 + 同一条注册路径。
+
+### ✅ 缺陷 B 真机闭环（2026-10-12；证据目录 `C:\Users\EDY\dsh-probe-artifacts\20261012-154451-final\`）
+
+- **判据（缺陷 B）：「右栏开始页里出现本页入口，且点得进去」⇒ 真机两侧全中** ✅
+  - 开始页出现**真胶囊** `<button data-sidebar-right-guide-entry="managedTerminal">`，标题「受管终端」、描述「按 profile 起真 PTY 终端：配置名称、命令、参数与 cwd；开页零副作用」（`RESULT.txt` §1 的 `D.1` 行 + §3 的 DOM 原文）⇒ `guide` 形状被宿主正常消费。
+  - 点击后**新建 `tab6`（`kind=managedTerminal`）并激活**：`[data-testid=term-pane]` **417×879**（且无隐藏祖先；`tab5` 那份是 0×0 隐藏）、`term-surface` **417×879**、`term-title` **×2**、xterm 挂载 **×2**（`RESULT.txt` §1 的 `D.2` 行）；a11y 原文含 `tab "受管终端 关闭" selectable selected` + `textbox "Terminal input"`（§3）⇒ **「胶囊出现 + 点得进去」两条判据都中** ✅。
+  - ⇒ 上文 ⏳「真机点开对照（DOM/a11y 前后）延后到下一批」**已兑现**；本结清痕与离线门 `tests/unit/client-tab-guide.test.ts`（同一判据函数判「定义对象」与「真注册给宿主的那一份」+ 变异哨兵）**互为独立证据**。
+- 🔴 **本批未验（不许冒充）**：① 003 的 `guide` 胶囊**确实也出现了**（`D.1` 行注明「另有「端口转发」胶囊」，§3 的点击前文本含「端口转发 / 查看容器的端口映射与 portproxy 规则…」），点击后右栏也有 `tab "WSL Docker 端口" selectable`（**未选中**）—— 但**「去点 003 的那个胶囊 ⇒ 切到端口页」这一步本批没做** ⇒ 003 的 `V1`「点得进去」**仍未被直接确认** ✗（不并账、不冒充）。
+- 🔴 **002 的关闭评估本轮未做**（未勾项数未复算、`T7.3` 的整包质量门未重跑）⇒ **状态不动**（仍 `in-progress`），只补痕。
+- ⚠️ **证据计数口径**：`MANIFEST.txt` 自报「文件数 = 79」（含 `ORIG/`、`ORIG-full/` 两个子目录），而派单文字写「77 文件」⇒ **两者不一致**；我按 `MANIFEST.txt` 的原文标注，**未把 77 当既成事实**。

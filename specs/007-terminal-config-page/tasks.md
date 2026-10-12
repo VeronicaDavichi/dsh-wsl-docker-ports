@@ -40,6 +40,7 @@
 - **T6.1 反向断言补口径（判据不变）**：**剥注释后**扫 `packages/terminal-profiles/src/**`（47 文件 / 182,249 字节）⇒ `writeFile` **0** / `cordis.patch.yml` **0** / `configEditor` **0**。⚠️ 不剥注释时三词各有命中、**全在注释里**（逐条写「不用它」）⇒ 上文「0 命中」的口径是**代码面**，此处补明，免得被读成「全文件 0 命中」。
 - **真机侧补证（`934da46`，非本轮执行；本轮零真机）**：插件行「配置」按钮 ⇒ 锚点 `innerHTML` **0 → 554 B**、`innerText` **109 字**、`.dtp-*` 节点 **0 → 7** ⇒ **`plugins.row.config` 槽确被宿主提供、自绘页确渲染**。
 - **未验项边界（不许含糊）**：`remote.settings` 的逐字形状、home patch ⇒ 只读、revision 冲突 ⇒ 保留输入、`auto:false` 是否真生效 —— 四者**仍只有离线覆盖**；**002 右栏页**能否在真机直接打开**仍未被直接确认**（只间接证过 `register()` 跑过），本 Spec 的复选框**不依赖**它。
+- 🔴 **2026-10-12 真机轮订正（原文保留）**：四者中**三条已拿到真机样本** —— `remote.settings` 形状（`{ok,value,error}` 两臂都有样本）、覆盖层 ⇒ 只读 + 原因、revision 冲突 ⇒ 保留输入；**`auto:false` 与「152ms 不重挂载的复现」仍无直接样本** ✗。**002 右栏页能否直接打开**已由同批 `D` 段真机闭环（真胶囊 + 点击开 `tab6` + a11y）✅ ⇒ 见 002 的 `tasks.md` 缺陷 B 结清痕。
 
 ### 可复用教训（各一行留痕）
 
@@ -53,9 +54,14 @@
 ## 真机待办（主人场；与 002/003 同批）
 
 - `remote.settings` 的真机形状核对（§D13 逐字：`{ ok, value, error }`）与 **volatile live 写入 152ms 不重挂载**的现场复现。 ⏳ **仍待真机轮**（本轮的 007 真机复验只证「页面有内容」，**未**读 `remote.settings`；152ms 不重挂载是 002 的 2026-10-08 真机事实，不是本 Spec 的复现）。
+  - ✅ **2026-10-12 真机闭环（「形状」那一半）**：`{ok, value, error}` 的**两臂都拿到真机原文** —— 成功臂 `{"type":"server-response","rpcId":"a1","result":{"ok":true,"value":{"ns":"dsh-wsl-docker-ports",…,"revision":1}}}`（`A-write-pilot.log` 的 `settings/update`，`sentRev=0 → revision 1`）；失败臂 `{"…","result":{"ok":false,"error":{"code":"settings/rejected",…}}}`（`C2b-readonly-refusal.raw.json`，255 B）⇒ §D13 的逐字形状**成立**。⚠️ **仍未复现的是**「`dsh-terminal-profiles` 上的 volatile live 写入 152ms 生效且**不重挂载**」（本批只证返回形状与拒绝路径）⇒ **该半句仍 ⏳** ✗。证据目录 `C:\Users\EDY\dsh-probe-artifacts\20261012-154451-final\`。
 - **home patch 覆盖 ⇒ 只读 + 原因 + 路径**的真机复现（离线只有 `writable:false` / `readOnly:true` 的注入态）。 ⏳ **仍待真机轮**（判据：真机写被拒 ⇒ 表单显示只读原因 + 文件路径，且点保存**不写盘**）。
+  - ✅ **2026-10-12 真机闭环（「原因」+「零落盘」）**：触发手段 = **`--patch` 覆盖层**（`--patch` 必须写在 profile 名之前）；拒绝原文 `{"ok":false,"error":{"code":"settings/rejected","message":"Configuration for \"dsh-terminal-profiles\" is overridden by a home patch or command-line overlay","details":{"ns":"dsh-terminal-profiles"}}}` ⇒ 命中 `isReadOnlyRefusal` 的**覆盖层分支**；页面根 `data-readonly="true"`、6 个 input 全 `disabled`、行级只读、「新增 profile」置灰、`cfg-readonly` 显示原因；`cordis.patch.yml` sha 前后均 `4a2c0a4a…`（553 B）⇒ **零落盘** ✅。证据：`C2b-readonly-refusal.raw.json` + `C2b-patch-first.log` + `RESULT.txt` §3。
+  - 🔴 **「+ 路径」这一半：不可实现（已订正）** ⇒ `documentPath` 在真机 `settings/describe` 里 **0 命中**（`C1-settings-describe.raw.json` **35,168 字节**，我当场复算；`RESULT.txt` 的 C.1 行写 35,166 B，与 `MANIFEST.txt` 不一致 ⇒ **以实测字节为准**）⇒ 页面如实显示 `配置文件路径：宿主未提供`；`REQ-10.3` 已追加**订正痕**（降级为「宿主提供时显示路径 / 未提供时如实说明」，原文保留，**待主人复核**）。⚠️ **`read-only provider` 分支仍无真机样本** ✗。
 - **revision 冲突 ⇒ 保留输入**的真机复现（需并发写触发）。 ⏳ **仍待真机轮**（判据：冲突提示 + 表单**保留**输入，不清空）。
+  - ✅ **2026-10-12 真机闭环**：外部推进 `revBefore=0 → revAfter=1`、`ok=True`（`C3-external-advance.txt`）；页面保存报冲突、输入 `c3-conflict-row` / `pwsh.exe` / `-NoLogo` **全保留**、patch sha C == sha B（零落盘）⇒ 判据全中 ✅。证据：`C3-external-advance.txt` + `RESULT.txt` §3。
 - T0.5 装载链路：`plugins.row.config` 槽位是否真被宿主提供、`auto:false` 是否真生效。 ✅ **前半句已由 `934da46` 真机关闭**（槽位确被提供、自绘页确渲染：锚点 `innerHTML` **0 → 554 B**、`.dtp-*` **0 → 7**）；⏳ **后半句（`auto:false` 是否真生效）仍待真机轮**。
+  - ⚪ **2026-10-12 复核：后半句仍无直接样本** ✗ —— 本批真机证据覆盖的是 002 的 guide 入口（`D` 段）与 005 的写通道（`A`/`B` 段），**没有**单独断言「`auto:false` 生效 ⇒ 宿主默认表单未接管」；`934da46` 的自绘页渲染（`.dtp-*` 0 → 7）是**必要证据**，不足以下结论 ⇒ **保持 ⏳，不许写成通过**。
 
 ## 缺陷 A 离线修复轮（2026-10-12；🔴 **零真机** —— 真机复验已延后到下一批）
 

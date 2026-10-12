@@ -128,3 +128,15 @@
 3. **✅ A-1 已定案（2026-10-08）：Agent 触发在 `passby` 下降级为 `ask`** —— Agent 可发起，但每次都要人类在应用内确认（展示命令原文），备选「直接拒绝」被否。
 4. **未验证项（A-3）**：Windows 自带 `sudo` 后端在本机（**23H2**）**无法验证**（官方要求 **24H2+**、默认关闭、默认 `forceNewWindow` 模式拿不到输出）⇒ 仅显式配置 `elevationBackend: winsudo` 时启用，待 24H2 机器补验后再考虑并入 `auto`。
 5. **已知限制**：`gsudo` 的**凭据缓存**若被用户开启，则 UAC 不再逐次弹出 ⇒ 检测到缓存活跃时本组件**回落 native**（不杀用户缓存会话）。此时「Agent 降级为 `ask`」的应用内确认成为**唯一**闸门。
+
+---
+
+## 9. 真机结清记录（T0.1 / T3.2；2026-10-12）
+
+> 证据目录 `C:\Users\EDY\dsh-probe-artifacts\20261012-154451-final\`。本节是 **T3.5「文档回写」** 的实物：把 §2 的写算法（前后快照）与 §4 的提权契约落到真机读数上。
+
+- **§2「写前写后各存一次 `netsh show v4tov4` 快照」真跑**：`showV4tov4CallCount = 2`（写前 + 写后各一次**现读**，不靠本地账），`log.before = 19` / `log.after = 19` ⇒ 快照机制不是纸面约定（`B-driver.json`）。
+- **§2「他人规则条数不变」真跑**：同端口 `45999` 由 `loopback → lan` 加 / 删各一次 —— `add` 两步（`portproxy-add` + `firewall-add`）`exitCode 0 / 4054ms`；`remove` 两步（`portproxy-delete` + `firewall-delete`）`exitCode 0 / 8137ms`；终态 **19 条 + sha `b9d38664ebb234be8b74945362d86a6c3608d96e6764cbc903b11de955d1056d`**、防火墙 **816 / 我方 0 / DSH Desktop 2**、`TEMP dsh-ppp*` **0**（`A6`–`A10`）。
+- **§4 提权契约（`gsudo → native`）真跑**：`gsudo` 路径 `exitCode 0` / out 文件与 stdout **双通道都解析成功** / `cleanup` 两文件删净（`D-E-result.json` 的 `d1`）；`native` 路径 `status=partial / exitCode 2 / steps=[portproxy-delete ok=false]`（`B-driver.json` 的 `defect1`）。
+- **§4 的两条留痕结论在本轮被再次读到**：① `gsudo` 经 `pwsh -Command` 包装会把**子进程**退出码 **2/3/7/42/999 一律塌成 1**（`gsudoExitCollapse` 实测：`child_0→0`，其余全 `→1`）⇒ `partial` / `precondition` 在 gsudo 后端下**不可区分**，只有 gsudo **自身**失败才是 `999`；② 本机 `ConsentPromptBehaviorAdmin = 0` ⇒ **提权全程不弹 UAC**，§8-2「每次写操作必须人工点 UAC」在本机**不适用**（本轮真写入由驱动零交互完成，闸门只能收回产品内 —— 即 Phase 2b）。
+- 🔴 **本轮未覆盖（不许含糊）**：`fix` 动作（**未跑** ✗）、活跃 `gsudo` 缓存的回落分支（**越界未跑** —— 需改用户 gsudo 配置 ✗）、`999` / `cancelled` 分支（本机**不可复现** ✗）。

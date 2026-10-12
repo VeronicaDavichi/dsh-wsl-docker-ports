@@ -79,7 +79,13 @@
 - **REQ-5.3** GIVEN 超时（默认由调用方显式给出，本包不设隐式默认），THEN 系统 SHALL 终止进程（含子进程树）并返回 `Timeout` 错误，SHALL NOT 让调用方永久挂起。
 - **REQ-5.4** GIVEN `exitCode === 0` 但 `stderr` 非空，THEN 系统 SHALL 判为成功（`wsl.exe` 会输出提示性 stderr）；`stderr` SHALL 原样保留供诊断。
 - **REQ-5.5** 输出编码 SHALL 由调用方显式指定（`wsl.exe` → UTF-16LE；`netsh` → 由 003 指定），本包 SHALL NOT 猜测编码。
-- **REQ-5.6** 错误对象 SHALL 可判别（`code` 判别的联合类型），并含 `message`、`argv`（脱敏后）与可选 `exitCode` / `stderr`，供上层直接渲染。
+- **REQ-5.6** 错误对象 SHALL 可判别（`code` 判别的联合类型），并含 `message`、`argv`（脱敏后）与可选 `exitCode` / `stderr` / `stdout`，供上层直接渲染。
+
+  > **留痕（2026-10-12 文档同步轮 · 只补字段，不改语义、不改编号）**：本条字段清单**原漏列 `stdout`** —— 它自 `b61c060` 起
+  > 就是 `NonZeroExit` 失败对象的真实字段，此前只落在实现 + 测试 + `001 README.md` 第 8 条上，未回写需求 ⇒ 本轮补齐。
+  > **不新增字段、不改可选性**（仍是「可选」；未提供时字段**缺席**，不伪造空串）。同轮把 `Timeout` 路径改为回传**已收集到**的
+  > `stdout` / `stderr`（同族最小补齐，字段同属本条的可选集）⇒ **REQ-5.1 / REQ-5.3 的文字与编号均未变**。
+  > 门的读数与变异哨兵原文见 [`001 README.md`](./README.md) 第 10 条与 `001 design.md` §4。
 
 ### REQ-6 边界与准入标准
 

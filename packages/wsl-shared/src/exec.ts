@@ -178,9 +178,15 @@ export function createExecutor(
         // 注入的 treeKill 可能 reject（默认实现不会）⇒ 必须显式吞掉：
         // unhandled rejection 在 Node 默认直接崩宿主进程（2026-10-08 复审补强）
         void killTree(child, treeKillImpl).catch(() => undefined);
+        // 🔴 2026-10-12 同族最小补齐（与上方 `NonZeroExit` 的 stdout 修复 b61c060 同源；本轮=001 文档同步轮）：
+        // 超时判定时 `outChunks` / `errChunks` 里**往往已有数据**（命令跑了一半才被杀），此前只带 `argv`
+        // ⇒ 调用方拿不到「被杀之前它说了什么」，005 只能靠 out 文件 / 日志兜底。口径与 `NonZeroExit` 一致：
+        // **字段在**（零输出时为空串，与 `fail()` 的条件展开同一语义）、**成功路径与其它分支的字段集一字未动**。
         finish(
           fail('Timeout', `命令在 ${String(timeoutMs)}ms 内未结束，已终止：${file}`, {
             argv: command,
+            stdout: decoder.decode(Buffer.concat(outChunks)),
+            stderr: decoder.decode(Buffer.concat(errChunks)),
           }),
         );
       }, timeoutMs);

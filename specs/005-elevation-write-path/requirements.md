@@ -92,3 +92,18 @@
 | A-1（**✅ 已确认**）| Agent 触发的提权在 `passby` 下**降级为 `ask`** | REQ-4.1；**2026-10-08 主人定案 = 方案 A**（备选「直接拒绝」被否）|
 | A-2（**✅ 已确认**）| 卸载**不**自动清理规则，改提供清单 + 显式清理 | REQ-5.1；**2026-10-08 主人确认**，本 Spec 口径零改动 |
 | A-3（**新·假设**）| 提权后端链 = `gsudo → native`（`auto`）；Windows 自带 `sudo` 只在显式配置时用 | 依据：微软官方文档（**24H2+**、默认关闭、默认 `forceNewWindow` **拿不到输出**、改模式须提权命令行）；**本机 23H2 无法验证** ⇒ 不进 `auto`。影响：24H2 且未装 gsudo 时回落 native（**功能无损**，只多一个临时文件）<br>🔵 **2026-10-09 本机只读核验**：`%SystemRoot%\System32\sudo.exe` **不存在**（23H2 预期吻合）；`Get-Command sudo -All` **唯一命中 gsudo 的 shim**（`D:\Program Files\gsudo\Current\sudo.exe`，ProductName=gsudo 2.6.1）⇒ 佐证 REQ-3.4 的「探测不得按命令名 `sudo`」（否则必然误判进 winsudo 分支）。`gsudo` 本机可用且 v2.6.1 与 2026-10-08 记录一致 |
+
+## 5. 真机结清记录（T0.1 / T3.2；2026-10-12）
+
+> 证据目录 `C:\Users\EDY\dsh-probe-artifacts\20261012-154451-final\`（`RESULT.txt` + `MANIFEST.txt`）。
+> 本节是 **T3.5「文档回写」** 的实物：把 `tasks.md` 的 T0.1 / T3.2 结论写进需求侧，逐条附证据路径。
+
+| 项 | 真机结论 | 证据 |
+|---|---------|------|
+| **T0.1 提权链路**（REQ-3.4） | 走 `gsudo` 的提权脚本**真跑通**：`exitCode 0`、`parsedFromOutFile.ok=true`（**out 文件与 stdout 两条回传都解析成功**）、`cleanup.scriptRemoved=true` & `outRemoved=true`（临时 `.ps1` + `-out.json` 都删净）；`beforeRules=[]` & `afterRules=[]`（该脚本动作 `probe-readonly` **零系统写入**）| `D-E-result.json` 的 `d1` |
+| **T3.2 他人规则不变**（C-3 / REQ-1.5） | 同端口 `45999` 由 `loopback → lan`：`add` ⇒ `executed=[portproxy-add, firewall-add]`（规则 `0.0.0.0 45999 172.20.201.152 45999` + 防火墙 `dsh-wsl-docker-ports-45999` **真出现**）；`remove` ⇒ `executed=[portproxy-delete, firewall-delete]`、残留 **0**。终态 portproxy **19 条 + sha `b9d38664…`**（== 期望）、防火墙总数 **816** / 我方 **0** / DSH Desktop **2**、`TEMP dsh-ppp*` **0** | `A6` / `A7` / `A8` / `A9` + `A10-A-postpilot-recount.txt` |
+| **临时文件归零**（NFR-2） | 成功 / `partial` / `failure` 三条路径的 `cleanup` 均 `scriptRemoved=true` & `outRemoved=true`；驱动扫 `%TEMP%\dsh-ppp*` = **0** | `B-driver.json` 的 `cleanup` / `tempResidue` |
+| **退出码口径**（REQ-3.4） | native 侧 `runElevateNative` = `partial` / `exitCode 2`（内层 `netsh exit 1`）⇒ 与「全成功=`ok` / 部分失败=`partial` / 全失败=`failed`」一致（`482f697` 修前是 `cancelled`）| `B-driver.json` 的 `defect1` |
+| **elevationPolicy 落盘** | `settings/update` 把 `elevationPolicy=ask` 真写进 profile 的 `cordis.patch.yml`（`revision 0 → 2`），apply 回包 `elevation:{policy:"ask",backend:"gsudo",available:true}` ⇒ **提权入口不置灰** | `A-write-pilot.log` |
+
+🔴 **本节的三条诚实边界（不许当已通过）**：① `d1` 的脚本动作是**驱动自造**的 `probe-readonly`，**不在产品动作白名单**（`add|remove|fix`）⇒ 「**产品自身链路**跑出 `exit 0` 且零系统写入」这一形态**仍不可兼得**（「前后快照 + 他人规则不变」是在**真写入**的 add/remove 上证的）；② `999` / `cancelled` 两条**错误分支在本机不可复现**（`ConsentPromptBehaviorAdmin = 0` ⇒ 没有可取消的弹窗、也没有凭据缓存可失效）；③ **`fix` 动作本轮未跑** ✗ ⇒ REQ-1.5 的「逐端口可切」只覆盖 `loopback → lan` 的 add / remove，**未覆盖 fix**。

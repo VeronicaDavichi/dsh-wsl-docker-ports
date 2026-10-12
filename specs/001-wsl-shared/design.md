@@ -26,9 +26,15 @@
 | `WslDistro` | `{ name: string; state: 'Running'｜'Stopped'｜'Installing'｜'Unknown'; version: 1｜2｜'unknown'; isDefault: boolean }` | `state` 无法识别 → `Unknown`（不抛错）|
 | `NetworkingMode` | `{ ok: true; path: string; mode: 'nat'｜'mirrored'｜'default'｜'other'; resolved: 'nat'｜'non-nat'; rawValue?: string }` | `resolved` 只有两态，消费方只需判一个布尔（REQ-4.4）；成功态带 `ok: true` 以便 `isWslFailure()` 收窄联合；**缺键时 `rawValue` 字段不出现**（不伪造 `undefined`）|
 | `ExecResult` | `{ ok: true; exitCode: 0; stdout: string; stderr: string }` | 成功态（`stderr` 非空也算成功，REQ-5.4）|
-| `WslSharedError` | `{ ok: false; code: ErrorCode; message: string; argv?: string[]; exitCode?: number; stderr?: string; path?: string; distros?: string[] }` | 所有失败的唯一出口（REQ-5.6）|
+| `WslSharedError` | `{ ok: false; code: ErrorCode; message: string; argv?: string[]; exitCode?: number; stderr?: string; stdout?: string; path?: string; distros?: string[] }` | 所有失败的唯一出口（REQ-5.6）|
 | `ExecOptions` | `{ cwd?: string; env?: Record<string,string>; timeoutMs: number; encoding: 'utf16le'｜'utf8'｜string }` | `timeoutMs` **必填**，不设隐式默认（REQ-5.3）|
 | `DistroResolution` | `{ ok: true; name: string; source: 'config'｜'wslDefault'｜'onlyOne'｜'first' }` | 成功态**必须带 `ok: true`**（**2026-10-08 Phase 4 自审补齐**）：否则 `isWslFailure()` 对这个联合用不了，消费者只能 `'code' in r`，与 `errors.ts` 声明的判别联合口径及另外四种成功态不一致 |
+
+> **留痕（2026-10-12 文档同步轮 · 只补字段，不改语义、不改编号）**：上表 `WslSharedError` 行**原漏列 `stdout`**
+> —— 它自 `b61c060` 起就是 `NonZeroExit` 失败对象的真实字段（`errors.ts` 的 `WslSharedError` / `FailureExtra`
+> 与 `fail()` 的条件展开都已声明），本条只把**代码里已经存在**的字段补回类型表。同轮**同族最小补齐**：
+> `Timeout` 路径也回传超时那一刻**已收集到**的 `stdout` / `stderr`（此前只带 `argv`）；两者与 REQ-5.6 的
+> 「可选字段」口径一致 ⇒ **无需求变更**（依据见 §4 与 `requirements.md` 的 REQ-5.6 留痕）。
 
 `ErrorCode`（判别联合的 `code`）：
 
@@ -112,6 +118,10 @@
 - 收集 `stdout`/`stderr` 为 `Buffer`，结束后按 `options.encoding` 解码（REQ-5.5）；**先拼 Buffer 再一次性解码** —— 逐 chunk 解码会把多字节字符从边界切开成乱码。
 - `timeoutMs` **入口校验** `0 < t ≤ 2147483647`，越界在**启动前**判 `Unexpected`：`setTimeout` 对超上限延时只警告并**按 1ms** 处理（`Infinity` / `NaN` / 0 / 负数同理）⇒ 否则会给出「命令在 …ms 内未结束」这种**误导性假超时**。
 - 超时：`setTimeout(timeoutMs)` → 先 `child.kill()`，再兜底 `taskkill /PID <pid> /T /F`（Windows 无 POSIX 进程组信号，`wsl.exe` 会派生 `wslhost`/发行版进程）；**定时器必须先建立再挂事件处理器**。✅ **回收能力已实测**（T1.4 A/B 结案，见 §8-12）：只杀 `wsl.exe` 也能让发行版侧进程消失 ⇒ `taskkill /T` 是**保险**，降级方案**不启用**。
+- **`Timeout` 的部分输出同族补齐（2026-10-12 文档同步轮）**：超时路径原只带 `argv`，而 `outChunks` / `errChunks` 里
+  **往往已有数据**（命令跑了一半才被杀）⇒ 现已回传 `stdout` / `stderr`（零输出时为**空串**、字段不缺席 —— 与 `NonZeroExit` 同一语义）。
+  成功路径与其它分支（启动前失败 / `CommandNotFound` / 非 ENOENT 的 `error`）的字段集**一字未动**，均有断言钉住；
+  变异哨兵：把真源码改回 `{ argv: command }` ⇒ 该门 **4 failed | 2 passed、exit 1**，逐字节还原后 SHA256 一致并复绿。
 - 事件：`error` → `CommandNotFound`（`ENOENT`）或 `Unexpected`；**设了 `cwd` 时 ENOENT 文案必须同时点出「命令或工作目录」**（Windows 上两者同名，只说命令会把人引向错误的排查方向）。`close` → 组装结果；`code === null`（被外部终止）用单独文案，`exitCode` 记 `-1`。
 - 可注入：`createExecutor(spawnImpl, treeKillImpl)` 供测试传 fake（REQ-6.3）；**注入实现的 rejection 必须显式吞掉**（`void … .catch()`），否则 unhandled rejection 在 Node 默认直接崩宿主。
 

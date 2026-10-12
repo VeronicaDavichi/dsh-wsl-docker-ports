@@ -46,3 +46,22 @@
 ## 决策留痕
 
 - ✅ **2026-10-09（主人裁定）设置命名空间不加宿主侧 schema**：`ctx.settings.register` 在宿主 `0.2.0-rc.2` 已移除 ⇒ 本包的 settings 声明走**我们自己的 `cordis.patch.yml` 的 `- insert:` 条目**，**不引 `@deepseek-ai/schemastery`**、不加依赖。真机只需验证该条目被正常加载。
+
+---
+
+## 5. 只读与冲突态：真机闭环 + 路径订正痕（2026-10-12）
+
+> 证据目录：`C:\Users\EDY\dsh-probe-artifacts\20261012-154451-final\`（`RESULT.txt` 全文 + `MANIFEST.txt`）。触发手段 = **`--patch` 覆盖层**
+> （该 profile 的 app 是 `web` ⇒ `--patch` 必须写在 profile 名**之前**，写法陷阱见 `AGENTS.md` 的「本机 CLI 现状」）；
+> **home 层 patch 本身未创建**（`~/.dsh/cordis.patch.yml` 是全局层、影响 `desktop`/`web`，属红线范围外）—— 拒绝文案同时覆盖两种来源。
+
+| 判据 | 真机结果 | 证据文件 |
+|---|---|---|
+| 被覆盖层抢占 ⇒ 写被拒（**原文**） | `{"ok":false,"error":{"code":"settings/rejected","message":"Configuration for \"dsh-terminal-profiles\" is overridden by a home patch or command-line overlay","details":{"ns":"dsh-terminal-profiles"}}}` ⇒ 命中 `isReadOnlyRefusal` 的**覆盖层分支** ✅；⚠️ **`read-only provider` 分支仍无样本** ✗（如实标） | `C2b-readonly-refusal.raw.json`（255 B） |
+| 被拒 ⇒ 页面只读 + 原因 | 根 `data-readonly="true"`、6 个 input 全 `disabled`、行级 `data-readonly="true"`、`btn-profile-add` 置灰、`cfg-readonly` 显示原因 | `RESULT.txt` §3 的 DOM 原文 |
+| 被拒 ⇒ **零落盘** | `cordis.patch.yml` sha 前后**都是** `4a2c0a4a…`（553 B） | `C2b-patch-first.log` |
+| revision 冲突 ⇒ 提示 + 保留输入 + 零落盘 | 外部推进 `revBefore=0 → revAfter=1`（`ok=True`）；保存报冲突、输入 `c3-conflict-row` / `pwsh.exe` / `-NoLogo` 全保留、sha C == sha B | `C3-external-advance.txt` + `RESULT.txt` §3 |
+| **路径不可得（订正痕）** | `documentPath` 在 `settings/describe` 真机载荷里 **0 次** ⇒ 页面按设计显示 `配置文件路径：宿主未提供` ⇒ REQ-10.3 降级为「宿主未提供时如实说明」 | `C1-settings-describe.raw.json`（**35,168 B**，我当场复算 0 命中）/ `host-settings-describe.raw.json`（34,388 B，0 命中） |
+
+🔴 **未踩实的假设（不许含糊）**：① `read-only provider` 分支**仍无真机样本**；② 「volatile live 写入 152ms 不重挂载」是 **002 的 2026-10-08 事实**，
+本 Spec 本次**未复现**（本批只证了 `settings/update` 的**返回形状**与拒绝路径）；③ `auto:false` 是否真生效**仍无直接断言**（`934da46` 的自绘页渲染是必要证据，未单独断言「宿主默认表单未接管」）。

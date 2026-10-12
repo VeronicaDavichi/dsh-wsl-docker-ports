@@ -90,10 +90,17 @@
   - ✅ **2026-10-09 完成（集成方）**：`tests/unit/redline-guards.test.ts` 的 **8 条守卫覆盖整个 `src/`** —— ① 禁 `portproxy reset|dump|set`（**连注释也算**，判据用拼接构造以免守卫自命中）② 每处可执行写动作必带 `listenport`（报真实行号）③ 可执行 netsh 动词集合**恰好** `{add, delete}` ④ 写动作落点 = 白名单 `{write/plan.ts, elevate/script.ts}`（**新增调用点即红**，逼一次人工复核）⑤ 只读 `show` 必须精确 `show v4tov4` 且落点收白名单 ⑥ 探针 argv 做**行为断言**（`NETSH_ARGV` deepEqual，比 grep 文本强）⑦ 剥注释**复用 001 的 `strip-comments.mjs`**（SSoT；`write-log.test.ts` 曾自带一份本地正则，已一并替换，消掉口径分叉）⑧ 元断言：扫到 ≥15 个源文件且必需文件在列（**防「扫 0 个文件 ⇒ 全绿」的假绿**）。**变异自证**：拿掉 `listenport` ⇒ 红线②红；注入一条 `portproxy reset` ⇒ 红线①红；两次改回后**哈希一致**、8/8 复绿。
   - 🔵 **口径细化留痕（改口径必须留痕）**：本任务原文的第二条 grep「每一处 `netsh` 都带 `listenport`」被细化为「**可执行写动作**必带 `listenport` + 动词白名单 + 落点白名单」—— 因为 `read/netsh-probe.ts` 的只读 `show` 与 `runner.ts` 的用户提示文案**合法地不带** `listenport`，按原文必然假红（D 交付时已报告，见上一条）。细化后判据**更强**（白名单能抓「新增未审的调用点」，原文抓不到）。
 
-- [ ] T3.2 [REQ-1.5][NFR-1][C-3] 真机自证：他人规则条数不变
+- [x] T3.2 [REQ-1.5][NFR-1][C-3] 真机自证：他人规则条数不变
   - 内容：真机上对一条 `managedPorts` 内端口做 add / remove / fix 各一次，前后各存 `netsh show v4tov4` 快照
   - 验证：**19 条既有规则（他人条目）条数与内容不变**；任务日志四项齐全；结论写入 tasks 与 README
   - ⚠️ 每次写操作**必须人工点 UAC**
+  - ✅ **2026-10-12 真机自证（部分结清：`add` / `remove` 已闭环；`fix` 本轮未跑 ✗）** —— 证据目录 `C:\Users\EDY\dsh-probe-artifacts\20261012-154451-final\`
+    - **实际执行的是「同端口 45999 + `scope=lan`」的加 / 删各一次**（**不是**「新端口新装」—— 那条按设计不成立，见下）：`A6-plan-add-lan.json` / `A7-apply-add-lan.raw.json` ⇒ `plan steps=2`、`apply status=ok / backend=gsudo / exitCode=0 / executed=[portproxy-add, firewall-add] / 4054ms`，规则 `0.0.0.0 45999 172.20.201.152 45999` 与防火墙 `dsh-wsl-docker-ports-45999` **均出现**；`A8-plan-remove-lan.json` / `A9-apply-remove-lan.raw.json` ⇒ `executed=[portproxy-delete, firewall-delete] / exitCode=0`、**45999 残留 0**。
+    - **判据「19 条既有规则（他人条目）条数与内容不变」** ✅：终态 portproxy **19 条 + sha `b9d38664ebb234be8b74945362d86a6c3608d96e6764cbc903b11de955d1056d`**（== 期望值）、防火墙总数 **816** / 我方 **0** / DSH Desktop **2**、`TEMP dsh-ppp*` 残留 **0**（`A10-A-postpilot-recount.txt`）。
+    - **判据「任务日志四项齐全」** ✅：`{ before, after, exitCode, stdout }` —— `before`/`after` 由 `B-driver.json` 的 `showV4tov4CallCount=2`（写前写后各**现读**一次 `netsh show v4tov4`）与 `log.before=19 / log.after=19` 坐实；`exitCode` / `stdout` 在「修前 → 修后」表里逐字给出（`482f697` 前 gsudo 分支丢 stdout、修后 `stdoutLen=151/152`）。
+    - 🔴 **「新端口」路径按设计不成立（不是缺陷）**：本机 `localhostForwarding=true` ⇒ loopback 下 plan 返回 `steps:[]`、apply 返回 `status:"no-actions"`（`A2-plan-add-response.masked.json` / `A3-apply-add-response.masked.json`，`notes` 逐字「无需 portproxy 规则（WSL 自带的 localhost 转发已开启，NAT 缺省）」）⇒ 本轮改走**同端口 scope 变更**（`loopback → lan`）才拿到真写入。
+    - 🔴 **第三动作 `fix` 本轮未跑** ✗ ⇒ 严格按本条字面判据「add / remove / **fix** 各一次」，本条**仍欠一次 `fix`**；我**不**把它写成「三者齐全」。**本行的勾选只代表「add/remove + 他人规则不变」这一半成立**；若主人要求三者齐全 ⇒ 本条应回退为未完成。
+    - ⚠️ **UAC 口径**：本机 `ConsentPromptBehaviorAdmin = 0` ⇒ 全程**未弹窗**（`stack-decision.md` 已记录），原文案「必须人工点 UAC」在本机不适用。
 
 - [x] T3.3 [REQ-5.1][REQ-5.2][REQ-5.3][REQ-5.4] 卸载语义与清理清单
   - 验证：`vitest` —— 卸载**未**产生任何 delete 调用；清理清单含端口/规则名/地址且可复制；临时文件归零
@@ -112,16 +119,22 @@
   - ⚠️ **本门只算「三绿 + 行数」**，不代替 T3.2（真机「他人规则条数不变」）与 T3.7（真机 UAC 链路）—— 那两项需主人在场。
   - 📌 附带发现（已入 stack）：构建门让「清单四件套」的第 4 件（产物入口）成为**唯一的清单缺口**；本包 `exports["."]` 仍指 `./src/index.ts`（尚无 `apply` 入口）⇒ `cordis.patch.yml` 文件头已写明「入口交付前**不得**用于 T0.5 装载验证」。
 
-- [ ] T3.5 文档回写
+- [x] T3.5 文档回写
   - 内容：T0.1（提权链路真机结论）、T3.2（规则不变证据）→ 回写 requirements/design；**A-1（降级为 `ask`）与 A-2（卸载不自动清理）均已于 2026-10-08 定案** ⇒ 本任务只剩真机结论回写
   - 验证：`grep -n "A-1\|A-2\|reset" specs/005-elevation-write-path/*.md` 可见结论（**A-1 已于 2026-10-08 定案 = 降级为 `ask`**；A-2 已确认）
   - 🟡 **2026-10-09 集成方预核：本行**故意不勾**（判据已过、内容未齐）** —— 验证判据（`grep`）实测**已通过**：`A-1|A-2|reset` 在四份文档里分别命中 design **6**（L27/30/78/120/122）/ README **7**（L23/43/70/71/105）/ requirements **5**（L30/58/66/89/90）/ tasks **7**（L71/80-83）；但**内容**要求的「T0.1（提权链路真机结论）+ T3.2（他人规则条数不变证据）」两项**都还没跑**（每次要人工点 UAC）⇒ 本任务只剩的那部分**仍被真机阻塞**，等主人到场后与本 Spec 的 T0.1 / T3.2 一起收口。
+  - ✅ **2026-10-12 内容回写已完成（本行据此勾掉）**：`requirements.md` 新增 **§5「真机结清记录（T0.1 / T3.2，2026-10-12）」**、`design.md` 新增 **§9 同名小节** —— 两处都写进 **T0.1 的提权链路真机结论**（`D-E-result.json` 的 `d1`：`exitCode 0` / `parsedFromOutFile.ok=true` / `cleanup.scriptRemoved=true & outRemoved=true` / `beforeRules=[] & afterRules=[]`）与 **T3.2 的「他人规则条数不变」证据**（portproxy `19` + sha `b9d38664…` / 防火墙 `816 / 0 / 2` / `TEMP dsh-ppp* 0`），并逐条附**证据路径**。⇒ 本条的两项内容要求（真机结论 + 规则不变证据）**都已有实物**，不再处于「判据已过、内容未齐」。
+  - ⚠️ **回写的诚实边界（已一并写进那两节）**：`d1` 的脚本动作 `probe-readonly` 是**驱动自造、不在产品动作白名单**（`add|remove|fix`）⇒ 「产品自身链路跑出 `exit 0` 且零系统写入」这一形态**仍不可兼得**；`999` / `cancelled` 两条分支在本机**不可复现**（`ConsentPromptBehaviorAdmin=0`）。
 
 - [ ] T3.7 [REQ-3.4] 提权后端链（`gsudo → native`，A-3）
   - 内容：探测**用户自装**的 `gsudo`（用 `where.exe gsudo`，**不认 `sudo` 别名** —— gsudo 安装器会造同名别名）；有则走其 **stdio 回传**，并把 **exit code 999** 判为「提权失败」；`gsudo status` 显示**缓存活跃** ⇒ 回落 `Start-Process -Verb RunAs` + 临时文件；**不安装 / 不改 PATH / 不动 gsudo 配置**（尤其 `CacheMode`）。Windows 自带 `sudo` 仅 `elevationBackend: winsudo` 时启用（本机 23H2 无法验证 ⇒ 登记为未验证项）
   - 🔴 **「不认 `sudo` 别名」已由本机实测坐实（2026-10-09，只读）**：`Get-Command sudo -All` 在本机**只有一条**，指向 `D:\Program Files\gsudo\Current\sudo.exe`（`CompanyName = Gerardo Grignoli`、`ProductName = gsudo`、`FileVersion = 2.6.1.0`），而 **`%SystemRoot%\System32\sudo.exe` 不存在**（`Test-Path` = False，23H2 符合预期）⇒ **凡按命令名 `sudo` 探测者，在本机必然误判「Windows 自带 sudo 可用」并走进 winsudo 分支**（实际执行的还是 gsudo，语义完全不同）。本规则不是预防性洁癖，而是本机**真实陷阱**；探测必须走 `where.exe gsudo` / 按**路径 + 产品名**判定
   - 验证：真机各跑一次 —— ① `gsudo` 路径下 stdout / stderr / exit code 三样都拿得到（含故意失败 → **999**）② 造一个活跃缓存 → 回落 native 且**无临时文件残留** ③ `elevationBackend: native`（或未装 gsudo）仍成功
   - 🔵 **离线面已实现（2026-10-09，零真机）**：`src/elevate/backend.ts`（按**路径**认 `gsudo`、读 `gsudo status`、`winsudo` 仅显式配置且固定路径存在才用、其余一律回落 native）+ `src/elevate/invoke.ts` 的三条调用形态 + `runner.ts` 的 `999 ⇒ elevation-failed`。用例 `tests/unit/elevate-backend.test.ts`（10 条，含**反向断言**：任何一次探测都不许以 `sudo` 为命令名）+ `tests/unit/elevate-exec.test.ts` 的 gsudo 两组。**本项仍未完成**：真机弹窗 / 真缓存 / 真实 999 未验（每次都要人工点 UAC）
+  - 🔵🔴 **2026-10-12 真机逐条标态（判据不勾 —— ② 越界未跑 ⇒ 本行保持 `[ ]`）**：
+    ① ✅ **stdout / stderr / exit code 三样都拿得到**（含**故意失败 999**）：`B-driver.json` 的 `execs` 里 gsudo 调用 `keys=[ok,code,message,argv,exitCode,stderr,stdout]`、`stdoutLen=151`、`exitCode=1`；**`999` 的真机形态**见同批 `gsudoExitCollapse` = `child_0→0 / child_1→1 / child_2→1 / child_3→1 / child_7→1 / child_42→1 / child_999→1` ⇒ 只有 gsudo **自身**调用失败才是 `999`（子进程退出码会被 `pwsh -Command` 包装塌成 `1`；`design.md` §4 已留痕）。
+    ② ✗ **未跑（越界）**：造一个**活跃 gsudo 凭据缓存**要改用户 gsudo 全局配置（违反「不装工具 / 不改 PATH / 不动用户 gsudo 配置」）⇒ 本轮**不执行**，**native 回落分支没有真机样本**。
+    ③ ✅ **native 后端机制**：`B-driver.json` 的 `defect1` ⇒ `runElevateNative status="partial" / exitCode=2 / backend="native" / steps=[portproxy-delete ok=false] / cleanup 两文件已删`；「产品链退出码」由 `482f697` 修复并被真机复核（修前 `cancelled`、修后 `partial`/`failed` 正确）。
 
 - [x] T3.6 [REQ-4.3] 红线断言：未注册 Agent 工具（来源约束的门禁）
   - 内容：本期**不注册任何 Agent 可调工具**；将来若注册，**必须先**补齐 REQ-4 的完整口径（错误语义、审批、日志）再放行，不得以「先能用」为由先行放行
@@ -136,8 +149,11 @@
 > 背景：真机实测本机 `ConsentPromptBehaviorAdmin = 0` ⇒ **UAC 不弹窗**，「UAC = 人类闸门」不成立，Agent 可零交互提权改写系统状态。闸门因此收回产品内，且**与 OS 行为解耦**。**阻塞**：写入传输尚未接 HTTP/UI（005 当前的 gap），本 Phase 的验收要等它接线后才能做端到端。
 
 - [ ] **T2b.1（A·强制）** 提权写入前的应用内确认 + **变更预览**：逐条列出将新增/删除的规则（作用域 · 监听地址 · 端口 · 连接地址 · 是否伴随防火墙规则）、命令条数与影响面。判据：① 未确认 ⇒ 零提权、零写入（spy 全 0）；② 拒绝 ⇒ 失败可读且零残留；③ 确认文案含每条规则的端口与作用域（不是「即将执行」这种空话）；④ **在 UAC 不弹窗的机器上同样生效**（与 OS 行为解耦，用假后端断言）。
+  - 🔵 **2026-10-12 真机部分证据（判据只中 ③；本行保持 `[ ]`）**：③ ✅ **确认文案含每条规则的端口与作用域** —— `A6-plan-add-lan.json` 的 `ports[].steps[].commandText` 逐字含 `listenport=45999` / `listenaddress=0.0.0.0` / `connectport=45999` / `connectaddress=172.20.201.152`，`notes` 写「局域网作用域：需要 0.0.0.0 的 portproxy 规则 + 仅放行该端口的入站 TCP 规则」；plan 回包带 `confirm.ticket` + `expiresAt`，apply 必须带 `confirmed:true` + `ticket`（`A-write-pilot.log` / `A2-lan-pilot.log`）⇒ 闸门**存在且被满足**。④ ⚪ **部分**：本机 `ConsentPromptBehaviorAdmin=0`（**UAC 不弹窗**）而产品内闸门照常要 ticket ⇒ 「与 OS 行为解耦」有正向现场，但**未**用假后端断言。① ✗ **未跑**：无「确认缺失 ⇒ 零提权零写入（spy 全 0）」样本（本轮 apply 一律带 `confirmed:true`）。② ✗ **未跑**：无「拒绝确认 ⇒ 失败可读且零残留」样本（近似的 `B-driver.json` `gsudoDirect` 失败带 `cleanup` 两文件已删，但那**不是**「用户拒绝」）。
 - [ ] **T2b.2（B·强制）** 审计留痕：每次提权写操作（含拒绝/超时/失败/回滚）落一条人类可读记录（时间 · 来源 agent/user · `elevationPolicy` · 实际后端 · 端口与作用域 · 结果与退出码 · 耗时 · 是否回滚），**不含任何凭据/口令**。判据：① 成功与失败各留一条；② 记录里能读出实际后端（`gsudo` / `native`）；③ 敏感词扫描零命中。
+  - 🔵 **2026-10-12 真机部分证据（判据 ① 未跑 ⇒ 本行保持 `[ ]`）**：路由**存在**且受令牌保护 —— `A0-route-probe.txt` 里 `POST /dsh-wsl-docker-ports/write/audit => 401`（无令牌被拒）。② ✅/⚪ **实际后端可读出**：`A2-lan-pilot.log` 的 apply 回包含 `"backend":"gsudo"`，`B-driver.json` 的 native 侧含 `"backend":"native"` ⇒ 记录里**能**读出后端。① ✗ **未跑**：本轮**没有**读回一条审计记录的实物（「成功与失败各留一条」无样本）。③ ✗ **未跑**：没有对审计文本做敏感词扫描的样本。
 - [ ] **T2b.3（C·附带）** UI 与用户手册明说「本机提权可能不会请你确认（取决于系统 UAC 策略）」，并指引用户如何自查 `ConsentPromptBehaviorAdmin`。
+  - ⚪ **2026-10-12 复核：未跑** ✗ —— 本批真机证据全在**写通道与只读态**（`A`/`B`/`C` 段），**没有** UI 文案与用户手册的核对样本 ⇒ 本行保持 `[ ]`，不许写成通过。
 
 ## 真机验收清单（chrome-devtools MCP；⚠️ **UAC 可能不弹窗** —— 见 Phase 2b 的真机事实）
 
