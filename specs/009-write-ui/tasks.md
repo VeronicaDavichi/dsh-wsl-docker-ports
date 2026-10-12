@@ -2,7 +2,7 @@
 
 > 每行一个任务；`[REQ-N]` 指向 [requirements.md](./requirements.md)。**「判据」必须是可二值判定的**（跑得出来、看得见）。
 > **来源**（2026-10-12 从 [008-write-transport](../008-write-transport/tasks.md) 拆出，**同包不拆包**）：承接 008 的 `T3.2`（结果四态）、008 `T3.3` 清单里的 **V6**（真机 UI 复核）、**007 配置页的「生成并保存写通道凭据」按钮**，以及只属于 UI 面的新判据。**008 侧保留 `T3.2` / `V6` 编号为空位并注明「已迁至 009」。**
-> **行数门**：warn **200** 只是提示、不强制压缩；硬门 = LeanSpec `maxLines` **400**（本文件当前 **285**，余量 **115**；🔴 **2026-10-12 收口轮订正**：原记 **148** —— 它在本轮开始前就已过期（当时实测 **171**），回填真机证据与 Phase 7 后为 **256**，本轮追加 T3.2 判据摘要 + Phase 8 后为 **285**，口径一律以 `split('`n')` 当场复算为准）。接近 400 ⇒ 必须再拆 Spec，**不得**删已验证结论 / 未验项 / 裁定依据 / 命令原文证据。
+> **行数门**：warn **200** 只是提示、不强制压缩；硬门 = LeanSpec `maxLines` **400**（本文件当前 **285**，余量 **115**；🔴 **2026-10-12 收口轮订正**：原记 **148** —— 它在本轮开始前就已过期（当时实测 **171**），回填真机证据与 Phase 7 后为 **256**，本轮追加 T3.2 判据摘要 + Phase 8 后为 **285**，口径一律以 `split('`n')` 当场复算为准）。 🔴 **2026-10-12 关闭轮订正（原文保留）**：上句「本文件当前 **285**」是本轮**开始时**的实测值；结清 5 条未勾项后**终值 = `split('\n')` 307 / 权威口径（`check-size` 公式）306 行**、余量 **94**（= 400 − 306）⇒ 仍未触硬门（**不拆 Spec** —— 本文件是**证据台账**，拆它只会把同一份证据切成两处）。接近 400 ⇒ 必须再拆 Spec，**不得**删已验证结论 / 未验项 / 裁定依据 / 命令原文证据。
 > **真机白名单**：探针只许**临时 / 一次性 profile**（AGENTS.md：**不得**用 `desktop` / `web`），跑完逐字节还原。
 
 ## Phase 0：契约冻结（不写产品代码）
@@ -19,8 +19,8 @@
   - 🔴 **现状如实（哪一态「不可区分」/ 缺什么字段）**：四态**都**有真实生产者（`src/transport/apply.ts` 的 `executed:383` / `skipped:384` / `failed:385-387` / `rolledBack:317-348`）⇒ **没有**「缺语义位」的那一态，三条判据均可勾选；真正不可区分的只有三处细节，本轮**不做**（也不编、不改服务端）：ⓐ `skipped` 只有 `WriteStepKind[]`、**无逐条原因字段** ⇒ 只能报「未执行」这一事实；ⓑ 响应里**没有**跨清单统一有序的 `steps[]` ⇒ 各清单**之间**的相对次序不可知（实现只在**清单内**保序，不合并、不排序）；ⓒ 005 脚本内回滚（`elevate/script.ts:283` 的 `Add-Step 'portproxy-rollback' $true '<原因>'`）经 apply 层只剩 `executed` 里的**名字**、**原因被丢弃** ⇒ 那句「已回滚 portproxy」在本响应里不可渲染（要显示需 008 在 `executed` 之外另给字段 = 契约变更，**服务端一行未动**）。
 - [x] T1.2 [REQ-9.2] 失败项**必带可读原因**：每条失败渲染 `name` + `reason`（不是只给个数；`reason` 为空串时给兜底文案）。**2026-10-12 实现**：`write-result.tsx` 的 `readableReason()`（空串 ⇒ `FAILURE_REASON_FALLBACK`，明写「服务端未给出该步骤的原因」）；`apply.ts` 的 `reason` 实为 `StepReport.stderr`（类型标 `string | null`、运行时是 `string` ⇒ **空串是真实可能**）。
   - 判据：`vitest`（`tests/client/write-result.test.tsx`）：构造 `failed: [{name,reason}]` ⇒ 用例② 断言两条原因**各自只出现在自己那一条目内**（1 对 1、零串行）、条目数 == `failed.length`；用例②b 断言每条同时含「名称」与「失败：原因」两段；用例③ 断言空串走兜底文案（非空）。
-- [ ] T1.3 [REQ-9.3] 零硬编码 hex（口径来源：003 `NFR-7` / 002 `NFR-4`；003 Phase 6 的门已在当时的 `src/client/**` 上真扫过）。
-  - 判据：静态扫描 `src/client/**` 的 `#[0-9a-fA-F]{3,8}` 命中 **0**，且**非空扫描**（文件数 > 0）。**2026-10-12 复算**：`node --test` 的 `tests/unit/client-structure.test.ts` NFR-7 用例当场出数（全 `src/client/**`：hex 命中 **0** 处、`var(--dsw-*)` 引用数 > 0，两者由同一次扫描打印）；本轮**新增** vitest 用例⑨ 对两个结果区文件复扫（hex **0** 处，且用到的 **12** 个 `wdp-*` 类名**全部**能在 `styles.ts` 的 `PAGE_CSS` 里找到 ⇒ 白名单外零自造类名）。
+- [x] T1.3 [REQ-9.3] 零硬编码 hex（口径来源：003 `NFR-7` / 002 `NFR-4`；003 Phase 6 的门已在当时的 `src/client/**` 上真扫过）。
+  - 判据：静态扫描 `src/client/**` 的 `#[0-9a-fA-F]{3,8}` 命中 **0**，且**非空扫描**（文件数 > 0）。**2026-10-12 复算**：`node --test` 的 `tests/unit/client-structure.test.ts` NFR-7 用例当场出数（全 `src/client/**`：hex 命中 **0** 处、`var(--dsw-*)` 引用数 > 0，两者由同一次扫描打印）；本轮**新增** vitest 用例⑨ 对两个结果区文件复扫（hex **0** 处，且用到的 **12** 个 `wdp-*` 类名**全部**能在 `styles.ts` 的 `PAGE_CSS` 里找到 ⇒ 白名单外零自造类名）。 **2026-10-12 关闭轮当场复算（先读口径原文，不自造）**：003 `NFR-7` 原文 = 「UI 零硬编码 hex（只用宿主 `--dsw-*` token）」、002 `NFR-4` 原文 = 「零全局 CSS、零硬编码 hex（只用 `--dsw-*` token）」⇒ 范围 = `src/client/**`（UI 面）。**实测**：`src/client/**` **17** 文件 / **193,247** 字节，正则 `#[0-9a-fA-F]{3,8}` **命中 0 处**；换 `\b` 变体（= `scripts/verify-client-loader.mjs:188` 的非递归口径）同为 **0 处**；**非空扫描证据** = `var(--dsw-…)` 引用 **21** 处（`styles.ts` **20** + `write-result.tsx` 注释里 **1**）。防御性加扫全 `src/**`（**67** 文件 / **603,127** 字节）亦 **0 处**。⇒ **零命中 ⇒ 允许勾选**，无需动用任何例外条款；脚本与输出：`E:\Temp\dsh-009-close\measure.mjs`。
 
 ## Phase 2：配置页「生成并保存写通道凭据」（迁自 007 配置页）
 
@@ -52,12 +52,34 @@
 
 ## Phase 4：收口
 
-- [ ] T4.1 [NFR-1] 依赖未增：`dependencies` / `devDependencies` 与拆分前一致；未引 E2E / 浏览器自动化框架。
-  - 判据：`git diff -- packages/wsl-docker-ports/package.json packages/wsl-docker-ports/pnpm-lock.yaml` 空（本轮实测：**空** ✓）。
-- [ ] T4.2 [NFR-2] 体积 / 行数门：本 Spec 涉面的 `src/client/**` 逐个报数（≤ 400 行原始、≤ 40KB 去注释去空行）。
-  - 判据：脚本当场出数；超限则拆文件，**不抬阈值**（AGENTS.md：40KB 之后不许再抬）。
-- [ ] T4.3 文档同步：008 的「已迁至 009」空位与指针、本 Spec 的 README 导航、`AGENTS.md` 的拆分留痕（若需变更则留痕）。
-  - 判据：008 的 `T3.2` / `V6` 指针指向本文件真实存在的锚点；README 链接可达（本轮已落 008 侧指针，AGENTS.md 待补）。
+- [x] T4.1 [NFR-1] 依赖未增：`dependencies` / `devDependencies` 与拆分前一致；未引 E2E / 浏览器自动化框架。
+  - 判据：`git diff -- packages/wsl-docker-ports/package.json packages/wsl-docker-ports/pnpm-lock.yaml` 空（本轮实测：**空** ✓）。 **2026-10-12 关闭轮当场复算**：基线 = **`12a2c7d`**（从 008 拆出 009 的提交 `1644079` 的父提交 = 009 开工前）⇒ `dependencies` **1 → 1 键**、`devDependencies` **9 → 9 键**，逐键比对 = **新增 0 / 删除 0 / 版本变化 0**；`git diff --stat 12a2c7d HEAD -- packages/wsl-docker-ports/package.json pnpm-lock.yaml` **输出空**，且 `package.json` 与基线**逐字节相同**（**1422 B**）。**E2E / 浏览器自动化**：全仓 `package.json`（跳过 `node_modules` / `lib` / `.git`）的 `dependencies` / `devDependencies` / `peerDependencies` / `optionalDependencies` 四节里扫 `playwright|puppeteer|cypress|webdriver|selenium|nightwatch|testcafe` ⇒ **命中 0 条**（**只报声明面**；文档里提到 Playwright **不计**）；`pnpm-lock.yaml` 里唯一的 `playwright` 字样 = **`@vitest/browser-playwright: 5.0.3`**（**2** 处，**L1218 / L1234**）—— 那是 **vitest 5 自带的传递解析项，不是本仓的依赖声明**，且该 lockfile 相对基线**逐字节无差异**。⚠️ **判据原文的路径修正（事实补正，不改判据）**：`packages/wsl-docker-ports/pnpm-lock.yaml` **不存在**（**lockfile 在仓库根**）⇒ 按根 `pnpm-lock.yaml` 复算，diff 同样**空**。
+- [x] T4.2 [NFR-2] 体积 / 行数门：本 Spec 涉面的 `src/client/**` 逐个报数（≤ 400 行原始、≤ 40KB 去注释去空行）。
+  - 判据：脚本当场出数；超限则拆文件，**不抬阈值**（AGENTS.md：40KB 之后不许再抬）。 **2026-10-12 关闭轮当场复算**（口径 = `001 tasks.md` 的校验门行 + 其实现 `packages/wsl-shared/scripts/check-size.mjs`：**行数** = `split('\n').length - (以 \n 结尾 ? 1 : 0)`；**字节** = `stripComments()`（001 两道门共用的 `strip-comments.mjs`，不自造）→ 逐行 `trim` → 丢空行 → `join('\n')` 的 **UTF-8 字节**）：
+
+    | 文件（`src/client/**`，17 个，按去注释字节降序） | 原始行数 | 原始字节 | 去注释去空行字节 | ≤400 行 / ≤40,960 B |
+    | --- | --- | --- | --- | --- |
+    | `pane.tsx` | 379 | 17,483 | 12,224 | ✅ / ✅ |
+    | `rows.ts` | 364 | 16,532 | 10,520 | ✅ / ✅ |
+    | `page.ts` | 263 | 11,557 | 8,778 | ✅ / ✅ |
+    | `settings-pipe.ts` | 333 | 17,810 | 8,152 | ✅ / ✅ |
+    | `write-channel.ts` | 307 | 13,993 | 7,960 | ✅ / ✅ |
+    | `pane-settings.tsx` | 268 | 11,837 | 7,704 | ✅ / ✅ |
+    | `index.ts` | 310 | 16,886 | 7,011 | ✅ / ✅ |
+    | `write-panel.tsx` | 233 | 9,864 | 6,245 | ✅ / ✅ |
+    | `pane-tables.tsx` | 238 | 8,980 | 6,132 | ✅ / ✅ |
+    | `write-confirm.tsx` | 209 | 10,134 | 5,985 | ✅ / ✅ |
+    | `write-token.ts` | 254 | 12,140 | 4,927 | ✅ / ✅ |
+    | `write-dto.ts` | 170 | 6,953 | 4,835 | ✅ / ✅ |
+    | `types.ts` | 170 | 7,066 | 4,651 | ✅ / ✅ |
+    | `write-result.tsx` | 201 | 9,357 | 4,554 | ✅ / ✅ |
+    | `host.ts` | 253 | 12,338 | 3,791 | ✅ / ✅ |
+    | `styles.ts` | 92 | 5,538 | 3,701 | ✅ / ✅ |
+    | `route-source.ts` | 92 | 4,779 | 2,504 | ✅ / ✅ |
+
+    合计：去注释 **109,674** 字节（**面**的合计，仅备查；**判定按 T4.2 原文的「逐个文件」**）⇒ **超限 0 个**（最大行 `pane.tsx` **379** ≤ 400；最大去注释字节 `pane.tsx` **12,224** ≤ **40,960**）⇒ **勾选**；**不拆文件、不抬阈值**。脚本：`E:\Temp\dsh-009-close\measure.mjs`。
+- [x] T4.3 文档同步：008 的「已迁至 009」空位与指针、本 Spec 的 README 导航、`AGENTS.md` 的拆分留痕（若需变更则留痕）。
+  - 判据：008 的 `T3.2` / `V6` 指针指向本文件真实存在的锚点；README 链接可达（本轮已落 008 侧指针，AGENTS.md 待补）。 **2026-10-12 关闭轮当场核对**：① **008 侧空位与指针** —— `T3.2`（008 `tasks.md:57-58` 写「已迁出」+ 指向本文件 `T1.1–T1.3`）、`V6`（008 `:364` 空位 + 指向本文件「迁入记录」§3 的 V6 判据原文），另有 008 的 `:4` / `:189` / `:291` / `:345` / `:349` / `:355` / `:366` / `:368` / `:371` 与 008 `README.md:50` 同样指向本文件 ⇒ **逐一可达、锚点真实存在**（`T1.1` / `T1.2` / `T1.3` 三行与 §3 的 V6 判据行均在册）。② **本 Spec 的 README 导航** —— [`README.md`](./README.md) 的 `requirements.md` / `design.md` / `tasks.md` / `../008-write-transport/README.md` / `../../client-contract.md` / `../../AGENTS.md` **六条链接逐条可达**（`Test-Path` 全 True）；本轮顺带订正 README 的两处**过期自述**（状态行「真机 UI 复核未做」、行数行「一律 < 200」）。③ **`AGENTS.md` 拆分留痕** —— **经核对无需变更**：`:177` 写的是「**拆后** 008 = **356** 行、009 = **121** 行」，那是**拆分当时**的实测值（原文自己限定「拆后」= **历史陈述**，**不是「当前」声明**）⇒ 按留痕规矩**不动历史行**；**现值**已在各自的行数门自述行**就地订正**（008 `tasks.md:4`、本文件 `:5`）：008 = **374** 行、009 = **306** 行。⇒ 三项全部结清。
 
 ## Phase 5：2026-10-12 真机复验回填 + 四个缺陷修复（本轮**零真机**、零新依赖）
 
@@ -82,7 +104,7 @@
   - 判据（离线，已跑绿）：`tests/unit/client-settings.test.ts` + `tests/client/pane.test.tsx` **19/19** —— 宿主抛错 ⇒ 提示含真机原话且 `update` **尝试恰好 1 次**；管道自身抛 ⇒ 面板兜底提示；宿主未提供 `remote.settings` ⇒ 提示含 `remote.settings`；**反向对照**：写入成功 ⇒ `action-error` **0 条**。
 - [x] T5.5 [NFR-1] **零新增依赖 + 服务端零改动**：`package.json` 未改（`dependencies` 仍只有 `dsh-wsl-shared`）、`src/transport/**` 一行未改、未引 E2E / 浏览器自动化；改动面 = 新增 `src/config.ts` + 改 `src/index.ts` / `src/plugin.ts`（注释）/ `src/client/{settings-pipe.ts,write-confirm.tsx,pane.tsx}` + 四份测试。
   - 判据：`git diff --stat` 只含上述文件（`package.json` / `pnpm-lock.yaml` diff **空**）；三道门全绿：`tsc -p tsconfig.json` × 3 包 **exit 0**、`node --test --test-concurrency=1 "tests/**/*.test.ts"` **401/401（0 fail）**、`vitest run` **9 文件 / 108 通过**；包内自检 `check:host` **18/18**、`check:client` **24/24**。
-- [ ] T5.6 [REQ-10.2] **待办（本轮未做，不勾）**：`requirements.md` REQ-2.4 与 `design.md:10/27/32/67` 的「零请求」简写是否统一改写为「零写通道请求」，以及 008 侧 V1–V5 的判据行是否回填本轮实况 —— **两件都要主人拍板**（前者是契约措辞、后者属 008 的记录面）。
+- [x] T5.6 [REQ-10.2] **待办（本轮未做，不勾）**：`requirements.md` REQ-2.4 与 `design.md:10/27/32/67` 的「零请求」简写是否统一改写为「零写通道请求」，以及 008 侧 V1–V5 的判据行是否回填本轮实况 —— **两件都要主人拍板**（前者是契约措辞、后者属 008 的记录面）。 🔴 **2026-10-12 关闭轮订正（原文保留不删）**：两件**都已做**（拍板来源 = 关闭轮派单，一并授权措辞订正 + 008 侧 V1–V5 回填）—— ① **措辞**：`requirements.md` 的 REQ-2.4 已追加订正痕（「零请求」= **零写通道请求**：`write/plan` / `write/apply` 计数 **0**，但**会先读一次** `settings/describe` 取 `declaration`）；`design.md` 的 4 处简写（`:10` / `:27` / `:32` / `:67`）逐处追加同口径订正痕（**原文一字未删**）。② **回填**：008 `tasks.md` 的 **V1–V5** 五行判据已填真机实况（`portproxy` **19→20→19**、我方防火墙 **0→1→0**、他人规则 **814** 不变〔⚠️ **现值全机 816**，其中 **2** 条是 `DSH Desktop` 自己加的、**不是我们的**〕、`audit` **2 条 `applied`** 且凭据命中 **0**、401 矩阵 **4 条**且审计体积不变、还原 **MAP DIFF = 0** 且 `portproxy` sha **逐字节同**），并订正 008 行数门自述（`:4` 的 **356** ⇒ 实测 **374**）。⇒ **勾选**。
 
 ## Phase 6：缺陷 1 的**真根因**（宿主 `volatileForm` 门）+ 读侧统一解包（本轮**零真机**、零新依赖）
 

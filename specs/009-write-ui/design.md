@@ -7,7 +7,7 @@
 | 层 | 位置 | 职责 | 行数 |
 | --- | --- | --- | --- |
 | 凭据 | `src/client/write-token.ts` | 32B 随机 → 64 位 hex；`sessionStorage` 命名空间键；**一次性显示**；服务端写失败则不入会话 | 188 |
-| 通道 | `src/client/write-channel.ts` | `/write/plan` + `/write/apply` 的**唯一**客户端路径；请求体白名单；失败四分类；零请求可断言 | 307 |
+| 通道 | `src/client/write-channel.ts` | `/write/plan` + `/write/apply` 的**唯一**客户端路径；请求体白名单；失败四分类；零请求可断言（🔴 **2026-10-12 订正**：「零请求」= **零写通道请求** —— 会先读一次 `settings/describe` 取 `declaration`，见 [requirements.md](./requirements.md) REQ-2.4 的订正痕） | 307 |
 | DTO | `src/client/write-dto.ts` | 响应形状解读 + `commandText` **逐字搬运** | 170 |
 | 对话框 | `src/client/write-confirm.tsx` | 逐条命令原文 + 影响面 + `notes`；`elevationGate()` 置灰 | 201 |
 | 面板 | `src/client/write-panel.tsx` | 状态机（预演 → 确认 → 执行）+ **结果保留**（四态渲染在下一行） | 234 |
@@ -24,12 +24,12 @@
 
 1. **`preview()`**：本地校验端口文本（1..65535、去重升序、≤ 256）⇒ 读 `declaration`（所有权集合）⇒ 只发 **1 个** `plan` 请求；`pending`（target）与 `plan` **成对**存在 —— 确认时必须**原样复用**（REQ-8.2）。
 2. **`confirm()`**：只在确认按钮回调里发生，且 `busy` 期间两个按钮都不可点 ⇒ 双击也只有一个在途请求；body 只有白名单字段（REQ-7）。
-3. **`cancel()`**：清空 `plan` / `pending` + 中性文案「已取消：零请求」⇒ 要执行必须重新预演（REQ-4.4）。
+3. **`cancel()`**：清空 `plan` / `pending` + 中性文案「已取消：零请求」⇒ 要执行必须重新预演（REQ-4.4）。 🔴 **2026-10-12 订正痕**：文案里的「零请求」= **零写通道请求**（取消 ⇒ `write/plan` / `write/apply` 计数 **0**；已发生的那一次 `settings/describe` 属只读读取、**不计入**）。**文案本身不改** —— 改它要动代码，本轮是**零代码**收口。
 4. **失败**：先作废本次确认（不留可复用票据），再按四分类决定下一步 —— `replan`（409 / 403）⇒ **自动重新预演**并要求用户**重新确认**（REQ-6）；`credential`（401）⇒ 只指路（REQ-3）；`unavailable`（503）/ `protocol` ⇒ 如实报。
 
 5. **结果保留**（状态 `report`）：最近一次 `apply` 的回执**不被重新预演 / 取消清掉**（只被下一次 `apply` 的新回执替换）—— 免得「预演一下就看不到刚才到底发生了什么」；四态渲染与原因在 `write-result.tsx`，空清单**不渲染空段**。
 
-**本地拦截（零请求）**：端口文本非法 / 无凭据（REQ-2.4）/ 声明读取失败 / 超 256 端口 / 未接线（没拿到 `remote.settings` 或 `fetch`）。
+**本地拦截（零请求）**：端口文本非法 / 无凭据（REQ-2.4）/ 声明读取失败 / 超 256 端口 / 未接线（没拿到 `remote.settings` 或 `fetch`）。 🔴 **2026-10-12 订正痕**：「零请求」= **零写通道请求** —— 无凭据时仍会先读一次 `settings/describe` 取 `declaration`（只读，不计入）。
 
 **对话框**（`WriteConfirmDialog`）：props = `plan` / `busy` / `blocked` / `onConfirm` / `onCancel`；组件**零副作用**（无 `fetch`、无 `settings`、无订阅）⇒「未点确认 ⇒ 零网络请求」在结构上成立（REQ-4.3）。
 **置灰顺序**（`elevationGate()`）：① 计划不可执行（`ready === false` / `planId === null`）② `policy === 'none'` ③ `policy === 'unknown'` ④ `ticket === null` ⇒ 全部 `allow:false` + **可操作的原因**（REQ-5）。⚠️ `elevation.available` 只**展示**、不参与置灰（REQ-5.2）。
@@ -64,7 +64,7 @@
 
 | 层 | 手段 | 覆盖 |
 | --- | --- | --- |
-| 组件 / 接线 | `vitest run`（`include` 只列 `tests/client/**`，见 `vitest.config.ts`；`.tsx` 扩展名本身就是与 `node:test` 的隔离手段） | 命令原文逐字、影响面、`notes`、未确认零请求、取消零请求、401 指路不重试、409 重新预演、置灰原因、凭据一次性 / 不落盘 / 不引 localStorage、**结果四态分色 / 失败必带原因 / 清单内保序 / 结果保留** |
+| 组件 / 接线 | `vitest run`（`include` 只列 `tests/client/**`，见 `vitest.config.ts`；`.tsx` 扩展名本身就是与 `node:test` 的隔离手段） | 命令原文逐字、影响面、`notes`、未确认零请求、取消零请求、401 指路不重试、409 重新预演、置灰原因、凭据一次性 / 不落盘 / 不引 localStorage、**结果四态分色 / 失败必带原因 / 清单内保序 / 结果保留**（🔴 「零请求」= **零写通道请求**，见 REQ-2.4 订正痕） |
 | 单元（无 DOM） | `node --test --test-concurrency=1 "tests/**/*.test.ts"` | 凭据仓库与生成（可注入随机源）、配置管道面（T5.7：7 项导出、`forbidden` 5 个执行入口零命中、写配置零提权调用） |
 | 静态 | 脚本复算 | `src/client/**` 零硬编码 hex（003 `NFR-7` / 002 `NFR-4` 同口径）；凭据不进日志（`console.` 与 `localStorage` 用法零命中） |
 | 真机 | 主人 / 探针 profile | V6–V8（**当前状态：未通过（未验）**） |

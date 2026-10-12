@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-10-12
 priority: high
 tags:
@@ -12,18 +12,21 @@ tags:
 depends_on:
 - 008-write-transport
 created_at: 2026-10-12T00:43:44.591776577Z
-updated_at: 2026-10-12T00:53:18.098715800Z
+updated_at: 2026-10-12T04:19:02.610930800Z
+completed_at: 2026-10-12T04:19:02.610930800Z
 transitions:
 - status: in-progress
   at: 2026-10-12T00:53:18.098715800Z
+- status: complete
+  at: 2026-10-12T04:19:02.610930800Z
 ---
 # 写入口 UI：凭据生成 · 客户端确认 · 结果四态反馈
 
 **类型**: 需求驱动（requirements-first）
-**状态**: **in-progress**（**2026-10-12 从 `008-write-transport` 拆出**；离线实现已由 008 的 `T3.1` 交付于工作区，**真机 UI 复核未做** —— 勾选状态与迁入记录见 [`tasks.md`](./tasks.md)）
+**状态**: **in-progress**（**2026-10-12 从 `008-write-transport` 拆出**；离线实现已由 008 的 `T3.1` 交付于工作区，**真机 UI 复核未做** —— 勾选状态与迁入记录见 [`tasks.md`](./tasks.md)） 🔴 **2026-10-12 关闭轮订正（原文保留）**：真机 UI 复核**已做** —— V6（逐条 `commandText` 与 UI 网络面板 / API 响应体**三方逐字节相同**）、V7（成功态：`portproxy` **19→20→19**、我方防火墙 **0→1→0**）、V8（错凭据 ⇒ 三条文案齐 + `write/plan` **恰好 +1**、不重试）三行**均为通过**（证据见 [`tasks.md`](./tasks.md) 的 Phase 3 表与 Phase 7 §1）；`failed` / `skipped` / `rolledBack` 三态**仍只有离线覆盖**（不得写成「四态真机全通过」）。本 Spec 状态同步 **complete**。
 **优先级**: high
 **包名**: `dsh-wsl-docker-ports`（与 008 **同一个包**，本 Spec 只占「写入口的 UI 面」）
-**位置**: `packages/wsl-docker-ports/src/client/{write-token.ts,write-channel.ts,write-dto.ts,write-confirm.tsx,write-panel.tsx,pane-settings.tsx,settings-pipe.ts}` + `tests/client/{write-token,write-channel,write-confirm,write-panel}.test.tsx` + `tests/client/write-fixtures.ts` + `tests/unit/client-settings.test.ts`
+**位置**: `packages/wsl-docker-ports/src/client/{write-token.ts,write-channel.ts,write-dto.ts,write-confirm.tsx,write-panel.tsx,pane-settings.tsx,settings-pipe.ts}` + `tests/client/{write-token,write-channel,write-confirm,write-panel}.test.tsx` + `tests/client/write-fixtures.ts` + `tests/unit/client-settings.test.ts` 🔴 **2026-10-12 关闭轮补**：`src/client/write-result.tsx`（T1.1 结果四态）与 Phase 7 §3 拆分出的 `tests/client/{write-result,write-token-clear,pane-write}.test.tsx` 等亦属本 Spec 涉面（详见 [`tasks.md`](./tasks.md) Phase 7 §3）。
 **依赖**: [008-write-transport](../008-write-transport/README.md)（`depends_on`）—— 服务端写通道（路由 / `plan` / `apply` / 票据 / 审计 / 401 鉴权）仍在 008，本 Spec **不重复**
 
 ## 1. 为什么单独成篇（拆分留痕）
@@ -57,4 +60,4 @@ transitions:
 - 本 Spec 属**需求驱动**（沿用 001–008 的既有体例：先 REQ-N + EARS，再派生 design）。
 - 🔴 **红线沿用 003 / 005 / 008**：不 `portproxy reset`、不碰所有权集合外的规则、不建通配符防火墙规则、卸载不删东西；真机只用**临时 / 一次性 profile**（AGENTS.md 白名单：**不得**用 `desktop` / `web`），跑完**逐字节还原**。
 - 🔴 **本 Spec 不新增任何执行能力**：客户端只回传 `planId` + `ticket`（+ `confirmed:true` / `origin:'user'`）与**声明式目标**，命令文本**没有入口**（见 `write-channel.ts` 的 `serializeTarget` / `serializeApplyBody`）。
-- 行数门：LeanSpec `warnLines` = 200（提示）/ `maxLines` = 400（硬门）；本 Spec 的 `requirements.md` / `design.md` / `tasks.md` **一律 < 200**，别一建出来就贴线。
+- 行数门：LeanSpec `warnLines` = 200（提示）/ `maxLines` = 400（硬门）；本 Spec 的 `requirements.md` / `design.md` / `tasks.md` **一律 < 200**，别一建出来就贴线。 🔴 **2026-10-12 关闭轮复算（原文保留）**：上句「一律 < 200」**作废** —— `requirements.md` **98** 行 / `design.md` **70** 行 / `tasks.md` **306** 行（`split('\n')` **307**）⇒ `tasks.md` **已超 warn 200**（提示性阈值，**不强制压缩**）；硬门 **400** 未触。
