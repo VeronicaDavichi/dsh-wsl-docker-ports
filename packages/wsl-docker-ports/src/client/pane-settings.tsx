@@ -23,6 +23,13 @@ export const WRITE_TOKEN_TESTID = {
   state: 'write-token-state',
   generate: 'btn-write-token-generate',
   once: 'write-token-once',
+  /**
+   * 一次性凭据的**复制**按钮（🆕 2026-10-12 a11y 加固轮）：值是明文、可鼠标选中，
+   * 但**不进无障碍树** ⇒ 屏幕阅读器/自动化快照走的是这枚按钮（其无障碍名**不含值**）。
+   */
+  copy: 'btn-write-token-copy',
+  /** 复制结果提示（成功/失败文案都**不含**凭据本体） */
+  copyNote: 'write-token-copy-note',
   note: 'write-token-note',
   consequence: 'write-token-consequence',
   check: 'btn-write-token-check',
@@ -141,6 +148,12 @@ export function ElevationBlock(props: {
  *   即刚生成的那一次）。
  * - **清除 / 轮换**：轮换 = 再点一次生成（覆盖）；清除 = 两段式按钮（先「清除凭据」、
  *   再「确认清除」/「取消」）⇒ 二次确认在 UI 层、可被断言。
+ * - 🔴 **a11y 加固（2026-10-12 缺陷修复）**：一次性明文**不进无障碍树**。修前 `{issued}` 直接是
+ *   `<code>` 的文本子节点 ⇒ 无障碍树里就是一个 `StaticText` 节点、`name` = 凭据本体 ⇒ 每次
+ *   自动化验收快照（chrome-devtools `take_snapshot`）都把一次性凭据打进快照证据（违反了
+ *   `write-token.ts` 的「不落盘」口径）。修法 = 明文留在 `aria-hidden="true"` 容器里
+ *   （**屏上仍可见、可鼠标选中**）+ 一枚无障碍名**不含值**的「复制」按钮；值只经
+ *   `navigator.clipboard.writeText` 出去，**不进**文本节点之外的任何可读面（属性/日志/快照）。
  */
 export function WriteTokenBlock(props: {
   readonly sessionPresent: boolean;
@@ -157,6 +170,27 @@ export function WriteTokenBlock(props: {
 }): ReactElement {
   const { sessionPresent, configured, issued, busy, note, confirmingClear, onGenerate, onCheck, onClearRequest, onClearConfirm, onClearCancel } = props;
   const configuredText = configured === null ? '未检查' : configured ? '已配置' : '未配置（写通道一律 401，fail-safe）';
+  const [copyNote, setCopyNote] = useState<string | null>(null);
+  /**
+   * 复制到剪贴板（**唯一**把凭据送出去的 UI 动作）。
+   * 🔴 失败文案也要过 `withoutValue()`：剪贴板异常文本原则上不含值，但「异常对象里带上了等待的值」
+   * 是这类 API 的常见坑 ⇒ 落进 DOM 之前**无条件**把值替换掉（与「凭据零日志」同一条红线）。
+   */
+  const withoutValue = (text: string): string => (issued === null ? text : text.split(issued).join('«凭据已隐藏»'));
+  const copyIssued = async (): Promise<void> => {
+    if (issued === null) return;
+    const clipboard = (globalThis as { navigator?: { clipboard?: { writeText?: (value: string) => Promise<void> } } }).navigator?.clipboard;
+    if (clipboard?.writeText === undefined) {
+      setCopyNote('本环境没有剪贴板 API：请直接选中上面那串手工复制（明文可选中）。');
+      return;
+    }
+    try {
+      await clipboard.writeText(issued);
+      setCopyNote('已复制到剪贴板。该值不进无障碍树、不进日志、不落盘（只活在本会话的 sessionStorage 里）。');
+    } catch (error) {
+      setCopyNote(withoutValue(`复制失败：${error instanceof Error ? error.message : String(error)}（请直接选中上面那串手工复制）`));
+    }
+  };
   return (
     <section className="wdp-card" data-testid={WRITE_TOKEN_TESTID.block}>
       <h3>写通道凭据</h3>
@@ -221,12 +255,22 @@ export function WriteTokenBlock(props: {
       )}
       {issued === null ? null : (
         <div>
-          <p className="wdp-error">⚠️ 这串**离开后将不再显示，请立即复制**（页面不提供「再显示一次」的入口）。</p>
-          <p>
+          <p className="wdp-error">
+            ⚠️ 这串**离开后将不再显示，请立即复制**（页面不提供「再显示一次」的入口）。它**不进无障碍树**（屏幕阅读器读不到该值）—— 请用下面的「复制写通道凭据」按钮，或鼠标选中手工复制。
+          </p>
+          <p aria-hidden="true">
             <code className="wdp-pre" data-testid={WRITE_TOKEN_TESTID.once}>
               {issued}
             </code>
           </p>
+          <button type="button" className="wdp-btn" data-testid={WRITE_TOKEN_TESTID.copy} onClick={() => void copyIssued()}>
+            复制写通道凭据
+          </button>
+          {copyNote === null ? null : (
+            <p className="wdp-secondary" data-testid={WRITE_TOKEN_TESTID.copyNote}>
+              {copyNote}
+            </p>
+          )}
         </div>
       )}
       <p className="wdp-muted" data-testid={WRITE_TOKEN_TESTID.delivery}>

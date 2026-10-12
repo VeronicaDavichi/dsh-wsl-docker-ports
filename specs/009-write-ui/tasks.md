@@ -328,3 +328,22 @@
 > **为什么本轮只做 T3.3**（Phase 3 未勾选者：T3.1 / T3.2 / T3.3）：T3.1（确认对话框）与 T3.2（结果四态分色）都要求客户端先接上写通道，
 > 而 `plugin.ts:324` 明记「仍未接线 ⇒ **页面上点不到写入口**」，且客户端侧连 `ElevationInvoker` 都还是 gap（`plugin.ts:321`）
 > ⇒ 两者**不能独立完成**（还要先定客户端如何拿写通道凭据：T2.9 后无 `writeToken` 一律 401）。T3.3 不依赖它们，故为**最小且可独立完成**的一个。
+
+### 7) 🆕 2026-10-12 加固轮：一次性写通道凭据**不进无障碍树**（🔴 修前缺陷 + 回归门 + 变异哨兵）
+
+**缺陷（file:line + 原文，HEAD `da34954` 时点）**：`packages/wsl-docker-ports/src/client/pane-settings.tsx:222-231` 把一次性明文渲染成
+`<p><code className="wdp-pre" data-testid={WRITE_TOKEN_TESTID.once}>{issued}</code></p>` —— 值就是 `<code>` 的**文本子节点**。
+
+**根因（为什么进 a11y；实跑判据）**：无障碍树把文本节点报成 `StaticText`、`name` = 文本本体（CDP `Accessibility` 域口径；自动化验收快照 `take_snapshot` 读的正是它）。jsdom 实跑（`@testing-library/dom` 的 `isInaccessible` / `getRoles`）对修前形态给出 `isInaccessible(code)=false`、`getRoles(container)` 含 `code` ⇒ 该元素与它的文本**在**树里。后果：每跑一次自动化验收，一次性凭据就被写进快照证据 —— 与 `write-token.ts:10-11`「只活在本会话、**不落盘**」相悖。
+
+**修法（候选①，最小改动）**：明文留在 `<p aria-hidden="true">` 容器里（**屏上仍可见、可鼠标选中**）+ 新增一枚无障碍名**不含值**的「复制写通道凭据」按钮（`data-testid=btn-write-token-copy`）；值只经 `navigator.clipboard.writeText` 出去，复制失败文案在落 DOM 前把值换成 `«凭据已隐藏»`（剪贴板异常文本原则上不含值，此处**无条件**遮掉）。**不选**②`<input type=password>`：用户**看不到**值，违反「仍能看到」；**不选**③默认遮罩 + 显示：主动揭示后值照样进树，且与既有「只显示这一次」的交互重复、多一条随时可揭示的入口。改动面 = `src/client/pane-settings.tsx`（**1 个源文件**）+ 新测试文件 1 个；**零新依赖**。
+
+**回归门 + 变异哨兵（新文件 `packages/wsl-docker-ports/tests/client/write-token-a11y.test.tsx`，5 条）**：
+门① a11y 投影（元素 `role` + 名字来源属性 + 非隐藏子树的 `StaticText`）里查不到凭据**任意子串**（长度 6/8/16/32/64 的全窗口 = **199 个**）⇒ 命中 **0**；且 `getRoles` 里 `code` 已消失、`isInaccessible(once)=true`，并证明「只被 `aria-hidden` 摘掉」（`once.hidden=false`、`display≠none`、明文仍在 DOM）。
+门② 属性面（含 `data-*`）扫 **155 条**属性 ⇒ 命中 **0**。门③ 可用性：明文 `textContent === 期望值`、复制按钮在且无障碍名「复制写通道凭据」不含值、点击后剪贴板**逐字**收到 1 次、且它**没有** `data-write-control`（非 NAT 时不被锁）。门④ 对抗性剪贴板（异常文本里**故意**塞值）⇒ 提示 0 命中 + 失败不静默。
+**哨兵**：把修前实现（逐字复刻）用**同一个投影函数**当场跑 ⇒ 命中 **199** 个窗口（**判红**）；修后同一函数命中 **0**（**判绿**）⇒ 门不恒真（`write-token-a11y.test.tsx` 末条用例，读数出自 `console.log`）。
+
+**门读数（本轮实跑；Windows 侧 `node` 直调，未跑 `pnpm`）**：构建三步 `tsc -p tsconfig.build.json` / `node scripts/build-client.mjs` / `tsc -p tsconfig.client.json` = **exit 0 / 0 / 0**；`lib/` **89** 个文件里**只有 2 个**变了（`lib/client.js` **141,884 → 144,149 B**、`lib/types/client/pane-settings.d.ts` **4,661 → 5,791 B**），其余 **87** 个 sha 逐字节不变；`node scripts\verify-client-loader.mjs`（**本包**）= **24 项断言 / 0 失败 / exit 0**；`node --test` = **425 / 425 / exit 0**；`vitest run` = **12 文件 / 116 passed / exit 0**（基线 11 文件 / 111 passed 恰好 + 本文件 1 文件 5 条）；`tsc -p tsconfig.json` = **exit 0**；`check-size` / `check-scope` / `check-exports` = **exit 0**。
+⚠️ **订正一处口径（§P2 上限的归属）**：`mainBytes <= 65,536 B` 的判据实现在 **`packages/terminal-profiles/scripts/verify-client-loader.mjs`**（`MAIN_BUNDLE_LIMIT_BYTES`），其被测产物是 **`packages/terminal-profiles/lib/client.js` = 53,014 B（余 12,522 B，60 条判据全绿）**；本轮**未改该包任何文件**，读数与本轮开工前一致。**本包**自己的 `lib/client.js` = **144,149 B**，而**本包**的 loader 门（24 条）**没有**字节判据 ⇒ 「主 bundle 64 KiB」**是否覆盖本包尚无裁定**；若裁定覆盖，则本包**开工前就已越线约 2.16×**，处置 = 另开拆包轮（把配置页族改懒加载 chunk），**不在本 Spec 面内、本轮不做**。
+
+**🔴 未验 / 未覆盖（如实）**：① **真机 a11y 快照复核仍未做** —— 本门的「无障碍树」是 `@testing-library/dom` + `dom-accessibility-api` 的**投影**，**不是** Chrome CDP 的真 AX 树（红线：不起实例、不碰 `volatile-probe` / `desktop` / `web`）；② 本轮只核到「**DOM 文本节点 / 元素属性（含 `data-*`）/ `console.*`（既有 ⑥/⑥b 用例）/ UI 文案**」这一层；**网络面板**（凭据的唯一设计去处是 `Authorization: Bearer` 头，`write-channel.ts:237`；请求 URL 不带值 —— 未在真机 DevTools 上核）、**系统剪贴板与剪贴板历史**（新按钮会真写系统剪贴板，其留存策略在浏览器/OS 侧，**不在本插件控制面内**）、**服务端日志**（`write-auth.ts` 只比对、不回显；未读其日志实现）三层**未验**；③ 值仍活在本会话 `sessionStorage`（设计如此，`write-token.ts:10-11`），它**不在** a11y 面。
