@@ -186,7 +186,9 @@
     - `tests/unit/client-settings.test.ts` **308 → 329** + 新增 `tests/unit/client-clear-token.test.ts` **140**（切面 = **写值管道 vs 按路径 unset 管道**）。
     - 用例数不变的对拍口径：拆之前 `vitest` 报 `write-token-pane.test.tsx` **15** 条、拆之后 **10 + 5 = 15**；拆之前 `node --test` 全包 **414** 条、拆之后仍 **414** 条（逐条名字集合 `Compare-Object` 空差）。
   - 判据：**14 个**文件（含全部新建）逐个 `split('\n')` 复算，**全部 ≤ 400**（最大 = 313）。**没有**靠压缩注释凑行数（拆的是模块边界）。
-  - ⚠️ **额外发现（不在本轮范围，未动）**：`tests/unit/transport-apply.test.ts` = **748** 行，**HEAD 就是 747**（本轮零改动）⇒ 它是一条**既存**的 SHALL 违规，如实记录、本轮不擅自扩大范围去拆。
+  - 🔴 **订正留痕（2026-10-12 拆分迁移轮）**：上面这条「不在本轮范围，未动」的记载**保留原文** —— 它是**当时**的事实。该文件**已拆**（`tests/unit/transport-apply.test.ts` 这个路径**不再存在**）。拆前 check-size 口径 = **747** 行 / `split('\n')` 口径 = **748**（口径 = `split('\n').length - (文本以 \n 结尾 ? 1 : 0)`，与 001 `check-size.mjs` 逐字一致）⇒ 本仓最大 check-size 口径 **747 → 305**。
+    - 拆法（refactor：**零行为改动、零新依赖、零真机、未跑 `pnpm run`**，故 lockfile 仍逐字节不变）= 台架 `tests/unit/transport-apply-rig.ts` **305**（只导出函数/常量，**零** `test` / `it` / `describe` 调用）+ `transport-apply-plan.test.ts` **152** + `transport-apply-exec.test.ts` **232** + `transport-apply-rollback.test.ts` **70** + `transport-apply-wire.test.ts` **70**（同口径，**全部 ≤ 400**）。切面 = 计划/票据门 vs 真执行+存在性闸门 vs 回滚 vs HTTP 接线。
+    - 🔴 **用例零删减、零改名**：拆前 **16** 条 = 拆后 **16** 条（名字集合 `Compare-Object` **空差**；16/16 个用例块**逐字节相同**，脚本对拍）。三道门（包内 cwd、Windows）：`tsc -p tsconfig.json` exit **0**；`node --test --test-concurrency=1 "tests/**/*.test.ts"` = **414 tests / 414 pass / 0 fail / exit 0**（与 009 收口轮同值）；`vitest run` = **11 文件 / 111 通过**。
 
 ### 4) 两条**口径订正**与一条**裁定留痕**（本轮新增，均为追加、不删原文）
 

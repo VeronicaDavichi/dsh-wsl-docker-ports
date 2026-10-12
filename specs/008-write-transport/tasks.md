@@ -159,6 +159,11 @@
 > `elevationPolicy` **已从插件 config 读**（读不到/认不出 ⇒ 事实面 `unknown` ⇒ 执行层按 SSoT 默认落到 **`none`**，不再按 `ask`；
 > 生产清单当前没有 `config:` 块 ⇒ 缺省即不写，要真写须先在清单/配置页给值）。
 
+> 🔴 **订正留痕（2026-10-12 拆分迁移轮；上面本段原文「新增 `tests/unit/transport-apply.test.ts`」按路径的引用保留原文、不删）**：该文件**已拆**（`tests/unit/transport-apply.test.ts` 这个路径**不再存在**）—— 它是一条**既存**的「单文件 ≤ 400 行」SHALL 违规（拆前 check-size 口径 = **747** 行、`split('\n')` 口径 = **748**；口径 = `split('\n').length - (文本以 \n 结尾 ? 1 : 0)`，与 001 `check-size.mjs` 逐字一致）。
+> 拆法（2026-10-12，refactor：**零行为改动、零新依赖、零真机、未跑 `pnpm run`**）= 台架 `tests/unit/transport-apply-rig.ts` **305** 行（只导出函数/常量，**零** `test` / `it` / `describe` 调用 ⇒ 不改用例数）+ `transport-apply-plan.test.ts` **152** + `transport-apply-exec.test.ts` **232** + `transport-apply-rollback.test.ts` **70** + `transport-apply-wire.test.ts` **70**（同上口径，**全部 ≤ 400**，最大 = 台架 305）。
+> 🔴 **用例零删减、零改名**：拆前 **16** 条 = 拆后 **16** 条（本段原文记的「**12 条**」是 T2.2/T2.3 当时的值，其后「补丁轮」+4 ⇒ 共 16；编号 ①–⑫ 与用例名**一字未改**）—— 名字集合 `Compare-Object` **空差**、16/16 个用例块**逐字节相同**（脚本对拍，不是眼看）。三道门复算（包内 cwd、Windows）：`tsc -p tsconfig.json` exit **0**；`node --test --test-concurrency=1 "tests/**/*.test.ts"` = **414 tests / 414 pass / 0 fail / exit 0**；`vitest run` = **11 文件 / 111 通过**。`package.json` / `pnpm-lock.yaml` 逐字节未动（HEAD blob hash 与工作区 hash 相同）。
+> ⚠️ **本段的判据内容、勾选状态与上面「5 条未勾项」（`T2.7`、`T4.1`–`T4.4`）一律未动**。
+
 ## 补丁轮：安全默认值 + 防火墙存在性（2026-10-09，离线；零真机动作）
 
 **三项施工**（严格按主人本轮裁定；005（`src/elevate/**`）、005 的 `src/write/**` **一行未改**）：
@@ -193,6 +198,8 @@
 `transport-real-facts` 1 条 + `plugin-entry` 1 条）。新增/改动文件行数：`read/firewall-probe.ts` 147（新）、
 `apply.ts` 395、`real-facts.ts` 91、`wire-plugin.ts` 151、`plugin.ts` 399（**未涨**）、`design.md` 200（**未涨**）。
 🔴 **真机未验**：真写（netsh 19→20→19）与真防火墙现读都属需主人在场的验收；本轮**未装插件、未起实例、未跑任何写命令**。
+
+> 🔴 **订正留痕（2026-10-12 拆分迁移轮；上面本条判据原文按路径的引用保留原文、不删）**：原文两处按路径引用的 `tests/unit/transport-apply.test.ts`（① 编号 144 行的 T2.2/T2.3 段、② 本段「（基线 369 + 新增 12：… `transport-apply` 4 条）」）**已拆、该路径不再存在** ⇒ 拆分事实与复算数字见上一段的订正块（台架 305 + plan 152 + exec 232 + rollback 70 + wire 70；16 条用例名集合 `Compare-Object` **空差**；三道门全绿）。本段的**历史计数**（369 / 381 / 386）一律**保留原值**——它们记的是各自的**时点**，不是现值。
 
 ## ✅ T2.8 真机写入验收：PASS（2026-10-10，探针 profile `volatile-probe`，端口 43311）
 
