@@ -37,21 +37,21 @@
   - 判据：① 未确认 ⇒ 提权 spy 全 0；② 篡改 `target` ⇒ `plan-mismatch`、零执行；③ 客户端塞 `commands:[…]` 字段 ⇒ **被忽略**（服务端仍按 `target` 推导）；④ `origin:'agent'` 时不能绕过确认。
 - [x] T2.3 [REQ-4.1] `src/transport/apply.ts`：经 005 后端链执行，回传逐步结果（成功/失败/跳过 + 原因 + 耗时）。
   - 判据：后端返回 gsudo/native 各造一次假执行，逐步结果条数 == 计划条数；耗时字段为数字且 ≥ 0。
-- [ ] T2.4 [REQ-4.2] 幂等：执行前现读，已满足的规则标 `skipped`。
+- [x] T2.4 [REQ-4.2] 幂等：执行前现读，已满足的规则标 `skipped`。
   - 判据（**已订正 2026-10-10**）：**重复 apply 永不重复写规则、永不碰系统** —— 原字面判据「对同一目标连续 `apply` 两次 ⇒ 第二次 `executed` 为空、`skipped` 全中」**不可达**：第二次的 `add` 遇既有规则即被 `state-precondition` 拦下 ⇒ 无 `planId` ⇒ 无票据 ⇒ **409 `plan-mismatch`**（零执行、零重复规则，用例⑦钉住）。
-- [ ] T2.5 [REQ-4.3] 失败与回滚：中途失败 ⇒ 按 005 REQ-3.5 回滚本轮，回传 `{executed, rolledBack, skipped, failed}`。
+- [x] T2.5 [REQ-4.3] 失败与回滚：中途失败 ⇒ 按 005 REQ-3.5 回滚本轮，回传 `{executed, rolledBack, skipped, failed}`。
   - 判据：让第 2 条失败 ⇒ 第 1 条被回滚、返回体三个清单齐全、无「半成品」残留（假后端的状态快照断言）。
-- [ ] T2.6 [REQ-5.1] **真正发生过的动作**各落一条审计（执行尝试：成功/失败/回滚/超时）；🔴 **被拒绝的 apply 不写审计**（2026-10-09 主人裁定，依据见下条）。
+- [x] T2.6 [REQ-5.1] **真正发生过的动作**各落一条审计（执行尝试：成功/失败/回滚/超时）；🔴 **被拒绝的 apply 不写审计**（2026-10-09 主人裁定，依据见下条）。
   - 判据（**已订正 2026-10-10**）：执行尝试（成功/失败/回滚/超时）各一条；字段齐全（at/origin/elevationPolicy/backend/ports/scope/action/result/exitCode/durationMs/rolledBack）；无凭据字段；**被拒绝的 apply（未确认 / 错票 / `plan-mismatch` / 401）审计环 size 不变**。
   - ⚠️ 订正留痕：原文字「每次 `apply`（含拒绝/超时/失败/回滚）落一条审计」「成功与拒绝各留一条」**已作废**（裁定：拒绝 = 没发生）⇒ `disabled` / `no-actions` / 全部拒绝路径**不写**。真机佐证：`confirmed:false` ⇒ 403 且**不留**审计记录（T2.8）；401 不记账（T2.9/T2.10）。
 - [ ] T2.7 [REQ-6.2] 红线单测：无 `portproxy reset`、无通配符防火墙规则、集合外零动作。
   - 判据：对生成的命令**逐条断言**（正则白名单）：不含 `reset`；每条 `New-NetFirewallRule` 都带具体 `-LocalPort`。
-- [ ] T2.8 [REQ-6.1] 真机复验 P2（**需主人在场**；本机 UAC 不弹窗 ⇒ 无需点 UAC，但会真改系统状态）：
+- [x] T2.8 [REQ-6.1] 真机复验 P2（**需主人在场**；本机 UAC 不弹窗 ⇒ 无需点 UAC，但会真改系统状态）：
   - 判据：① 写一轮 `add` 后「他人 19 条**逐字节不变**」（`ReadAllBytes` 全字节比对 + sha256）（G5）；② 再跑一次同目标 ⇒ 条数不增（幂等）；③ 用 `action:'remove'` 回滚到写前状态，`netsh` 与写前**逐字节相同**；④ 审计里能读出实际后端（`gsudo`/`native`）（G6）。
 
 ## Phase 3（P3）：界面接线
 
-- [ ] T3.1 [REQ-3.1] 客户端：写动作前弹**确认对话框**，逐条展示命令原文与影响面；未确认不发 `apply`。
+- [x] T3.1 [REQ-3.1] 客户端：写动作前弹**确认对话框**，逐条展示命令原文与影响面；未确认不发 `apply`。
   - 判据：单测断言「未点确认 ⇒ 零网络请求」；对话框文本含每条命令原文（不是「即将执行」这种空话）。
 - [ ] T3.2 [REQ-4.1] 结果逐步反馈：成功/失败/跳过/回滚分色展示，失败给出可读原因。
   - 判据：四种结果的渲染分支各有单测用例；失败态一定带原因文本。
@@ -358,9 +358,36 @@ node **14**、43311 空闲、profile 内 ReparsePoint **0**、`~/.dsh` 与仓库
 | V3 | `apply(add)`（`confirmed:true` + 票据）⇒ `status:"ok"`、`executed` 含 `portproxy-add`+`firewall-add`；`portproxy` **19→20**、我方防火墙 **0→1**（规则为 `-LocalPort <port>`，**非通配符**） | 三处同时变化 | 建出通配符规则 / 他人 19 条被动过 |
 | V4 | 同端口 `apply(remove)` ⇒ `portproxy` **20→19**、我方防火墙 **1→0**、该端口规则行 **0**，且 `netsh … show v4tov4` 全文 SHA-256 回到 V2 之前 | 逐字节回到写前 | 残留规则 / 条数不回落 |
 | V5 | `apply` 不带 `confirmed:true` ⇒ **403**；随后 `GET …/write/audit?token=…` 的 `size` **不变**（拒绝不记账） | 403 + size 不变 | 被拒绝的 apply 也进审计环 |
-| V6 | 🔴 **未接线、不可验（待 T3.1/T3.2）**：客户端确认对话框（逐条命令原文）与结果四态分色 | —— | 页面上**点得到**写入口却**没有**对话框 ⇒ 回归 |
+| V6 | 🟡 **T3.1 已离线接线（2026-10-12）；真机 UI 复核未做**：客户端确认对话框（逐条命令原文）已接到页面上（预演 → 确认两段式），离线判据 44 条全绿；T3.2 结果四态分色**未接线** | 见左（离线层已验） | 页面上**点得到**写入口却**没有**对话框 ⇒ 回归 |
 
 **收尾复算（每次必查）**：`portproxy` 严格 IPv4 行数回 **19**（⚠️ 朴素 4-token 正则会数进表头/分隔行 ⇒ 误报 **21**；口径见 T2.8 留痕）；
 我方防火墙规则 **0**；规则名与听端口的残留 **0**；node 进程回 **14**；探针端口空闲；`pnpm install --frozen-lockfile` exit **0**；`git status --porcelain` 空。
 
-⚠️ **未验（如实）**：① 本节**尚未整份跑过**（V1–V5 的等价断言由 T2.8/T2.10 当场验过，但**不是**在「按本清单逐条」的形式下）；② V6 依赖 T3.1/T3.2 ⇒ **未接线、不可验**；③ `writeToken` **未配置**时 401 的 fail-safe 分支只有离线单测（未上真机）；④ `origin:"agent"` + `passby` 的降级为 `ask` 未验。
+⚠️ **未验（如实）**：① 本节**尚未整份跑过**（V1–V5 的等价断言由 T2.8/T2.10 当场验过，但**不是**在「按本清单逐条」的形式下）；② V6 的**离线**部分已由 T3.1 接线并验（44 条 vitest 判据全绿），但**真机 UI 复核仍未做**（该轮代理人未开浏览器）；T3.2 结果四态分色未接线；③ `writeToken` **未配置**时 401 的 fail-safe 分支只有离线单测（未上真机）；④ `origin:"agent"` + `passby` 的降级为 `ask` 未验。
+
+## ✅ T3.1 客户端写前确认对话框：离线完成（2026-10-12，零真机、零提权、零写入）
+
+**施工**（新增 5 文件 / 改动 6 文件，全在 `src/client/**`；🔴 `src/elevate/**`、`src/write/**`、`package.json`、`pnpm-lock.yaml` 一行未改）：
+`write-token.ts`（凭据仓库：sessionStorage 命名空间键 + 32B 随机十六进制 + **一次性**显示）、
+`write-channel.ts`（`/write/plan`+`/write/apply` 客户端 + 白名单序列化 + 失败四分类 + 声明读取器）、
+`write-dto.ts`（响应解读：`commandText` **逐字搬运**）、`write-confirm.tsx`（确认对话框 + 提权档置灰）、
+`write-panel.tsx`（预演 → 确认 → 执行状态机）；改动：`wire.ts`（`init.body` 可选字段）、`settings-pipe.ts`（+`writeWriteToken`）、
+`host.ts`（`ClientRuntime.write`）、`index.ts`（组装 wiring）、`pane.tsx` / `pane-settings.tsx`（挂载凭据块 + 写通道块，**挂载期零 IPC**）。
+
+**契约落地（逐条）**：① 凭据默认仍空，由配置页「生成并保存写通道凭据」经 `remote.settings.update('dsh-wsl-docker-ports', {writeToken})` 写入并一次性显示；
+② 客户端存 **sessionStorage**（刷新不丢、不落盘、绝不进日志/审计/错误文案 —— 静态扫描 `console.` 与 `localStorage` 用法 **0 处**）；③ 401 ⇒ 指路 + **不重试**（请求数停在该次）；
+④ 对话框逐条渲染服务端 `steps[].commandText` **原文** + 影响面（`lan` 逐字含「会新增 1 条 portproxy 规则 + 1 条防火墙规则」）+ notes；
+⑤ **未点确认 ⇒ 零请求**（对话框零副作用；apply 只在确认回调里发一次）；⑥ `policy` 为 `none`/`unknown` ⇒ 按钮置灰 + 写明原因；
+⑦ 409/403 ⇒ **重新 plan + 重新要求确认**（不静默重试）；⑧ 客户端只回传 `planId`+`ticket`（+`confirmed:true`/`origin:'user'`）与声明式 target，**命令文本没有入口**。
+
+**判据**：`tsc -p tsconfig.json` **exit 0**；全包 `node --test --test-concurrency=1 "tests/**/*.test.ts"` **386/386（0 fail）**
+（其中 T5.7 由「5 个方法」订正为 **6**：新增的 `writeWriteToken` 是**配置写入**、不是执行/提权入口，`forbidden` 断言未动）；
+`vitest run` **75/75**（7 文件；新增四份共 **44** 条：`write-token` 10 / `write-channel` 11 / `write-confirm` 12 / `write-panel` 11）；
+`lib/client.js` 由既有 esbuild 脚本重建（**123,207 B**，首行自注册形态未变）。
+
+**顺带对齐复选框**：T2.4（订正后判据 + 用例⑦）、T2.5（判据本就是假后端快照断言 + 用例⑤）、T2.6（T2.8 的 `audit` 恰 2 条 + 403 不留审计；T2.9/T2.10 的 401 不记账）、T2.8（本节 PASS 表）改为 `[x]`；
+**T2.7 留空** —— 正文**无任何** PASS 记录提及它的三条红线单测（`redline-guards` / `elevate-script` 里的 `reset` 白名单属 003/005 既有测试，不能拿来勾 008 的 T2.7）。
+
+🔴 **未验（如实）**：**真机 UI（V6）未跑** —— 本轮代理人未开浏览器、未装插件、未起实例、未跑任何 `netsh`/`New-NetFirewallRule`
+⇒「页面上真能点出对话框并弹命令原文」只有**离线渲染证据**；另「配置页按钮写入 → 插件 config 投递」这条链路在真机**未验证**
+（服务端真读到 `writeToken` 已由 T2.9 证实，但把值**写进去**的这步未上真机；UI 文案已明写「若无效应重载插件行」）。

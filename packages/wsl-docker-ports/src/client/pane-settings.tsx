@@ -17,6 +17,14 @@ import { TESTID } from './rows.ts';
 import type { ElevationPolicyValue } from './settings-pipe.ts';
 import type { ExecControlView, ManagedPortsFormView, DockerView, PortsPageView } from './types.ts';
 
+/** 凭据块的 `data-testid`（008 T3.1 自己的一份；不进 `rows.ts` 的 `TESTID`，那里已 364/400 行） */
+export const WRITE_TOKEN_TESTID = {
+  block: 'write-token',
+  state: 'write-token-state',
+  generate: 'btn-write-token-generate',
+  once: 'write-token-once',
+} as const;
+
 export function ManagedPortsBlock(props: {
   readonly form: ManagedPortsFormView;
   readonly draft: string;
@@ -103,6 +111,58 @@ export function ElevationBlock(props: {
         ))}
       </select>
       <p className="wdp-muted">{elevation.note}</p>
+    </section>
+  );
+}
+
+/**
+ * 写通道凭据（008 T3.1 契约 1）：**唯一的凭据生成入口**。
+ *
+ * - 契约要求「由**配置页**提供生成并保存动作」+「一次性显示」⇒ 这里只有一枚按钮与一段
+ *   **生成后才有**的明文（`issued`）。刷新后 `issued` 为空 ⇒ 明文不再出现（凭据仍活在本会话的
+ *   sessionStorage 里，客户端照常带得出去），这正是「一次性」的落地方式。
+ * - 本块**不携带 `data-write-control`**：它不是提权写控件，非 NAT 时也必须可用
+ *   （与 `sel-elevation` 同一口径 —— 否则「没凭据」与「非 NAT」两把锁会互相锁死）。
+ * - 生成后要写服务端配置，故 `onGenerate` 是异步的；`busy` 期间按钮不可点（避免连点生成两串）。
+ */
+export function WriteTokenBlock(props: {
+  readonly present: boolean;
+  readonly issued: string | null;
+  readonly busy: boolean;
+  readonly note: string | null;
+  readonly onGenerate: () => void;
+}): ReactElement {
+  const { present, issued, busy, note, onGenerate } = props;
+  return (
+    <section className="wdp-card" data-testid={WRITE_TOKEN_TESTID.block}>
+      <h3>写通道凭据</h3>
+      <p className="wdp-muted" data-testid={WRITE_TOKEN_TESTID.state}>
+        {present
+          ? '本会话已持有凭据（sessionStorage：刷新不丢、不落盘、不进日志/审计）。'
+          : '本会话尚无凭据 ⇒ 写通道一律 401（服务端未配 writeToken 时同样 401，fail-safe）。'}
+      </p>
+      <button
+        type="button"
+        className="wdp-btn wdp-btn-primary"
+        data-testid={WRITE_TOKEN_TESTID.generate}
+        data-settings-control="1"
+        disabled={busy}
+        onClick={onGenerate}
+      >
+        生成并保存写通道凭据
+      </button>
+      {note === null ? null : <p className="wdp-secondary">{note}</p>}
+      {issued === null ? null : (
+        <p>
+          <code className="wdp-pre" data-testid={WRITE_TOKEN_TESTID.once}>
+            {issued}
+          </code>
+        </p>
+      )}
+      <p className="wdp-muted">
+        ⚠️ 服务端要读到新值需要重载插件行；settings 到插件 config 的投递链在真机**未验证**
+        （若预演仍 401，先重载插件行再试）。
+      </p>
     </section>
   );
 }

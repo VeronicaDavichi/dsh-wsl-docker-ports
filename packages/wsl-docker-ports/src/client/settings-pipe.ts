@@ -44,6 +44,12 @@ export interface SettingsPatch {
   readonly distro?: string;
   readonly elevationPolicy?: ElevationPolicyValue;
   readonly scopes?: Readonly<Record<string, ScopeValue>>;
+  /**
+   * 写通道凭据（008 T3.1 契约 1）。**默认仍为空**：本文件不会自动生成它，
+   * 只有用户在配置页点「生成并保存写通道凭据」才会带上这个字段
+   * （`write-token.ts` 的 `issueWriteToken()` 负责生成与一次性展示）。
+   */
+  readonly writeToken?: string;
 }
 
 export interface SettingsWriteResult {
@@ -69,6 +75,11 @@ export interface SettingsPipe {
   writeDistro(name: string): Promise<SettingsWriteResult>;
   writeElevationPolicy(policy: ElevationPolicyValue): Promise<SettingsWriteResult>;
   writeScope(port: number, scope: ScopeValue): Promise<SettingsWriteResult>;
+  /**
+   * 写通道凭据写回（008 T3.1）：**只写配置，不经提权、不发请求**。
+   * 调用方（配置页）负责生成与「只显示一次」，本层不读回、不缓存、不打印凭据。
+   */
+  writeWriteToken(token: string): Promise<SettingsWriteResult>;
   /** `update` 的真实调用次数（测试断言；「零提权调用」由提权侧计数器给出） */
   updateCount(): number;
 }
@@ -164,6 +175,7 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
     writeDistro: (name) => write({ distro: name }),
     writeElevationPolicy: (policy) => write({ elevationPolicy: policy }),
     writeScope: (port, scope) => write({ scopes: { [String(port)]: scope } }),
+    writeWriteToken: (token) => write({ writeToken: token.trim() }),
     updateCount: () => updateCount,
   };
 }

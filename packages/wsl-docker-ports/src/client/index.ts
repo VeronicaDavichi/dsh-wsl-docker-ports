@@ -63,6 +63,9 @@ import { PAGE_ID, PAGE_KIND, PAGE_TITLE, TAB_SLOT, TAB_TITLE_SLOT, portsTabDefin
 import { createRouteSource } from './route-source.ts';
 import { createSettingsPipe } from './settings-pipe.ts';
 import { installStylesWith } from './styles.ts';
+import { createWriteWiring } from './write-channel.ts';
+import type { WriteWiring } from './write-channel.ts';
+import { createWriteTokenStore, defaultSessionStorage } from './write-token.ts';
 
 /** 模块级 Cordis 服务注入（**只放稳定服务**） */
 export const inject: readonly string[] = CLIENT_SERVICES;
@@ -165,12 +168,25 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
     };
   }
 
+  // ⑤ 写通道（T3.1）：凭据仓库先建（缺省真 sessionStorage；取不到 ⇒ 内存降级 —— 绝不落盘）
+  const tokenStore = options.tokenStore ?? createWriteTokenStore(options.sessionStorage ?? defaultSessionStorage());
+  const write: WriteWiring =
+    options.write ??
+    createWriteWiring({
+      settings,
+      tokenStore,
+      ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+    });
+
   const runtime: ClientRuntime = {
     source,
     // 惰性软取：`remote.settings` 可能晚于本插件就绪（contract §D13），故传 getter 而不是取一次的值
     settings,
     elevation: options.elevation,
     exec: options.exec,
+    // ⑧ 008 T3.1 写通道：路由客户端 + 凭据仓库（sessionStorage）+ 所有权声明读取器。
+    //    **构造期零请求**：channel 只在用户点「预演」时才发第一个请求。
+    write,
   };
 
   const disposers: (() => void)[] = [];

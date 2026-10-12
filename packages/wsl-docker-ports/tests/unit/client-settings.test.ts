@@ -156,10 +156,12 @@ test('T5.7 零提权调用：写配置的一轮里提权计数器保持 0（且�
   console.log(`  · 扫了 2 次配置写入 / ${String(elevationCalls.length)} 次提权调用（updateCount=${String(runtime.settings.updateCount())}）`);
 });
 
-test('T5.7 管道面收窄：settings 管道只暴露 5 个方法，没有任何「执行/提权」入口', () => {
+test('T5.7 管道面收窄：settings 管道只暴露 6 个方法，没有任何「执行/提权」入口', () => {
   const pipe = createSettingsPipe(() => undefined);
   const keys = Object.keys(pipe).sort();
-  assert.deepEqual(keys, ['readConfig', 'updateCount', 'writeDistro', 'writeElevationPolicy', 'writeManagedPorts', 'writeScope']);
+  // 008 T3.1 追加第 6 个：`writeWriteToken` —— 它是**配置写入**（与服务端 config 的 writeToken 同一个字段），
+  // 不是执行/提权入口；下面的 forbidden 断言（写配置零提权调用）仍是这条判据的真正红线。
+  assert.deepEqual(keys, ['readConfig', 'updateCount', 'writeDistro', 'writeElevationPolicy', 'writeManagedPorts', 'writeScope', 'writeWriteToken']);
   const forbidden = ['run', 'invoke', 'exec', 'elevate', 'spawn'];
   assert.deepEqual(forbidden.filter((key) => key in pipe), [], '配置管道不得带执行入口');
   console.log(`  · 扫了 ${String(keys.length)} 个方法名：${JSON.stringify(keys)}；执行入口 0 个`);

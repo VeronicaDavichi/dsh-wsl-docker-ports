@@ -122,10 +122,14 @@ export interface FetchResponseLike {
   json(): Promise<unknown>;
 }
 
-/** `fetch` 的最小签名（**只声明用得到的**：GET + 两个请求头 + `cache`） */
+/**
+ * `fetch` 的最小签名（**只声明用得到的**：GET + 两个请求头 + `cache`）。
+ * `body` 是 008 T3.1 加的**可选**字段：写通道（`client/write-channel.ts`）要 POST JSON；
+ * 只读快照那条路（`client/route-source.ts`）不传它 ⇒ 既有调用与断言逐字不变。
+ */
 export type FetchLike = (
   url: string,
-  init?: { readonly method?: string; readonly cache?: string; readonly headers?: Readonly<Record<string, string>> },
+  init?: { readonly method?: string; readonly cache?: string; readonly headers?: Readonly<Record<string, string>>; readonly body?: string },
 ) => Promise<FetchResponseLike>;
 
 /* ───────────────────────── 快照里的视图类型（宿主装配、客户端渲染） ───────────────────────── */

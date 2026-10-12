@@ -23,9 +23,11 @@ import type { Scope } from '../diff/types.ts';
 import type { ClientRuntime, ForwardAction } from './host.ts';
 import { buildPortsPageView, summarizeWriteReport } from './page.ts';
 import { ContainersBlock, DistroBlock, DockerFailureBlock, ExternalRulesBlock, PortsBlock, UnsupportedBlock } from './pane-tables.tsx';
-import { ElevationBlock, ManagedPortsBlock, NextPhaseBlock, RawOutputBlock } from './pane-settings.tsx';
+import { ElevationBlock, ManagedPortsBlock, NextPhaseBlock, RawOutputBlock, WriteTokenBlock } from './pane-settings.tsx';
 import { mergeManagedPortsDecl, TESTID } from './rows.ts';
 import type { NatGatePanelView, PortRowView, PortsPageView, PortsSnapshot } from './types.ts';
+import { WriteChannelBlock } from './write-panel.tsx';
+import { issueWriteToken } from './write-token.ts';
 
 export interface PortsPaneProps {
   readonly runtime: ClientRuntime;
@@ -129,6 +131,38 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
   const [checkedPresets, setCheckedPresets] = useState<readonly string[]>([]);
   const [scopeDraft, setScopeDraft] = useState<Readonly<Record<string, Scope>>>({});
   const [lastWrite, setLastWrite] = useState<LastWriteView | null>(null);
+  /**
+   * 写通道凭据的**本地**状态（T3.1 契约 1/2）：
+   * - `tokenPresent` 的初值直接读 sessionStorage（**零 IPC**：挂载期不许 `describe()`，
+   *   否则 T5.1 的「开页 0 次配置读」判据立刻红）；
+   * - `issuedToken` 只在刚生成后非空 ⇒ 明文**只显示一次**，刷新即不再出现。
+   */
+  const [tokenPresent, setTokenPresent] = useState(() => runtime.write?.tokenStore.present() === true);
+  const [issuedToken, setIssuedToken] = useState<string | null>(null);
+  const [tokenBusy, setTokenBusy] = useState(false);
+  const [tokenNote, setTokenNote] = useState<string | null>(null);
+
+  const generateToken = async (): Promise<void> => {
+    const write = runtime.write;
+    if (write === undefined) {
+      setTokenNote('写通道未接线：没有凭据仓库可写（只读面不受影响）。');
+      return;
+    }
+    setTokenBusy(true);
+    const result = await issueWriteToken({
+      store: write.tokenStore,
+      save: async (token) => {
+        const saved = await runtime.settings?.writeWriteToken(token);
+        return saved === undefined
+          ? { ok: false, message: '配置写回管道未接线（remote.settings 缺失）：凭据没有写进服务端' }
+          : { ok: saved.ok, message: saved.message };
+      },
+    });
+    setTokenBusy(false);
+    setIssuedToken(result.token);
+    setTokenNote(result.message);
+    setTokenPresent(write.tokenStore.present());
+  };
 
   const refresh = useCallback(
     async (allowColdStart: boolean, previous: LastWriteView | null): Promise<void> => {
@@ -242,6 +276,14 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
         elevation={view.elevation}
         onChange={(policy) => void writeSettings(async () => runtime.settings?.writeElevationPolicy(policy))}
       />
+      <WriteTokenBlock
+        present={tokenPresent}
+        issued={issuedToken}
+        busy={tokenBusy}
+        note={tokenNote}
+        onGenerate={() => void generateToken()}
+      />
+      <WriteChannelBlock write={runtime.write} enabled={view.nat.open} disabledReason={view.nat.reason} />
       <NextPhaseBlock exec={view.exec} />
       <RawOutputBlock docker={view.docker} />
       <LastWriteBlock lastWrite={view.lastWrite} />

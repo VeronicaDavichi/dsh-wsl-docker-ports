@@ -16,6 +16,8 @@
 import type { Scope } from '../diff/types.ts';
 import type { FetchLike, PortsSnapshot } from '../wire.ts';
 import type { SettingsPipe } from './settings-pipe.ts';
+import type { WriteWiring } from './write-channel.ts';
+import type { StorageLike, WriteTokenStore } from './write-token.ts';
 
 /**
  * 目标发行版面板的数据（T5.8）。T6.8 起家搬到宿主侧的 `../wire.ts`（它是传输契约的一部分），
@@ -172,6 +174,11 @@ export interface ClientRuntime {
   readonly settings: SettingsPipe | undefined;
   readonly elevation: ElevationInvoker | undefined;
   readonly exec: ExecServiceLike | undefined;
+  /**
+   * 008 写通道整包（T3.1）：宿主路由的 `plan`/`apply` 客户端 + 凭据仓库 + 所有权声明读取器。
+   * `undefined` ⇒ 页面上的写控件置灰并写明原因（**不是**报错：只读面与配置面照常可用）。
+   */
+  readonly write?: WriteWiring | undefined;
 }
 
 /**
@@ -206,4 +213,16 @@ export interface ClientApplyOptions {
   readonly timers?: ClientTimers;
   readonly elevation?: ElevationInvoker;
   readonly exec?: ExecServiceLike;
+  /**
+   * 008 T3.1：显式注入的写通道整包（测试/集成方）；给了就用它，
+   * 否则由 `index.ts` 用 `settings` + `sessionStorage` 现造一个。
+   */
+  readonly write?: WriteWiring;
+  /**
+   * 008 T3.1：凭据存储（缺省 = 真 `sessionStorage`；取不到就降级成**内存**实现 —— 宁可丢凭据，
+   * 也绝不落盘）。测试注入假件即可在无 DOM 下断言「存了什么」。
+   */
+  readonly sessionStorage?: StorageLike;
+  /** 便于断言「仓库里到底有什么」；不传时由 `index.ts` 按 `sessionStorage` 造 */
+  readonly tokenStore?: WriteTokenStore;
 }
