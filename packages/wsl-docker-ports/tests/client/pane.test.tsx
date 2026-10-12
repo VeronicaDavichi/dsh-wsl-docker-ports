@@ -29,6 +29,8 @@ interface Recorded {
   describes: number;
   updates: { readonly ns: string; readonly patch: Record<string, unknown> }[];
   elevation: ForwardWriteRequest[];
+  /** 宿主 `update` 被**尝试**的次数（含抛错那一次）——「不重试」靠它证 */
+  updateAttempts: number;
 }
 
 interface Harness {
@@ -37,14 +39,23 @@ interface Harness {
   readonly push: (next: ReturnType<typeof snapshot>) => void;
 }
 
+interface HarnessOptions {
+  /** 让宿主 `update` 抛错（模拟真机 `client api: settings/update expected 3 argument(s), got 2` 那类拒绝） */
+  readonly updateError?: string;
+  /** 管道**自身**抛（模拟调用方没接住的异常）—— 验面板那层兜底 */
+  readonly explodingSettings?: boolean;
+  /** 宿主压根没提供 `remote.settings` */
+  readonly noSettings?: boolean;
+}
+
 /**
  * 注入式 runtime：所有外部输入都是 fake（零真机、零提权、零文件）。
  *
  * **配置写与提权写都挂上计数器**（不是「提权那一侧压根没接」）——
  * 否则「零提权调用」只是「没有提权入口」的假象，而不是「有入口却没被走」。
  */
-function harness(initial: ReturnType<typeof snapshot>): Harness {
-  const recorded: Recorded = { loads: [], describes: 0, updates: [], elevation: [] };
+function harness(initial: ReturnType<typeof snapshot>, options: HarnessOptions = {}): Harness {
+  const recorded: Recorded = { loads: [], describes: 0, updates: [], elevation: [], updateAttempts: 0 };
   let current = initial;
   const remote: RemoteSettingsLike = {
     describe: async (): Promise<SettingsResponse> => {
@@ -52,10 +63,24 @@ function harness(initial: ReturnType<typeof snapshot>): Harness {
       return { ok: true, value: { revision: 3, namespaces: [{ ns: 'dsh-wsl-docker-ports', value: {} }] } };
     },
     update: async (ns: string, patch: unknown): Promise<SettingsResponse> => {
+      recorded.updateAttempts += 1;
+      if (options.updateError !== undefined) throw new Error(options.updateError);
       recorded.updates.push({ ns, patch: patch as Record<string, unknown> });
       return { ok: true, value: {} };
     },
   };
+  const pipe = createSettingsPipe(() => remote);
+  const settings: ClientRuntime['settings'] =
+    options.noSettings === true
+      ? undefined
+      : options.explodingSettings === true
+        ? {
+            ...pipe,
+            writeManagedPorts: async () => {
+              throw new Error('管道自身炸了（模拟未接住的异常）');
+            },
+          }
+        : pipe;
   const runtime: ClientRuntime = {
     source: {
       load: async () => {
@@ -63,7 +88,7 @@ function harness(initial: ReturnType<typeof snapshot>): Harness {
         return current;
       },
     },
-    settings: createSettingsPipe(() => remote),
+    settings,
     elevation: {
       run: async (request: ForwardWriteRequest) => {
         recorded.elevation.push(request);
@@ -327,6 +352,71 @@ describe('T5.7 端口声明写回', () => {
     expect(form?.textContent).toContain('abc');
     expect(test.recorded.updates).toHaveLength(0);
     console.log(`  · 非法声明扫了 ${String(test.recorded.updates.length)} 次写入（要求 0）`);
+  });
+});
+
+/**
+ * 009 缺陷 4（2026-10-12 真机）：点「保存声明」失败时**完全静默** ——
+ * 控制台只有 `Uncaught (in promise)`、没有 `update` 请求、没改文件、页面零提示。
+ * 判据：任何失败路径都必须出现**可读原因**（含宿主原话）+ **只尝试一次**（不重试）+ 零提权。
+ */
+describe('009 缺陷 4：「保存声明」失败必须给出可读原因（不静默、不重试）', () => {
+  const SAVE = 'btn-save-managed-ports';
+
+  it('宿主 update 抛错（真机那句 arity 错）⇒ 出现可读原因、尝试 1 次、零提权', async () => {
+    const test = harness(snapshot({ ports: [classification('missing', 3306)] }), {
+      updateError: 'client api: settings/update expected 3 argument(s), got 2',
+    });
+    render(<PortsPane runtime={test.runtime} />);
+    await screen.findByTestId('tbl-ports');
+    expect(document.querySelectorAll('[data-testid="action-error"]')).toHaveLength(0);
+
+    fireEvent.click(screen.getByTestId(SAVE));
+    const error = await screen.findByTestId('action-error');
+    expect(error.textContent).toContain('expected 3 argument(s), got 2');
+    expect(error.textContent).toContain('不重试');
+    await waitFor(() => {
+      expect(test.recorded.updateAttempts).toBe(1);
+    });
+    expect(test.recorded.updates).toHaveLength(0);
+    expect(test.recorded.elevation).toHaveLength(0);
+    console.log(`  · 扫了 1 次失败保存：提示「${(error.textContent ?? '').slice(0, 40)}…」/ 尝试 ${String(test.recorded.updateAttempts)} 次 / 提权 ${String(test.recorded.elevation.length)} 次`);
+  });
+
+  it('反向对照：同一路径写入成功 ⇒ 不出现任何 action-error（证明上面的提示只由失败触发）', async () => {
+    const test = harness(snapshot({ ports: [classification('missing', 3306)] }));
+    render(<PortsPane runtime={test.runtime} />);
+    await screen.findByTestId('tbl-ports');
+
+    fireEvent.click(screen.getByTestId(SAVE));
+    await waitFor(() => {
+      expect(test.recorded.updates).toHaveLength(1);
+    });
+    expect(document.querySelectorAll('[data-testid="action-error"]')).toHaveLength(0);
+    console.log(`  · 扫了 1 次成功保存：写入 ${String(test.recorded.updates.length)} 次、action-error 0 条`);
+  });
+
+  it('管道自身抛（调用方没接住的异常）⇒ 面板兜底也给可读提示', async () => {
+    const test = harness(snapshot({ ports: [classification('missing', 3306)] }), { explodingSettings: true });
+    render(<PortsPane runtime={test.runtime} />);
+    await screen.findByTestId('tbl-ports');
+
+    fireEvent.click(screen.getByTestId(SAVE));
+    const error = await screen.findByTestId('action-error');
+    expect(error.textContent).toContain('管道自身炸了');
+    expect(error.textContent).toContain('不重试');
+    console.log(`  · 扫了 1 次管道抛错：兜底提示「${(error.textContent ?? '').slice(0, 36)}…」`);
+  });
+
+  it('宿主未提供 remote.settings ⇒ 点保存也给可读提示（不再静默什么都不做）', async () => {
+    const test = harness(snapshot({ ports: [classification('missing', 3306)] }), { noSettings: true });
+    render(<PortsPane runtime={test.runtime} />);
+    await screen.findByTestId('tbl-ports');
+
+    fireEvent.click(screen.getByTestId(SAVE));
+    const error = await screen.findByTestId('action-error');
+    expect(error.textContent).toContain('remote.settings');
+    console.log(`  · 扫了 1 次未接线保存：「${(error.textContent ?? '').slice(0, 36)}…」`);
   });
 });
 

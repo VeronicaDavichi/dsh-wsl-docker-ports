@@ -100,18 +100,26 @@ export function elevationGate(plan: ClientPlan): WriteGate {
  * - `lan`：**逐字**给出「会新增 1 条 portproxy 规则 + 1 条防火墙规则」（`add` 时）——
  *   这句是主人点名的判据，测试按子串断言；`remove` 时同位置写「会删除 1 条…」（不能对删除说新增）。
  * - 步数**按服务端给的步骤算**，不靠客户端猜：这样「说 1 条却给了 3 条」不可能发生。
+ *
+ * 🔴 **缺陷 3（2026-10-12 真机）**：计划不可执行（`ready === false`）或零步骤时，上面那句
+ * 「会新增 1 条…」是**高报** —— 真机弹窗里同时出现「会新增 1 条 portproxy 规则 + 1 条防火墙规则」
+ * 与「服务端给出的步骤：共 0 条」，自相矛盾。⇒ 只有「计划可执行且真有步骤」才配谈新增/删除；
+ * 否则一律改成与实际一致的「不含可执行动作、不会改动任何规则」（判据：这两句互斥出现）。
  */
 export function buildImpactLines(plan: ClientPlan): readonly string[] {
   const kinds = plan.ports.flatMap((port) => port.steps.map((step) => step.kind));
   const portproxySteps = kinds.filter((kind) => kind.startsWith('portproxy-')).length;
   const firewallSteps = kinds.filter((kind) => kind.startsWith('firewall-')).length;
   const verb = plan.action === 'remove' ? '删除' : '新增';
-  const actionLine =
-    plan.action === 'remove'
+  const executable = plan.ready && plan.planId !== null && kinds.length > 0;
+  const actionLine = executable
+    ? plan.action === 'remove'
       ? `动作：移除 ${String(plan.ports.length)} 个端口的转发（逐端口 1 条，无批量入口）`
-      : `动作：建立 / 校正 ${String(plan.ports.length)} 个端口的转发（逐端口 1 条，无批量入口）`;
-  const scopeLine =
-    plan.scope === 'lan'
+      : `动作：建立 / 校正 ${String(plan.ports.length)} 个端口的转发（逐端口 1 条，无批量入口）`
+    : '动作：无 —— 服务端没有给出可执行的转发动作（既不新增、也不删除）。';
+  const scopeLine = !executable
+    ? `影响面：当前计划不含可执行动作，不会改动任何规则（portproxy 与防火墙都不动；服务端共 ${String(kinds.length)} 条步骤，全部不执行）。`
+    : plan.scope === 'lan'
       ? `影响面：局域网（lan）—— 局域网内其他主机可访问这些端口；会${verb} 1 条 portproxy 规则 + 1 条防火墙规则` +
         '（端口专属、非通配符，不碰所有权集合外的任何规则）。'
       : '影响面：仅本机（loopback）—— 只写回环地址的 portproxy 规则，不新增防火墙放行，局域网内其他主机访问不到。';

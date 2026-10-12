@@ -10,7 +10,8 @@
  * - `export function apply(ctx, config?)` —— 宿主调用；**返回值被宿主忽略**，给测试/集成方留一个句柄。
  * - `export default { name, inject, apply }` —— 宿主官方三种形态之一（函数 / 对象 / `class`），
  *   两种都给以免疫宿主侧解析差异（002 也是这样）。
- * - **刻意不导出 `Config`**（与 002 的差异，理由在下面「为什么没有 Config」）。
+ * - **导出 `Config`**（声明在 `./config.ts`；与 002 同形态）—— 2026-10-12 真机订正：缺它 ⇒ 宿主不给
+ *   本包注册 settings 命名空间 ⇒ 客户端读到的所有权声明恒空 ⇒ 计划零步骤（旧口径见下面那节）。
  *
  * 🔴 **少了 `apply`，profile 里插了 patch 也不会激活** —— 宿主只会 import 到一堆普通导出。
  * 这正是本包 `exports["."]` 从 `./src/index.ts` 切到 `./lib/index.js` 的原因。
@@ -28,12 +29,11 @@
  *    （真机实测：`apply` 时刻 `ctx.get('webServer')` 是 `undefined`，服务要到 `+755ms` 才到 —— 同步取一次
  *    就下结论会让路由**永不注册且零报错**，即缺陷 A）。
  *
- * ## 为什么没有 `Config`（与 002 的**刻意**差异）
+ * ## `Config` 已在 `./config.ts` 声明（2026-10-12 真机订正这一节）
  *
- * 002 必须声明 `Config`，因为它的 `profiles` 是 `volatile` 数组（要 Schemastery 才能让 volatile 生效）。
- * 本包 P0 的四个配置项（`managedPorts` / `distro` / `elevationPolicy` / `scopes`）走**客户端 settings 写回**（`remote.settings.update(ns, patch)`），宿主进程**不持有**它们的活体副本 ⇒ 没有 volatile 需求。
- * 而拿 Schemastery 只能经 `@deepseek-ai/schemastery`（本包**未声明**该依赖）⇒ 声明一个假 schema 比不声明更坏（002 文件头已记：假 schema 会让 volatile 静默失效）。
- * 故 `Config` 交给「真机 T0.5 确认 settings 命名空间是否需要宿主侧 schema」这一步决定，**此处不猜**（2026-10-09 集成方裁定：**不许用「先加个依赖试试」解决**）。
+ * 旧口径（本文件 2026-10-09 版，**留痕不删**）：认为「P0 四个配置项走客户端 `remote.settings` 写回、宿主进程不持有活体副本 ⇒ 没有 volatile 需求 ⇒ 不需要 `Config`」。🔴 **真机推翻**：命名空间存在与否只看模块**有没有导出 `Config`**，与 volatile 无关（真机 `settings/describe` 有 002 的 `dsh-terminal-profiles`、没有本包 ⇒ 客户端声明恒空 ⇒ 计划零步骤）。
+ * 现在导出**真** schemastery schema（字段与两侧读写面对齐），**零新增依赖**：多锚点运行时解析，实测证据与锚点清单在 `./config.ts` 文件头；**刻意不标 `.volatile()`** —— 本入口按**直接属性读**取 `elevationPolicy` / `writeToken` / `distro`，标了会读成 `undefined`（提权落 `none`、凭据永久 401）。
+ * 📌 **2026-10-09 集成方裁定「不许用『先加个依赖试试』解决」继续有效**：本轮没有加任何依赖，也没有声明假 schema（解析不到 ⇒ `Config === undefined` + 诊断，绝不造假）。
  *
  * ## 仍然缺的那一件（不静默，写进 `gaps`）
  *

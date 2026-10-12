@@ -269,17 +269,27 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
     await refresh(false, summary);
   };
 
-  const savePorts = async (): Promise<void> => {
-    const ports = view.managedPorts.presets.filter((preset) => checkedPresets.includes(preset.name)).map((preset) => preset.port);
-    const result = await runtime.settings?.writeManagedPorts(mergeManagedPortsDecl(draft, ports));
-    if (result !== undefined && !result.ok) setActionError(result.message);
+  /**
+   * 配置写回的**唯一出口**（2026-10-12 缺陷 4 的修复点）：任何抛出都化成可读提示。
+   *
+   * 修前 `savePorts()` 直接 `await settings.writeManagedPorts(...)`：宿主抛错时那个 Promise 没人接
+   * ⇒ 浏览器控制台只有 `Uncaught (in promise)`、页面**零提示**、配置也没变（真机现象：既没发
+   * `update` 请求、也没提示）。现在：成功清提示、失败给原因、未接线也给原因；**只发一次、不重试**。
+   */
+  const writeSettings = async (run: () => Promise<{ ok: boolean; message: string } | undefined>): Promise<void> => {
+    try {
+      const result = await run();
+      if (result === undefined) setActionError('配置写回管道未接线（remote.settings 缺失）：没有改动任何配置。');
+      else setActionError(result.ok ? null : result.message);
+    } catch (error) {
+      setActionError(`配置写入抛出异常：${error instanceof Error ? error.message : String(error)}（未改动任何配置，且不重试）`);
+    }
     await refresh(false, lastWrite);
   };
 
-  const writeSettings = async (run: () => Promise<{ ok: boolean; message: string } | undefined>): Promise<void> => {
-    const result = await run();
-    if (result !== undefined && !result.ok) setActionError(result.message);
-    await refresh(false, lastWrite);
+  const savePorts = async (): Promise<void> => {
+    const ports = view.managedPorts.presets.filter((preset) => checkedPresets.includes(preset.name)).map((preset) => preset.port);
+    await writeSettings(async () => runtime.settings?.writeManagedPorts(mergeManagedPortsDecl(draft, ports)));
   };
 
   return (

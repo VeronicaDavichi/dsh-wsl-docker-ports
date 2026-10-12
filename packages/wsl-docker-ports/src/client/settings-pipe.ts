@@ -20,6 +20,12 @@
  *
  * 本文件的源码里**不出现** `portproxy` / `invoke` / `Start-Process` / `gsudo`：
  * 它是「配置写回」与「提权写」之间的一道**语法级**隔离，不只是调用顺序上的约定。
+ *
+ * ## 失败是**结果**不是抛（2026-10-12 缺陷 4 的结构性修复）
+ *
+ * `write()` 的每一步（`describe` / `update`）都包在 try/catch 里，宿主抛出的任何错误都化成
+ * `{ ok:false, message }` 返回给页面。修前的真机现象是：`update` 抛错（实参个数不对）而调用方
+ * 没接 ⇒ 浏览器控制台只有 `Uncaught (in promise)`、页面**零提示**、也没改任何状态。
  */
 
 import type { Scope } from '../diff/types.ts';
@@ -92,6 +98,11 @@ export interface SettingsPipe {
   updateCount(): number;
 }
 
+/** 把任何抛出物化成一行可读原因（缺陷 4：页面要显示原因，不是显示「出错了」） */
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined;
 }
@@ -112,7 +123,12 @@ export function namespaceValue(described: SettingsResponse): unknown {
  * 取并发写保护用的 revision。
  * 官方 `update(ns, patch, expectedRevision)` 的 revision 来源未在 contract 里逐字给出形状，
  * 故**防御性**地按 `value.revision` → `namespaces[].revision` → `namespaces[].value.revision`
- * 三级找；一处都没有就**不带**第三参（不带 ≠ 伪造一个）。
+ * 三级找（2026-10-12 真机 `describe` 的权威形状是 `namespaces[].revision: number` ⇒ 命中第二级）。
+ *
+ * 🔴 **取不到时仍然要把第三个实参传成 `undefined`**（不是「不带」）：宿主 `prepareInvocation`
+ * 数的是 `values.length`，少一个实参直接抛 `client api: … expected 3 argument(s), got 2`
+ * （2026-10-12 真机原话，缺陷 2）；而 `expectedRevision` 的 codec 是 `union([_undefined(), number()])`
+ * 且 `acceptsUndefined: true` ⇒ 显式 `undefined` 合法，投影时被丢弃 = 语义仍是「无条件写」。
  */
 export function revisionOf(described: SettingsResponse): unknown {
   const value = asRecord(described.value);
@@ -157,12 +173,24 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
     if (service === undefined) {
       return { ok: false, message: '宿主未提供 remote.settings：配置写回不可用（只读展示不受影响）', patch, revisionPassed: false };
     }
-    const described = await service.describe();
+    let described: SettingsResponse;
+    try {
+      described = await service.describe();
+    } catch (error) {
+      return { ok: false, message: `读取配置失败：${errorText(error)}`, patch, revisionPassed: false };
+    }
     const revision = revisionOf(described);
     updateCount += 1;
-    const result = revision === undefined ? await service.update(SETTINGS_NAMESPACE, patch) : await service.update(SETTINGS_NAMESPACE, patch, revision);
-    if (result.ok) return { ok: true, message: '配置已写入（live 路径，不重挂载）', patch, revisionPassed: revision !== undefined };
-    return { ok: false, message: `配置写入失败：${String(result.error ?? '未知原因')}`, patch, revisionPassed: revision !== undefined };
+    try {
+      // 🔴 实参个数**恰好 3**（缺陷 2）：`revision === undefined` 时也必须显式占位，
+      // 宿主按 `values.length` 校验（少一个直接抛，连请求都发不出去）。
+      const result = await service.update(SETTINGS_NAMESPACE, patch, revision);
+      if (result.ok) return { ok: true, message: '配置已写入（live 路径，不重挂载）', patch, revisionPassed: revision !== undefined };
+      return { ok: false, message: `配置写入失败：${String(result.error ?? '未知原因')}`, patch, revisionPassed: revision !== undefined };
+    } catch (error) {
+      // 失败是**结果**不是抛（缺陷 4）：页面拿到可读原因；本次不重试、不改任何状态。
+      return { ok: false, message: `配置写入抛出异常：${errorText(error)}（未改动任何状态，且不重试）`, patch, revisionPassed: revision !== undefined };
+    }
   }
 
   return {

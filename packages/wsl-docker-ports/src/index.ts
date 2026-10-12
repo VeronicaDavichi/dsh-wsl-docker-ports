@@ -114,14 +114,18 @@ export {
 // profile 里插了 patch 也**不会激活** —— 宿主只会 import 到一堆普通导出（T6.7 的存在理由）。
 //
 // 形态与 002 宿主半（`packages/terminal-profiles/src/index.ts`）逐项对齐：具名 `name` / `inject` /
-// `apply` **加**默认对象 `{ name, inject, apply }`（宿主官方三种形态里的两种，免疫解析差异）。
-// **不导出 `Config`** —— 理由写在 `./plugin.ts` 文件头（P0 无 volatile 活体配置，假 schema 比没有更坏）。
+// `apply` / `Config` **加**默认对象 `{ name, inject, apply, Config }`（宿主官方三种形态里的两种，
+// 免疫解析差异）。🔴 `Config` 是 **2026-10-12 真机缺陷 1** 的修复：真机 `settings/describe` 的 20 个
+// 命名空间里有 `dsh-terminal-profiles`、没有本包 ⇒ 命名空间**不注册**（缺它 ⇒ 声明恒空 ⇒ 零步骤）。
+// 声明本体与全部实测证据（含为什么必须多锚点、为什么不 volatile）在 `./config.ts` 文件头。
 //
 // 上面那 27 个运行时导出是 003 Phase 0–2 的既有公开面：T6.7 只**新增**入口，**不收割**它们
 // （「公开面收敛」是主人待拍板项，见 tasks.md T6.4/T6.7 的时序注记）。
 // ─────────────────────────────────────────────────────────────────────────────
+import { Config } from './config.ts';
 import { apply, inject, name } from './plugin.ts';
 
+export { Config } from './config.ts';
 export { apply, applyWslDockerPorts, inject, name, PORTS_SERVICE } from './plugin.ts';
 export type {
   PluginContextLike,
@@ -132,4 +136,4 @@ export type {
   TargetDistro,
   WslDockerPortsPluginHandle,
 } from './plugin.ts';
-export default { name, inject, apply };
+export default { name, inject, apply, Config };

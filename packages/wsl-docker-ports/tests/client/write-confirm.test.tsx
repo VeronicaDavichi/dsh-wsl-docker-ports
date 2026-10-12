@@ -92,6 +92,55 @@ describe('T3.1 影响面：loopback vs lan（lan + add 逐字给「1 条 + 1 条
   });
 });
 
+/**
+ * 009 缺陷 3（2026-10-12 真机）：计划**不可执行 / 零步骤**时，影响面不许高报。
+ * 真机现象：同一个弹窗里既有「会新增 1 条 portproxy 规则 + 1 条防火墙规则」，又有「共 0 条」。
+ * 判据：这两句**互斥**出现；不可执行时必须出现「不含可执行动作，不会改动任何规则」。
+ */
+describe('009 缺陷 3：不可执行 / 零步骤 ⇒ 影响面与实际一致（不高报）', () => {
+  const NOT_READY = (): ClientPlan =>
+    planWith({
+      scope: 'lan',
+      planId: null,
+      ready: false,
+      blockedReason: '端口不在所有权集合内',
+      ports: [{ port: 3306, ready: false, steps: [], notes: [] }],
+    });
+  const READY_BUT_EMPTY = (): ClientPlan =>
+    planWith({ scope: 'lan', ports: [{ port: 3306, ready: true, steps: [], notes: [] }] });
+
+  it('planId=null + ready=false + 0 步 ⇒ 无「会新增…」、有「不会改动任何规则」，且与「共 0 条」不再自相矛盾', () => {
+    const text = buildImpactLines(NOT_READY()).join('\n');
+    expect(text).toContain('不会改动任何规则');
+    expect(text).not.toContain('会新增');
+    expect(text).not.toContain('会删除');
+    expect(text).toContain('共 0 条');
+    expect(text.includes('共 0 条') && text.includes('会新增')).toBe(false);
+    console.log(`  · 扫了不可执行计划（0 步）：影响面 =「${text.split('\n')[1]?.slice(0, 34) ?? ''}…」，高报句 0 次`);
+  });
+
+  it('ready=true 但 0 步 ⇒ 同样按现实说话（文案层，不越界改提权档门）', () => {
+    const plan = READY_BUT_EMPTY();
+    const text = buildImpactLines(plan).join('\n');
+    expect(text).toContain('不会改动任何规则');
+    expect(text).not.toContain('会新增');
+    render(<WriteConfirmDialog plan={plan} busy={false} onConfirm={() => undefined} onCancel={() => undefined} />);
+    const rendered = screen.getByTestId(WRITE_TESTID.impact).textContent ?? '';
+    expect(rendered).toContain('不含可执行动作');
+    // ⚠️ 本态是**人为构造**的：`ready` 由服务端算（`dtos.every(ready)`），若真出现「可执行但零步骤」，
+    // 本轮**只改文案**（缺陷 3 的范围），提权档门仍是 008 的口径（`!ready || planId === null` 才拦）
+    // ⇒ 这里不假设按钮置灰，只钉「文案不高报」。已作为观察项写进报告。
+    console.log('  · 扫了可执行但 0 步的计划：文案不含高报句、含「不含可执行动作」（档门未改，见注）');
+  });
+
+  it('反向对照：真有步骤时那句照旧出现（证明上面的「不出现」不是因为整句被删）', () => {
+    const text = buildImpactLines(TWO_PORT_PLAN()).join('\n');
+    expect(text).toContain('会新增 1 条 portproxy 规则 + 1 条防火墙规则');
+    expect(text).not.toContain('不会改动任何规则');
+    console.log('  · 扫了反向对照：3 步的 lan 计划仍逐字给「会新增 1 条 + 1 条」');
+  });
+});
+
 describe('T3.1 提权档门：不可能成功的操作不提供', () => {
   it('policy=none ⇒ 置灰 + 原因含 none 与改档指引', () => {
     const plan = planWith({ policy: 'none' });

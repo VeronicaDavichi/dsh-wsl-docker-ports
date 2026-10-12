@@ -1,10 +1,15 @@
 /**
  * T5.3 / T5.7：配置写回的**唯一管道**（`node --test`，无 DOM）
  *
- * 要证的三件事，每条都能二值判定：
+ * 要证的五件事，每条都能二值判定：
  * 1. 四个写方法各写**自己那一项**（patch 的键集合恰好一个 —— 「只改这一项」不是形容词）；
- * 2. 并发写保护：`describe()` 里能取到 revision 就带上，取不到就**不带**（不伪造）；
- * 3. 服务缺失 ⇒ `ok:false` + 文案，**不抛异常**（REQ-10.3 的同一条口径）。
+ * 2. 并发写保护：`describe()` 里能取到 revision 就带上，取不到就传**显式 `undefined`**
+ *    （🔴 2026-10-12 缺陷 2 订正：宿主按**实参个数**校验，少传一个直接抛
+ *    `client api: settings/update expected 3 argument(s), got 2` ⇒「不带」不是合法写法，
+ *    显式 `undefined` 才等价于「无条件写」）；
+ * 3. 服务缺失 ⇒ `ok:false` + 文案，**不抛异常**（REQ-10.3 的同一条口径）；
+ * 4. 宿主**抛错**（缺陷 4）⇒ 也化成 `ok:false` + 可读原因，只尝试 1 次（不重试）；
+ * 5. **反例对照**：修前的两参写法在同一份宿主校验下**必抛**（否则第 2 条可能恒真）。
  *
  * 「零提权调用」的**反向对照**放在这里：同一轮里另挂一个提权计数器，断言它是 0 且
  * 写配置的 update 真发生了 —— 否则「0 次提权」可能只是「什么都没发生」的假象。
@@ -84,12 +89,95 @@ test('T5.7 写回：scopes 只写被切的那一个端口（不覆盖整张表�
   console.log(`  · patch = ${JSON.stringify(fake.updates[0]?.patch)}；既有 5432 的声明不在 patch 里（由 settings 合并）`);
 });
 
-test('T5.7 写回：取不到 revision 时不带第三参（不伪造并发写保护）', async () => {
+test('009 缺陷 2：取不到 revision 时第三个实参**仍要占位**（宿主按实参个数校验）', async () => {
   const fake = fakeSettings({}, { omitRevision: true });
   await createSettingsPipe(() => fake.service).writeDistro('Debian');
   assert.equal(fake.updates.length, 1);
-  assert.equal(fake.updates[0]?.argCount, 2, `取不到 revision 时必须只传两参，实际 ${String(fake.updates[0]?.argCount)}`);
-  console.log(`  · 扫了 1 次 update：实参个数 ${String(fake.updates[0]?.argCount)}，revision=${JSON.stringify(fake.updates[0]?.revision)}`);
+  assert.equal(fake.updates[0]?.argCount, 3, `update 的实参个数必须恰好 3，实际 ${String(fake.updates[0]?.argCount)}`);
+  assert.equal(fake.updates[0]?.revision, undefined, '取不到 revision 就传 undefined（不伪造一个数字）');
+  console.log(
+    `  · 扫了 1 次 update：实参个数 ${String(fake.updates[0]?.argCount)}，revision=${JSON.stringify(fake.updates[0]?.revision)}（显式 undefined 合法且等价于无条件写）`,
+  );
+});
+
+/**
+ * 缺陷 2 的**反例台架**：宿主 `prepareInvocation` 数的是实参**个数**
+ * （`values.length !== expected` ⇒ 抛 `client api: <endpoint> expected <n> argument(s), got <m>`）。
+ * 下面这个 fake 就按那条规则写 —— 修前的两参写法在它面前**必失败**。
+ */
+function hostStrictSettings(): { readonly service: RemoteSettingsLike; readonly attempts: () => number } {
+  let attempts = 0;
+  const service: RemoteSettingsLike = {
+    describe: async (): Promise<SettingsResponse> => ({
+      ok: true,
+      value: { namespaces: [{ ns: SETTINGS_NAMESPACE, revision: 9, value: {} }] },
+    }),
+    update: async (...args: unknown[]): Promise<SettingsResponse> => {
+      attempts += 1;
+      if (args.length !== 3) throw new Error(`client api: settings/update expected 3 argument(s), got ${String(args.length)}`);
+      return { ok: true, value: {} };
+    },
+  };
+  return { service, attempts: () => attempts };
+}
+
+test('009 缺陷 2 反例：修前的两参写法在宿主实参校验下当场抛（= 真机那句错）', async () => {
+  const strict = hostStrictSettings();
+  let thrown = '';
+  try {
+    await strict.service.update(SETTINGS_NAMESPACE, { distro: 'Debian' });
+  } catch (error) {
+    thrown = error instanceof Error ? error.message : String(error);
+  }
+  assert.match(thrown, /expected 3 argument\(s\), got 2/u, `反例必须复现真机错误，实际「${thrown}」`);
+  assert.equal(strict.attempts(), 1);
+  console.log(`  · 反例扫了 1 次两参调用：${thrown}`);
+});
+
+test('009 缺陷 2：新管道在同一份宿主校验下成功（恰好 3 实参、带 revision）', async () => {
+  const strict = hostStrictSettings();
+  const result = await createSettingsPipe(() => strict.service).writeDistro('Debian');
+  assert.equal(result.ok, true, result.message);
+  assert.equal(result.revisionPassed, true);
+  assert.equal(strict.attempts(), 1);
+  console.log('  · 扫了 1 次三参调用：宿主严格校验下不抛，写入 ok:true');
+});
+
+test('009 缺陷 4：update 抛错 ⇒ 管道**不抛**，返回 ok:false + 可读原因（只尝试 1 次）', async () => {
+  let attempts = 0;
+  const service: RemoteSettingsLike = {
+    describe: async (): Promise<SettingsResponse> => ({ ok: true, value: { namespaces: [{ ns: SETTINGS_NAMESPACE, revision: 3, value: {} }] } }),
+    update: async (): Promise<SettingsResponse> => {
+      attempts += 1;
+      throw new Error('client api: settings/update expected 3 argument(s), got 2');
+    },
+  };
+  const result = await createSettingsPipe(() => service).writeManagedPorts(['3306']);
+  assert.equal(result.ok, false);
+  assert.match(result.message, /expected 3 argument\(s\), got 2/u, '原因必须原样透出，否则页面无从提示');
+  assert.match(result.message, /不重试/u);
+  assert.equal(attempts, 1, '不得重试');
+  console.log(`  · 扫了 1 次抛错写入：ok=false / attempts=${String(attempts)} / 「${result.message}」`);
+});
+
+test('009 缺陷 4：describe 抛错同样化成可读结果（不抛、不计 update）', async () => {
+  let updates = 0;
+  const service: RemoteSettingsLike = {
+    describe: async (): Promise<SettingsResponse> => {
+      throw new Error('remote 挂了');
+    },
+    update: async (): Promise<SettingsResponse> => {
+      updates += 1;
+      return { ok: true, value: {} };
+    },
+  };
+  const pipe = createSettingsPipe(() => service);
+  const result = await pipe.writeDistro('X');
+  assert.equal(result.ok, false);
+  assert.match(result.message, /remote 挂了/u);
+  assert.equal(updates, 0, '读都失败，绝不许发出写请求');
+  assert.equal(pipe.updateCount(), 0, '未发出 update ⇒ 计数必须为 0');
+  console.log(`  · 扫了 1 次读失败写入：${result.message}；update 调用 ${String(updates)} 次`);
 });
 
 test('T5.7 写回：remote.settings 缺失 ⇒ ok:false + 文案，不抛异常', async () => {

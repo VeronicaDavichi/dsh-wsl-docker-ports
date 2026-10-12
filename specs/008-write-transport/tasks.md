@@ -214,6 +214,8 @@
 收尾 `portproxy` **19**、我方防火墙 **0**、`listenport=5900` **0**、node 回 **14**、43311 空闲、
 `~/.dsh` 递归搜我方包名 **0** 命中、`dir /AL` 无软链、`pnpm install --frozen-lockfile` exit **0**、`git status` 空。
 未做：UAC/注册表改动、`portproxy reset`、通配符防火墙规则、PATH/gsudo 配置改动。`desktop`/`web` 未被碰（mtime + 0 命中双证）。
+⚠️ **订正留痕（2026-10-12 真机）**：上面「`~/.dsh` 递归搜我方包名 **0** 命中」**作废** —— 真机递归搜有 **30** 处命中，**全是历史日志 / 缓存、无一可加载**（无软链、无清单引用）⇒ 判据改为「**清单层引用 = 0**（`cordis.patch.yml` / `cordis.yml` / `package.json`）」，与 [009-write-ui/tasks.md](../009-write-ui/tasks.md) 的 Phase 5 ④ 同口径。
+
 
 **⚠️ 计数口径陷阱（本次实测踩到，留痕以免后人误判）**：`netsh … show v4tov4` 的**朴素 4-token 正则会把表头 `Address Port Address Port` 与分隔行 `----- ---- ----- ----` 也数进去** ⇒ 会得出 **21** 而非 19。
 真规则数必须用严格 IPv4 行匹配 `^\s*\d{1,3}(\.\d{1,3}){3}\s+\d+\s+\d{1,3}(\.\d{1,3}){3}\s+\d+\s*$`。
@@ -325,6 +327,8 @@ profile 内 ReparsePoint **0**、`node_modules` 无本包软链；`portproxy` **
 另比「相对路径|Attributes」差异 **0**。收尾：`portproxy` **19**、我方防火墙（按名与按组两种查法）**0**、5900 规则 **0**、
 node **14**、43311 空闲、profile 内 ReparsePoint **0**、`~/.dsh` 与仓库 `node_modules` 搜我方包名 **0** 命中；
 `cordis.patch.yml` 回到基线 `[]`（hash `8C2D1F55…`）；`pnpm install --frozen-lockfile` exit **0**；`git status` 空。
+⚠️ **订正留痕（2026-10-12 真机）**：上面「`~/.dsh` 递归搜我方包名 **0** 命中」**作废** —— 真机递归搜有 **30** 处命中，**全是历史日志 / 缓存、无一可加载**（无软链、无清单引用）⇒ 判据改为「**清单层引用 = 0**（`cordis.patch.yml` / `cordis.yml` / `package.json`）」，与 [009-write-ui/tasks.md](../009-write-ui/tasks.md) 的 Phase 5 ④ 同口径。
+
 
 **⚠️ 未验（如实）**：① `writeToken` **未配置** ⇒ 401 的 fail-safe 分支未上真机（仅离线单测）；② `origin:"agent"` + `passby` 的**降级为 ask** 未验（本次 policy 本就是 `ask`，无法区分）；③ 本次为**直接 HTTP 调用**，未经过客户端确认对话框（该期未接线）⇒ 现阶段「人在回路」的证据**只有票据门**（一次性 + 绑 `planId` + TTL 120s），**不是** UI 确认 —— **该 UI 面（含真机复核）已迁至 [009-write-ui](../009-write-ui/tasks.md)**。
 

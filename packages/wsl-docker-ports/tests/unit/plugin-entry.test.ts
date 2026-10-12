@@ -84,10 +84,13 @@ test('T6.7 入口形状：name 与包名逐字一致 + 具名 apply/inject + 默
   assert.deepEqual(inject, [], '无强依赖：inject 必须是空数组，别把可选依赖写进去');
   const module_ = await import('../../src/index.ts');
   assert.equal('default' in module_, true, '宿主半要有默认对象形态');
-  assert.deepEqual(Object.keys(module_.default).sort(), ['apply', 'inject', 'name']);
+  // 🔴 009 缺陷 1（2026-10-12 真机）：`Config` 必须**在两种形态里都在场** ——
+  // 宿主只为「导出了 Config」的插件注册 settings 命名空间（真机 describe 里缺本包 ⇒ 声明恒空 ⇒ 零步骤）
+  assert.deepEqual(Object.keys(module_.default).sort(), ['Config', 'apply', 'inject', 'name']);
   assert.equal(module_.default.name, pkg.name);
   assert.equal((module_.default as { apply: unknown }).apply, module_.apply);
-  console.log(`  · 扫了 3 个具名入口 + 1 个默认对象（name=${entryName}）；inject 长度 ${String(inject.length)}`);
+  assert.equal(module_.default.Config, module_.Config, '默认对象里的 Config 必须与具名导出同一份');
+  console.log(`  · 扫了 4 个具名入口 + 1 个默认对象（name=${entryName}）；inject 长度 ${String(inject.length)}`);
 });
 
 test('T6.7 装载零副作用：apply 期间一条外部命令都不跑，探针是懒的', () => {
