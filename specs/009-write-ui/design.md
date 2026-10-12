@@ -10,10 +10,11 @@
 | 通道 | `src/client/write-channel.ts` | `/write/plan` + `/write/apply` 的**唯一**客户端路径；请求体白名单；失败四分类；零请求可断言 | 307 |
 | DTO | `src/client/write-dto.ts` | 响应形状解读 + `commandText` **逐字搬运** | 170 |
 | 对话框 | `src/client/write-confirm.tsx` | 逐条命令原文 + 影响面 + `notes`；`elevationGate()` 置灰 | 201 |
-| 面板 | `src/client/write-panel.tsx` | 状态机（预演 → 确认 → 执行）+ 结果区（四态 = 本 Spec 待办） | 241 |
+| 面板 | `src/client/write-panel.tsx` | 状态机（预演 → 确认 → 执行）+ **结果保留**（四态渲染在下一行） | 234 |
+| 结果区 | `src/client/write-result.tsx` | 四态（成功 / 失败 / 跳过 / 回滚）分色 + 逐步「名称 / 结果 / 原因」+ 空态不渲染空段；**不编状态、不重排、不改写原因** | 202 |
 | 配置页挂载 | `src/client/pane-settings.tsx` | 凭据块 + 写通道块（与 007 的表单 / 只读态**区块并列，不覆盖**） | 198 |
 | 配置管道 | `src/client/settings-pipe.ts` | `writeWriteToken`（第 5 个写方法，走同一个 `write()` 单键 patch 路径） | 181 |
-| 测试 | `tests/client/write-{token,channel,confirm,panel}.test.tsx` + `write-fixtures.ts`；`tests/unit/client-settings.test.ts` | 44 条 `vitest`（008 `T3.1`）+ T5.7 管道面判据 | — |
+| 测试 | `tests/client/write-{token,channel,confirm,panel,result}.test.tsx` + `write-fixtures.ts`；`tests/unit/client-settings.test.ts` | 44 条 `vitest`（008 `T3.1`）+ **14** 条（009 T1.1–T1.3 结果区 ⇒ 客户端共 **58** 条）+ T5.7 管道面判据 | — |
 
 **上限**：单文件 ≤ **400** 行（当前最大 `write-channel.ts` **307**）；去注释去空行 ≤ **40KB**（AGENTS.md：40KB 之后不许再抬阈值）。
 
@@ -25,6 +26,8 @@
 2. **`confirm()`**：只在确认按钮回调里发生，且 `busy` 期间两个按钮都不可点 ⇒ 双击也只有一个在途请求；body 只有白名单字段（REQ-7）。
 3. **`cancel()`**：清空 `plan` / `pending` + 中性文案「已取消：零请求」⇒ 要执行必须重新预演（REQ-4.4）。
 4. **失败**：先作废本次确认（不留可复用票据），再按四分类决定下一步 —— `replan`（409 / 403）⇒ **自动重新预演**并要求用户**重新确认**（REQ-6）；`credential`（401）⇒ 只指路（REQ-3）；`unavailable`（503）/ `protocol` ⇒ 如实报。
+
+5. **结果保留**（状态 `report`）：最近一次 `apply` 的回执**不被重新预演 / 取消清掉**（只被下一次 `apply` 的新回执替换）—— 免得「预演一下就看不到刚才到底发生了什么」；四态渲染与原因在 `write-result.tsx`，空清单**不渲染空段**。
 
 **本地拦截（零请求）**：端口文本非法 / 无凭据（REQ-2.4）/ 声明读取失败 / 超 256 端口 / 未接线（没拿到 `remote.settings` 或 `fetch`）。
 
@@ -61,7 +64,7 @@
 
 | 层 | 手段 | 覆盖 |
 | --- | --- | --- |
-| 组件 / 接线 | `vitest run`（`include` 只列 `tests/client/**`，见 `vitest.config.ts`；`.tsx` 扩展名本身就是与 `node:test` 的隔离手段） | 命令原文逐字、影响面、`notes`、未确认零请求、取消零请求、401 指路不重试、409 重新预演、置灰原因、凭据一次性 / 不落盘 / 不引 localStorage |
+| 组件 / 接线 | `vitest run`（`include` 只列 `tests/client/**`，见 `vitest.config.ts`；`.tsx` 扩展名本身就是与 `node:test` 的隔离手段） | 命令原文逐字、影响面、`notes`、未确认零请求、取消零请求、401 指路不重试、409 重新预演、置灰原因、凭据一次性 / 不落盘 / 不引 localStorage、**结果四态分色 / 失败必带原因 / 清单内保序 / 结果保留** |
 | 单元（无 DOM） | `node --test --test-concurrency=1 "tests/**/*.test.ts"` | 凭据仓库与生成（可注入随机源）、配置管道面（T5.7：7 项导出、`forbidden` 5 个执行入口零命中、写配置零提权调用） |
 | 静态 | 脚本复算 | `src/client/**` 零硬编码 hex（003 `NFR-7` / 002 `NFR-4` 同口径）；凭据不进日志（`console.` 与 `localStorage` 用法零命中） |
 | 真机 | 主人 / 探针 profile | V6–V8（**当前状态：未通过（未验）**） |

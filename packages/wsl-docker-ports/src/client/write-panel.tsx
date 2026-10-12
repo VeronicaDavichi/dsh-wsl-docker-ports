@@ -11,6 +11,8 @@
  *    旧计划与旧目标**，再走一次 `preview()` ⇒ 用户必须**再点一次确认**。绝不静默重发 apply
  *    （那等于把「用户确认过的那份命令」换成「另一份命令」）。
  * 4. **401 ⇒ 指路、不重试**：`credential` 类失败只显示「去哪里配置」，循环重试是被明令禁止的。
+ * 5. **结果保留**（009 T1.1）：最近一次 `apply` 的回执**不被重新预演清掉**（只被下一次 `apply` 的新回执替换）
+ *    —— 免得「预演一下就看不到刚才到底发生了什么」。四态分色与逐步原因在 `write-result.tsx`。
  *
  * ## 本地能拦的一律不发请求
  *
@@ -30,6 +32,7 @@ import {
   type WriteWiring,
 } from './write-channel.ts';
 import { WriteConfirmDialog, WRITE_TESTID } from './write-confirm.tsx';
+import { WriteResultPanel } from './write-result.tsx';
 
 /** 单次最多几个端口（与服务端 `PLAN_MAX_PORTS` 同值；本地先拦，省一次注定被拒的往返） */
 export const WRITE_PORTS_MAX = 256;
@@ -95,7 +98,6 @@ export function WriteChannelBlock(props: WriteChannelBlockProps): ReactElement {
       return;
     }
     setBusy(true);
-    setReport(null);
     setNotice(null);
     const declared = await write.declaration();
     if (!declared.ok) {
@@ -221,20 +223,10 @@ export function WriteChannelBlock(props: WriteChannelBlockProps): ReactElement {
         <WriteConfirmDialog plan={plan} busy={busy} blocked={enabled ? null : reason} onConfirm={() => void confirm()} onCancel={cancel} />
       )}
       {report === null ? null : (
-        <div className="wdp-card" data-testid={WRITE_TESTID.result}>
-          <h3>执行结果</h3>
-          <p className="wdp-secondary">
-            status={report.status} / 后端={report.backend} / 提权档={report.elevationPolicy} / 耗时={String(report.durationMs)} ms
-          </p>
-          <p>{report.message}</p>
-          <p className="wdp-muted">{report.hint}</p>
-          <ul className="wdp-list">
-            <li>已执行：{report.executed.length === 0 ? '（无）' : report.executed.join('、')}</li>
-            <li>已跳过：{report.skipped.length === 0 ? '（无）' : report.skipped.join('、')}</li>
-            <li>失败：{report.failed.length === 0 ? '（无）' : report.failed.map((item) => `${item.name}(${item.reason})`).join('、')}</li>
-            <li>已回滚：{report.rolledBack.length === 0 ? '（无）' : report.rolledBack.map((item) => `端口 ${String(item.port)}:${item.ok ? 'ok' : '失败'}`).join('、')}</li>
-          </ul>
-        </div>
+        <section className="wdp-card" data-testid={WRITE_TESTID.result} data-status={report.status}>
+          <h3>最近一次执行结果（保留展示：重新预演不会清掉它，直到下一次确认返回）</h3>
+          <WriteResultPanel report={report} />
+        </section>
       )}
     </section>
   );

@@ -61,7 +61,7 @@
 - **REQ-8.1** The 声明式目标 SHALL 携带 `declaration`（所有权集合）；服务端的事实面里**没有**所有权集合（`managedPorts = declaration ?? []`）⇒ 不带声明则一切都 `port-not-managed`。
 - **REQ-8.2** The `declaration` SHALL 在**预演时读一次**并**原样复用**到确认：`apply` 会**重算**计划并比对 `planId` ⇒ 两次请求的 `target`（含 `declaration`）必须**逐字相同**，否则**必然 `409 plan-mismatch`**。客户端 **SHALL NOT** 去猜、**SHALL NOT** 补默认值。
 
-### REQ-9 结果逐步反馈（四态）—— **迁自 008 `T3.2`，尚未实现**
+### REQ-9 结果逐步反馈（四态）—— **迁自 008 `T3.2`；2026-10-12 已实现（离线判据见 [tasks.md](./tasks.md) 的 T1.1–T1.3，真机未跑）**
 
 - **REQ-9.1** GIVEN 服务端返回逐步结果（`executed` / `failed` / `skipped` / `rolledBack` + `status` / `backend` / `elevationPolicy` / `durationMs` / `message` / `hint`），THEN 界面 SHALL 按**四态分色**渲染：成功 / 失败 / 跳过 / 回滚。
 - **REQ-9.2** The 失败项 SHALL **必带可读原因**（每条失败给出 `name` + `reason`，不是只给个数）；空态与有态 SHALL 可区分（该项为空时不渲染空段）。

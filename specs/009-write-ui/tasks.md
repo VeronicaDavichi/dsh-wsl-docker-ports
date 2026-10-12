@@ -14,17 +14,20 @@
 
 ## Phase 1：结果逐步反馈（四态；迁自 008 `T3.2`）
 
-- [ ] T1.1 [REQ-9.1] `write-panel.tsx` 结果区：`executed` / `failed` / `skipped` / `rolledBack` **四态分色**（各自 `data-testid` + 类名；颜色走 `--dsw-*` token）。
-  - 判据：`vitest` —— 四态各有渲染分支用例（≥ 4 条）；「无该项」与「有该项」可区分（空态不渲染空段）。
-- [ ] T1.2 [REQ-9.2] 失败项**必带可读原因**：每条失败渲染 `name` + `reason`（不是只给个数；`reason` 为空串时给兜底文案）。
-  - 判据：构造 `failed: [{ name, reason }]` ⇒ 断言 `reason` 文本出现在**同一条目内**；条目数 == `failed.length`。
+- [x] T1.1 [REQ-9.1] 结果区 `executed` / `failed` / `skipped` / `rolledBack` **四态分色**（各自 `data-testid` + 类名；颜色走 `--dsw-*` token）。**2026-10-12 实现**：结果区独立成文件 `src/client/write-result.tsx`（`write-panel.tsx` 只留外层 `section` 与状态机，241 → 234 行），四态 tone 复用 `styles.ts` 既有类名 `wdp-tag-ok` / `wdp-tag-danger` / `wdp-tag-muted` / `wdp-tag-warn`（**零自造类名、零 hex**）。
+  - 判据：`vitest` —— `tests/client/write-result.test.tsx` **14** 条全绿：四态各有渲染分支用例（① executed / ② failed / ④ skipped / ⑤ rolledBack）；「无该项」与「有该项」可区分（某清单为空 ⇒ **连容器都不渲染**，四张全空时只给一条中性说明）。
+  - 🔴 **现状如实（哪一态「不可区分」/ 缺什么字段）**：四态**都**有真实生产者（`src/transport/apply.ts` 的 `executed:383` / `skipped:384` / `failed:385-387` / `rolledBack:317-348`）⇒ **没有**「缺语义位」的那一态，三条判据均可勾选；真正不可区分的只有三处细节，本轮**不做**（也不编、不改服务端）：ⓐ `skipped` 只有 `WriteStepKind[]`、**无逐条原因字段** ⇒ 只能报「未执行」这一事实；ⓑ 响应里**没有**跨清单统一有序的 `steps[]` ⇒ 各清单**之间**的相对次序不可知（实现只在**清单内**保序，不合并、不排序）；ⓒ 005 脚本内回滚（`elevate/script.ts:283` 的 `Add-Step 'portproxy-rollback' $true '<原因>'`）经 apply 层只剩 `executed` 里的**名字**、**原因被丢弃** ⇒ 那句「已回滚 portproxy」在本响应里不可渲染（要显示需 008 在 `executed` 之外另给字段 = 契约变更，**服务端一行未动**）。
+- [x] T1.2 [REQ-9.2] 失败项**必带可读原因**：每条失败渲染 `name` + `reason`（不是只给个数；`reason` 为空串时给兜底文案）。**2026-10-12 实现**：`write-result.tsx` 的 `readableReason()`（空串 ⇒ `FAILURE_REASON_FALLBACK`，明写「服务端未给出该步骤的原因」）；`apply.ts` 的 `reason` 实为 `StepReport.stderr`（类型标 `string | null`、运行时是 `string` ⇒ **空串是真实可能**）。
+  - 判据：`vitest`（`tests/client/write-result.test.tsx`）：构造 `failed: [{name,reason}]` ⇒ 用例② 断言两条原因**各自只出现在自己那一条目内**（1 对 1、零串行）、条目数 == `failed.length`；用例②b 断言每条同时含「名称」与「失败：原因」两段；用例③ 断言空串走兜底文案（非空）。
 - [ ] T1.3 [REQ-9.3] 零硬编码 hex（口径来源：003 `NFR-7` / 002 `NFR-4`；003 Phase 6 的门已在当时的 `src/client/**` 上真扫过）。
-  - 判据：静态扫描 `src/client/**` 的 `#[0-9a-fA-F]{3,8}` 命中 **0**，且**非空扫描**（文件数 > 0）。
+  - 判据：静态扫描 `src/client/**` 的 `#[0-9a-fA-F]{3,8}` 命中 **0**，且**非空扫描**（文件数 > 0）。**2026-10-12 复算**：`node --test` 的 `tests/unit/client-structure.test.ts` NFR-7 用例当场出数（全 `src/client/**`：hex 命中 **0** 处、`var(--dsw-*)` 引用数 > 0，两者由同一次扫描打印）；本轮**新增** vitest 用例⑨ 对两个结果区文件复扫（hex **0** 处，且用到的 **12** 个 `wdp-*` 类名**全部**能在 `styles.ts` 的 `PAGE_CSS` 里找到 ⇒ 白名单外零自造类名）。
 
 ## Phase 2：配置页「生成并保存写通道凭据」（迁自 007 配置页）
 
 - [x] T2.1 [REQ-1.2–1.4 / REQ-2.1–2.4] 凭据块（`pane-settings.tsx` 的 `WRITE_TOKEN_TESTID` 区块 + `write-token.ts` + `settings-pipe.writeWriteToken`）：按钮「生成并保存写通道凭据」⇒ 32B 随机 hex ⇒ `remote.settings.update('dsh-wsl-docker-ports', { writeToken })` ⇒ **一次性显示**；**默认仍为空**（本 Spec 不改这个默认值）。
   - 判据（**离线已完成，由 008 `T3.1` 交付**）：见文末「迁入记录」§1 的 44 条 `vitest`（其中 `write-token` 10 条含「配置写失败 ⇒ 不入本会话」与「四个客户端文件零 `console`、零持久存储」）。
+  - [x] T2.1.1 [REQ-1.2–1.4] **清除 / 轮换 / 服务端配置布尔态**（2026-10-12 `6e1f153` 交付，本轮只补留痕与判据指针）：判据 = `tests/client/write-token-pane.test.tsx` 的 **12** 条 `vitest`（轮换 = ①「再点一次仍是恰好一次写入」；清除 = ⑤「二次确认前零写入 ⇒ 确认后写空串 `{writeToken:''}` 并清本会话」与 ⑤b「取消 ⇒ 零写入、凭据原样」；服务端配置布尔态 = ③/③b「只显示布尔、值本体不进 DOM」；失败不静默 = ⑦/⑦b）。
+  - 设计说明（2026-10-12 补记，主人点名要写进设计）：清除成功后的「服务端 `writeToken` = 未配置」是**由写入事实推出**（`clearWriteToken()` 写空串成功 ⇒ `pane.tsx` 直接置 `configured=false`），**不是**再读一次 `readConfig()`（免得「写成功却读回旧值 ⇒ 界面自相矛盾」）；判据⑤ 同时断言 `data-config-configured="0"`，而该用例**从未点过**「检查服务端配置状态」按钮 ⇒ 这个 `0` 只能来自写入事实。
 - [ ] T2.2 [REQ-1.1 / 1.2] **真机投递链复核**（需主人 / 探针 profile；**本轮未跑**）：页面按钮点得动 ⇒ 写进 `profiles/<profile>/cordis.patch.yml` 的 `config.writeToken` ⇒ **重载插件行** ⇒ 服务端真读到。
   - 判据：写前 `POST …/write/plan?token=…` ⇒ **401**；点按钮 + 重载插件行后再打 ⇒ **200**；配置文件里的值与页面**一次性显示**的串**逐字相同**；跑完逐字节还原（`git status --porcelain` 空 + `portproxy` 19）。
 - [x] T2.3 [REQ-1.2] **补一条离线判据**（本轮核对 T5.7 时发现的覆盖缺口）：`tests/unit/client-settings.test.ts` 的「每个写方法只产出恰好一个键的 patch」用例表目前只有 **4** 个写方法，`writeWriteToken` 只出现在导出面断言里 ⇒ 把它补进用例表。
@@ -37,7 +40,7 @@
 
 | # | 判据（可二值判定） | 通过 | 回归信号 |
 | --- | --- | --- | --- |
-| V6 | （**原文迁自 008 T3.3**，见 §3）🟡 **T3.1 已离线接线（2026-10-12）；真机 UI 复核未做**：客户端确认对话框（逐条命令原文）已接到页面上（预演 → 确认两段式），离线判据 44 条全绿；T3.2 结果四态分色**未接线** | 见左（离线层已验） | 页面上**点得到**写入口却**没有**对话框 ⇒ 回归 |
+| V6 | （**原文迁自 008 T3.3**，见 §3）🟡 **T3.1 已离线接线（2026-10-12）；真机 UI 复核未做**：客户端确认对话框（逐条命令原文）已接到页面上（预演 → 确认两段式），离线判据 44 条全绿；**结果四态分色已离线接线（2026-10-12 = 本文件 T1.1–T1.3，+14 条 `vitest`）；§3 是 008 原文快照，V6 状态以本行为准**；真机仍未跑 | 见左（离线层已验） | 页面上**点得到**写入口却**没有**对话框 ⇒ 回归 |
 | V7 | 配置页「生成并保存写通道凭据」点一次 ⇒ 页面**一次性显示**的 32B hex 与 `cordis.patch.yml` 的 `config.writeToken` **逐字相同**；重载插件行后同一页面点「预演」⇒ **200**（不再是 401） | 三处一致 | 点了按钮仍 401 / 明文出现第二次 / 明文落进 `localStorage` |
 | V8 | 预演 ⇒ 对话框逐条显示**服务端命令原文**；点「取消」⇒ 请求数停在 **1**（零 `apply`）；点「确认」⇒ 恰好 **1** 次 `apply`，结果区**四态**可见且失败带原因 | 见左 | 取消后仍发 `apply` / 命令文本被改写 / 失败只给个数 |
 
