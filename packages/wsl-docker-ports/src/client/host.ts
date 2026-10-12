@@ -114,12 +114,37 @@ export interface SettingsResponse {
 }
 
 /**
+ * 一条**路径编辑**（宿主 `SettingsPathOp`）。逐字来源：`dsh-api-settings-controller/lib/typert.host.js`
+ * 的 `settings/mutate` 参数 1 schema —— `z.union([z.object({op: z.literal('set'), path: z.array(z.string()),
+ * value: <JsonValue>}), z.object({op: z.literal('unset'), path: z.array(z.string())})])`
+ * （`lib/typert.remote-client.d.ts:19` 的 `mutate(ns, ops: SettingsPathOpView[], expectedRevision)`）。
+ */
+export type SettingsPathOp =
+  | { readonly op: 'set'; readonly path: readonly string[]; readonly value: unknown }
+  | { readonly op: 'unset'; readonly path: readonly string[] };
+
+/**
  * `ctx.get('remote.settings')`（contract §D13）。
  * **配置写回的唯一管道**：客户端没有 `ctx.settings` / `ctx.configEditor`。
  */
 export interface RemoteSettingsLike {
   describe(): Promise<SettingsResponse>;
   update(ns: string, patch: unknown, expectedRevision?: unknown): Promise<SettingsResponse>;
+  /**
+   * 路径编辑（009 收口轮 T3 起本包用到）。宿主原文逐字：**`Apply field edits without restating
+   * redacted secrets; unsetting an array index removes its element.`**
+   * （`dsh-settings/lib/index.js:483`；实现 L488-500）
+   *
+   * 🔴 **「清除凭据」只许走这里**，不许写空串：宿主 `walk()` 判 `secrets[].set` 的依据是
+   * `set: value !== void 0`（`dsh-settings/lib/index.js:24-29`）——**空串照样 `!== undefined`** ⇒
+   * 写空串后 `describe()` 仍报 `set:true`，页面显示「已配置」而写通道实际 401（**用户可见状态不一致**）。
+   * `unset` 把字段从 user 段真的删掉 ⇒ `set:false`（若该值来自更外层配置，宿主会按 `base` 还原它 ——
+   * 那种情况下「仍已配置」是**真话**，客户端照实显示）。
+   *
+   * 实参**恒 3 个**：与 `update` 同一条宿主校验（`prepareInvocation` 数 `values.length`，
+   * 真机原话 `client api: settings/mutate expected 3 argument(s), got 2` 的那条规则）。
+   */
+  mutate(ns: string, ops: readonly SettingsPathOp[], expectedRevision?: unknown): Promise<SettingsResponse>;
 }
 
 /** 转发写动作（004/005 侧实现；本 Spec 的 UI 只负责触发与展示结果） */

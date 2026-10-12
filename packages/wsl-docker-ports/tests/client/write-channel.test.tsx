@@ -193,6 +193,9 @@ describe('T3.1 所有权声明读取器：复用宿主的解析器', () => {
     writeElevationPolicy: async () => ({ ok, message: '', patch: {}, revisionPassed: false }),
     writeScope: async () => ({ ok, message: '', patch: {}, revisionPassed: false }),
     writeWriteToken: async () => ({ ok, message: '', patch: {}, revisionPassed: false }),
+    // 009 收口轮 T3 起 `SettingsPipe` 多一个成员：清除凭据走宿主 `mutate` 的 unset。
+    // 本文件的假管道只服务于「声明读取」，故这里给一个**不 ok** 的占位（真被调到就是用例写错了）。
+    clearWriteToken: async () => ({ ok: false, message: '本用例不该走 clearWriteToken', writeTokenConfigured: null, revisionPassed: false, ops: [] }),
   });
 
   it('管道缺失 ⇒ 可读原因（不发任何请求）', async () => {

@@ -20,13 +20,23 @@ import test from 'node:test';
 
 import { createSettingsPipe, namespaceValue, revisionOf, SETTINGS_NAMESPACE } from '../../src/client/settings-pipe.ts';
 import type { SettingsPatch } from '../../src/client/settings-pipe.ts';
-import type { RemoteSettingsLike, SettingsResponse } from '../../src/client/host.ts';
+import type { RemoteSettingsLike, SettingsPathOp, SettingsResponse } from '../../src/client/host.ts';
 
 interface RecordedUpdate {
   readonly ns: string;
   readonly patch: SettingsPatch;
   readonly revision: unknown;
   readonly argCount: number;
+}
+
+/**
+ * 只实现 `describe` / `update` 的假件，`mutate` 一律**抛**（T3 起 `mutate` 是接口必填项）：
+ * 这些用例都不该碰清除路径 ⇒ 真被调到就是用例自身写错了，抛出来比静默 ok 好。
+ */
+function mutateNotExpected(): (ns: string, ops: readonly SettingsPathOp[], expectedRevision?: unknown) => Promise<SettingsResponse> {
+  return async () => {
+    throw new Error('本用例不该走 mutate（清除凭据是唯一的 mutate 用户）');
+  };
 }
 
 function fakeSettings(
@@ -54,6 +64,7 @@ function fakeSettings(
       updates.push({ ns: String(args[0]), patch: args[1] as SettingsPatch, revision: args[2], argCount: args.length });
       return { ok: true, value: {} };
     },
+    mutate: mutateNotExpected(),
   };
   return { service, updates, describes: () => describes };
 }
@@ -104,9 +115,11 @@ test('009 缺陷 2：取不到 revision 时第三个实参**仍要占位**（宿
  * 缺陷 2 的**反例台架**：宿主 `prepareInvocation` 数的是实参**个数**
  * （`values.length !== expected` ⇒ 抛 `client api: <endpoint> expected <n> argument(s), got <m>`）。
  * 下面这个 fake 就按那条规则写 —— 修前的两参写法在它面前**必失败**。
+ * 009 收口轮 T3 起 `mutate` 也按同一条规则校验（两个 endpoint 的 codec 一致）。
  */
-function hostStrictSettings(): { readonly service: RemoteSettingsLike; readonly attempts: () => number } {
+function hostStrictSettings(): { readonly service: RemoteSettingsLike; readonly attempts: () => number; readonly mutates: () => number } {
   let attempts = 0;
+  let mutates = 0;
   const service: RemoteSettingsLike = {
     describe: async (): Promise<SettingsResponse> => ({
       ok: true,
@@ -117,8 +130,13 @@ function hostStrictSettings(): { readonly service: RemoteSettingsLike; readonly 
       if (args.length !== 3) throw new Error(`client api: settings/update expected 3 argument(s), got ${String(args.length)}`);
       return { ok: true, value: {} };
     },
+    mutate: async (...args: unknown[]): Promise<SettingsResponse> => {
+      mutates += 1;
+      if (args.length !== 3) throw new Error(`client api: settings/mutate expected 3 argument(s), got ${String(args.length)}`);
+      return { ok: true, value: { namespaces: [{ ns: SETTINGS_NAMESPACE, value: {}, secrets: [{ path: ['writeToken'], set: false }] }] } };
+    },
   };
-  return { service, attempts: () => attempts };
+  return { service, attempts: () => attempts, mutates: () => mutates };
 }
 
 test('009 缺陷 2 反例：修前的两参写法在宿主实参校验下当场抛（= 真机那句错）', async () => {
@@ -151,6 +169,7 @@ test('009 缺陷 4：update 抛错 ⇒ 管道**不抛**，返回 ok:false + 可�
       attempts += 1;
       throw new Error('client api: settings/update expected 3 argument(s), got 2');
     },
+    mutate: mutateNotExpected(),
   };
   const result = await createSettingsPipe(() => service).writeManagedPorts(['3306']);
   assert.equal(result.ok, false);
@@ -170,6 +189,7 @@ test('009 缺陷 4：describe 抛错同样化成可读结果（不抛、不计 u
       updates += 1;
       return { ok: true, value: {} };
     },
+    mutate: mutateNotExpected(),
   };
   const pipe = createSettingsPipe(() => service);
   const result = await pipe.writeDistro('X');
@@ -195,6 +215,7 @@ test('T5.7 写回：update 失败 ⇒ ok:false 并原样带回错误文案', asy
   const service: RemoteSettingsLike = {
     describe: async () => ({ ok: true, value: { revision: 1, namespaces: [] } }),
     update: async () => ({ ok: false, error: 'revision 冲突' }),
+    mutate: mutateNotExpected(),
   };
   const result = await createSettingsPipe(() => service).writeDistro('X');
   assert.equal(result.ok, false);
@@ -238,6 +259,7 @@ test('009 订正：`writeToken` 标了 `role(secret)` ⇒ 「已配置」改从 
       value: { revision: 3, namespaces: [{ ns: SETTINGS_NAMESPACE, value: { distro: 'Ubuntu2204', elevationPolicy: 'ask' }, secrets }] },
     }),
     update: async (): Promise<SettingsResponse> => ({ ok: true, value: {} }),
+    mutate: mutateNotExpected(),
   });
   const read = (secrets: unknown) => createSettingsPipe(() => service(secrets)).readConfig();
 
@@ -252,15 +274,11 @@ test('009 订正：`writeToken` 标了 `role(secret)` ⇒ 「已配置」改从 
   );
   assert.equal((await read(undefined)).writeTokenConfigured, false, '没有 secrets 数组 ⇒ 未配置（不猜）');
   assert.equal(JSON.stringify(configured).includes(TOKEN), false, '读回结果里不得出现凭据本体');
-  // ⚠️ **已知不一致（本轮记录、不修；影响见 009 tasks.md）**：清空派发的是**空串**，而宿主
-  // `walk()` 的 `set: value !== void 0` 对空串**仍给 true** ⇒ 「清除」后重新载入页面会显示「已配置」，
-  // 而写通道实际 401。方向是**更保守**（显示已配置 ↔ 实际拒绝），不是安全退化；根治办法是「清除」
-  // 改走 `mutate({op:'unset', path:['writeToken']})`（宿主原文：Apply field edits without restating
-  // redacted secrets）⇒ 归零成 `set:false`。本轮不动客户端写路径，只钉住事实。
-  assert.equal((await read([{ path: ['writeToken'], set: true }])).writeTokenConfigured, true, '⚠️ 已知：空串在宿主侧 set 仍为 true（远程看不到值，故本判据无法区分空串与真凭据）');
-  console.log('  · 扫了 5 种 secrets 形态：true / false / 他字段+子路径 false / 无数组 false / 空串 true（已知不一致，已留痕）');
+  // ✅ 009 收口轮 T3：修前这里记的是「已知不一致（清除写空串 ⇒ 宿主 `walk()` 对空串仍判 set:true）」，
+  // 根因与修法见 `UNSET_WRITE_TOKEN_OPS`；**读侧的形状判据不受影响**（远端本来就看不到值）⇒ 保留这一条。
+  assert.equal((await read([{ path: ['writeToken'], set: true }])).writeTokenConfigured, true, 'secrets.set=true 一律算已配置（位图只说「有没有值」）');
+  console.log('  · 扫了 5 种 secrets 形态：true / false / 他字段+子路径 false / 无数组 false / set:true 仍 true');
 });
-
 test('T5.7 读回：命名空间与 revision 的形状兼容三种写法', () => {
   const shapes: readonly { readonly name: string; readonly value: unknown; readonly expected: unknown }[] = [
     { name: '顶层 revision', value: { revision: 5, namespaces: [] }, expected: 5 },
@@ -296,12 +314,14 @@ test('T5.7 零提权调用：写配置的一轮里提权计数器保持 0（且�
   console.log(`  · 扫了 2 次配置写入 / ${String(elevationCalls.length)} 次提权调用（updateCount=${String(runtime.settings.updateCount())}）`);
 });
 
-test('T5.7 管道面收窄：settings 管道只暴露 6 个方法，没有任何「执行/提权」入口', () => {
+test('T5.7 管道面收窄：settings 管道只暴露 8 个方法，没有任何「执行/提权」入口', () => {
   const pipe = createSettingsPipe(() => undefined);
   const keys = Object.keys(pipe).sort();
   // 008 T3.1 追加第 6 个：`writeWriteToken` —— 它是**配置写入**（与服务端 config 的 writeToken 同一个字段），
   // 不是执行/提权入口；下面的 forbidden 断言（写配置零提权调用）仍是这条判据的真正红线。
-  assert.deepEqual(keys, ['readConfig', 'updateCount', 'writeDistro', 'writeElevationPolicy', 'writeManagedPorts', 'writeScope', 'writeWriteToken']);
+  // 009 收口轮 T3 追加第 8 个：`clearWriteToken` —— 同样是**配置写入**（宿主 `mutate` 的 unset），
+  // 它连「值」这个参数都没有（零凭据字节出门），更不是执行入口。
+  assert.deepEqual(keys, ['clearWriteToken', 'readConfig', 'updateCount', 'writeDistro', 'writeElevationPolicy', 'writeManagedPorts', 'writeScope', 'writeWriteToken']);
   const forbidden = ['run', 'invoke', 'exec', 'elevate', 'spawn'];
   assert.deepEqual(forbidden.filter((key) => key in pipe), [], '配置管道不得带执行入口');
   console.log(`  · 扫了 ${String(keys.length)} 个方法名：${JSON.stringify(keys)}；执行入口 0 个`);

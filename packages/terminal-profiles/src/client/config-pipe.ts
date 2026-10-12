@@ -336,10 +336,12 @@ export function createConfigPipe(getSettings: () => RemoteSettingsLike | undefin
     updateCount += 1;
     let result: SettingsResponse;
     try {
-      result =
-        expectedRevision === undefined
-          ? await service.update(SETTINGS_NAMESPACE, { [CONFIG_PATCH_FIELD]: valid })
-          : await service.update(SETTINGS_NAMESPACE, { [CONFIG_PATCH_FIELD]: valid }, expectedRevision);
+      // 🔴 实参**恒为 3 个**（009 收口轮 T4 订正；真机原话 `client api: settings/update expected 3 argument(s), got 2`）：
+      // 宿主 `prepareInvocation` 数的是 `values.length` ⇒ 取不到 revision 时**也必须显式占位** `undefined`，
+      // 少传一个连请求都发不出去。`expectedRevision` 的 codec 是 `union([_undefined(), number()])` 且
+      // `acceptsUndefined: true` ⇒ 显式 `undefined` 合法，投影时被丢弃 ⇒ **语义仍是「无条件写」**（未变）。
+      // 007 是本缺陷的**同款**（009 已在 `settings-pipe.ts` 修过同一处），此处只对齐写法、不改语义。
+      result = await service.update(SETTINGS_NAMESPACE, { [CONFIG_PATCH_FIELD]: valid }, expectedRevision);
     } catch (error) {
       return { kind: 'failed', message: `写入配置失败：${describeError(error)}`, skipped };
     }

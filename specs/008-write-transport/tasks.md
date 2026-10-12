@@ -104,6 +104,11 @@
 
 **通过项**（真机实测）：
 - `POST /write/plan`：`declaration` 合法 ⇒ 真 `planId`（SHA-256，64 位）；同入参重放**一致**；`scope` 实质变更**必换**。
+  - 🔴 **调用法订正（2026-10-12 收口轮，真机实测）**：**`/write/plan` 的 body 就是 target 本身** —— `{ action, ports, scope, declaration }`；
+    **只有** `/write/apply` 的 body 外面包一层 `target`（`{ target, planId, confirmed, origin, ticket }`，见上面 T2.2）。
+    把 plan 也包成 `{ target: { … } }` ⇒ 服务端走 **fail-safe** 报 `action 必须是 add/remove/fix/switch-scope 之一，实际 undefined`，
+    **零写入**（**是拦下，不是崩** —— 拦得对）。⇒ 两个端点的 body 形状**不同**，照抄 apply 的写法必踩；
+    009 侧同一坑已留痕（Phase 7 §4 与「调用法」段）。
 - **命令原文可见**（REQ-3.2）：`scope:'lan'` + 端口 5900 ⇒ `ready:true`、`steps` **2 条**、`commandText` 精确为
   `netsh interface portproxy add v4tov4 listenport=5900 listenaddress=0.0.0.0 connectport=5900 connectaddress=172.20.201.152`
   + `New-NetFirewallRule -DisplayName "dsh-wsl-docker-ports-5900" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5900 -Profile Any -Group "dsh-wsl-docker-ports"`
@@ -213,6 +218,11 @@
 **还原与红线**：`volatile-probe` 与快照 **四种哈希对比全 0**（74 文件，含与改动前基线的交叉验证）；
 收尾 `portproxy` **19**、我方防火墙 **0**、`listenport=5900` **0**、node 回 **14**、43311 空闲、
 `~/.dsh` 递归搜我方包名 **0** 命中、`dir /AL` 无软链、`pnpm install --frozen-lockfile` exit **0**、`git status` 空。
+⚠️ **订正留痕（2026-10-12 收口轮）**：上面「`dir /AL` **无软链**」（以及下面第二处「`node_modules` **无本包软链**」）作为**总数判据**作废 ——
+探针 profile 的基线里**允许**存在 `node_modules/dsh-volatile-probe` 软链（指向 `%LOCALAPPDATA%\Temp\dsh-volatile-probe`，
+**是该 profile 自带的探针插件**，属 bundle 的一部分，不是残留）⇒ 「软链数必须为 **0**」会把别人的合法内容算成残留。
+**正确判据**：**不允许有我方两个包（`dsh-terminal-profiles` / `dsh-wsl-docker-ports`）的链接** —— 按**包名**搜、不按软链**总数**判。
+与 [009-write-ui/tasks.md](../009-write-ui/tasks.md) Phase 7 §4 同口径。
 未做：UAC/注册表改动、`portproxy reset`、通配符防火墙规则、PATH/gsudo 配置改动。`desktop`/`web` 未被碰（mtime + 0 命中双证）。
 ⚠️ **订正留痕（2026-10-12 真机）**：上面「`~/.dsh` 递归搜我方包名 **0** 命中」**作废** —— 真机递归搜有 **30** 处命中，**全是历史日志 / 缓存、无一可加载**（无软链、无清单引用）⇒ 判据改为「**清单层引用 = 0**（`cordis.patch.yml` / `cordis.yml` / `package.json`）」，与 [009-write-ui/tasks.md](../009-write-ui/tasks.md) 的 Phase 5 ④ 同口径。
 
@@ -293,7 +303,8 @@ config 真送达，但 `writeToken` 本身未在真机验过）；③ 客户端�
 
 **还原与红线**：`volatile-probe` 与快照 `Compare-Object` **差异 0**（74 文件；相对路径→hash 映射 diff = 0）；
 `cordis.patch.yml` 回到原始 `[]`（hash `8C2D1F55…`）；`package.json` 回到原样（bundles 无本插件）；
-profile 内 ReparsePoint **0**、`node_modules` 无本包软链；`portproxy` **19**、我方防火墙 **0**、node **14**、43311 空闲；
+profile 内 ReparsePoint **0**、`node_modules` 无本包软链（🔴 **口径订正 2026-10-12，同上**：「ReparsePoint **0** / 无软链」是**总数**判据 ⇒ 作废；
+探针 profile 自带的 `dsh-volatile-probe` 软链属 bundle，不算残留。**判据 = 不容许有我方两个包的链接**）；`portproxy` **19**、我方防火墙 **0**、node **14**、43311 空闲；
 `pnpm install --frozen-lockfile` exit **0**、`git status --porcelain` **空**。
 
 **⚠️ 本轮修正了我此前的一条探针配方错误**：B-1 探针**不在** `cordis.patch.yml` 里（该文件是 `[]`），

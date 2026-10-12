@@ -155,6 +155,19 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
     return { ok: saved.ok, message: saved.message };
   };
 
+  /**
+   * 清服务端凭据的唯一入口（009 收口轮 T3）：`settings.clearWriteToken()` ⇒ 宿主
+   * `mutate(ns, [{op:'unset',path:['writeToken']}], rev)`。**不写空串**（宿主 `walk()` 对空串仍判
+   * `set:true` ⇒ 清除后页面会显示「已配置」而写通道实际 401）。`configConfigured` 只转达**服务端
+   * 写入后视图**的布尔（`null` = 没拿到 ⇒ 调用方不猜）。
+   */
+  const unsetWriteToken = async (): Promise<{ readonly ok: boolean; readonly message: string; readonly configConfigured: boolean | null }> => {
+    const settings = runtime.settings;
+    if (settings === undefined) return { ok: false, message: '配置写回管道未接线（remote.settings 缺失）：没有从服务端清掉', configConfigured: null };
+    const cleared = await settings.clearWriteToken();
+    return { ok: cleared.ok, message: cleared.message, configConfigured: cleared.writeTokenConfigured };
+  };
+
   const generateToken = async (): Promise<void> => {
     const write = runtime.write;
     if (write === undefined) {
@@ -205,12 +218,16 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
       return;
     }
     setTokenBusy(true);
-    const result = await clearWriteToken({ store: write.tokenStore, save: saveWriteToken });
+    const result = await clearWriteToken({ store: write.tokenStore, unset: unsetWriteToken });
     setTokenBusy(false);
     setTokenNote(result.message);
     setTokenPresent(write.tokenStore.present());
     if (result.cleared) {
-      setConfigConfigured(false);
+      /**
+       * 🔴 布尔取 `mutate` 的**返回值**（服务端写入后的新脱敏视图）—— 与「刷新页面再读一次」
+       * 同源，不是内存推断；`null`（没拿到视图）时**不猜**，留 `null` 让用户自己点「检查」。
+       */
+      setConfigConfigured(result.configConfigured);
       setIssuedToken(null);
     }
   };

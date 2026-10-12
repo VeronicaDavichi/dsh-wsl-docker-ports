@@ -27,7 +27,23 @@ import { dirname, join } from 'node:path';
 export const HOST_SETTINGS_RELATIVE = 'node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-settings/lib/index.js';
 
 /** 只取本判定链上用到的那些宿主函数（依赖顺序见 `extractHostFunctions`） */
-export const HOST_FUNCTIONS = ['isRecord', 'walk', 'redactSecrets', 'plainConfig', 'plainSchema', 'volatileForm', 'isExpression', 'projectForm'] as const;
+export const HOST_FUNCTIONS = [
+  'isRecord',
+  'walk',
+  'redactSecrets',
+  'plainConfig',
+  'plainSchema',
+  'volatileForm',
+  'isExpression',
+  'projectForm',
+  // ── 009 收口轮 T3 追加：`mutate` 路径的三个真函数 ──────────────────────────────
+  // 「清除凭据」走宿主 `mutate` ⇒ 该路径的核心是 `applyPathOp`（按路径 unset，**真的**把键删掉）。
+  // 🔴 追加而不是重写：这三段同样是宿主**原文切片**（行号随 `slices` 一起报出），
+  // 因此「空串仍算已配置 / unset 才算删掉」这个结论来自宿主，不来自我的理解。
+  'isPlainObject',
+  'applyPathOp',
+  'member',
+] as const;
 
 export interface HostGateAttempt {
   readonly anchor: string;
@@ -77,6 +93,16 @@ export interface HostGate {
   readonly plainConfig: (value: unknown) => unknown;
   readonly projectForm: (schema: unknown, value: unknown) => unknown;
   readonly redactSecrets: (schema: unknown, value: unknown) => { readonly value: unknown; readonly secrets: readonly HostSecret[] };
+  /**
+   * 宿主 `applyPathOp(section, op, schema)` 的**原文**（`lib/index.js:189`）——
+   * `mutate` 按路径编辑配置的那一步。🔴 判据来源：`unset` 是 `Reflect.deleteProperty`（键**消失**），
+   * 而「写空串」只是把值换成 `''`（键还在，`walk()` 的 `set: value !== void 0` 照样给 `true`）。
+   */
+  readonly applyPathOp: (section: unknown, op: { readonly op: 'set' | 'unset'; readonly path: readonly string[]; readonly value?: unknown }, schema?: unknown) => Record<string, unknown>;
+  /** 宿主 `isPlainObject`（原文；`applyPathOp` 的依赖） */
+  readonly isPlainObject: (value: unknown) => boolean;
+  /** 宿主 `member(node, key, own?)`（原文；`applyPathOp`/`mutate` 的依赖） */
+  readonly member: (node: unknown, key: string, own?: boolean) => unknown;
 }
 
 /** 按顶层 `function <name>(` 边界切一段（列 0 的声明 ⇒ 下一个 `\nfunction ` 就是终点） */
@@ -164,11 +190,11 @@ export function loadHostGate(candidates: readonly string[] = hostSettingsCandida
       if (typeof isVolatile !== 'function') throw new Error('cosmokit 没导出 isVolatile');
       if (typeof createVolatile !== 'function') throw new Error('cosmokit 没导出 createVolatile');
       if (typeof updateVolatile !== 'function') throw new Error('cosmokit 没导出 updateVolatile');
-      const source = `${pieces.join('\n')}\nreturn { volatileForm, plainSchema, plainConfig, projectForm, redactSecrets };`;
+      const source = `${pieces.join('\n')}\nreturn { volatileForm, plainSchema, plainConfig, projectForm, redactSecrets, applyPathOp, isPlainObject, member };`;
       // eslint-disable-next-line no-new-func
       const factory = new Function('z', 'isVolatile', source) as (z: unknown, isVolatile: unknown) => Omit<HostGate, 'file' | 'slices' | 'z'>;
       const evaluated = factory(z, isVolatile);
-      for (const name of ['volatileForm', 'plainSchema', 'plainConfig', 'projectForm', 'redactSecrets'] as const) {
+      for (const name of ['volatileForm', 'plainSchema', 'plainConfig', 'projectForm', 'redactSecrets', 'applyPathOp', 'isPlainObject', 'member'] as const) {
         if (typeof evaluated[name] !== 'function') throw new Error(`切出来的源码里 ${name} 不是函数`);
       }
       if (typeof (z as { object?: unknown }).object !== 'function') throw new Error('宿主产物里解析到的 schemastery 不是工厂（缺 object）');

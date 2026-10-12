@@ -20,6 +20,14 @@ export interface SettingsUpdateCall {
   readonly ns: string;
   readonly patch: unknown;
   readonly expectedRevision: unknown;
+  /**
+   * `update` 的**真实实参个数**（009 收口轮 T4 补）。
+   *
+   * 🔴 必须用 rest 参数数「实参个数」而不是看键在不在：宿主 `prepareInvocation` 校验的是
+   * `values.length`（真机原话 `client api: settings/update expected 3 argument(s), got 2`），
+   * 而「传了 undefined」与「只传两参」在 JS 里靠 `expectedRevision === undefined` **区分不出来**。
+   */
+  readonly argCount: number;
 }
 
 export interface FakeRemoteSettings extends RemoteSettingsLike {
@@ -37,6 +45,13 @@ export function createFakeRemoteSettings(options: {
   readonly update?: SettingsResponse | ((ns: string, patch: unknown, revision: unknown) => Promise<SettingsResponse>) | undefined;
   readonly describeThrows?: unknown;
   readonly updateThrows?: unknown;
+  /**
+   * 「宿主按**实参个数**校验」的假件（009 收口轮 T4 用）：给了 N ⇒ 实参个数 !== N 时当场抛
+   * `client api: settings/update expected N argument(s), got M`（与真机那句逐字同形）。
+   * 🔴 校验必须住在 `update` **本体**里（不是 `updateResult` 里）—— 后者被本假件用固定 3 参调用，
+   * 在那里数 `arguments.length` **永远**是 3，等于测不到调用方的写法。
+   */
+  readonly strictArgCount?: number | undefined;
 } = {}): FakeRemoteSettings {
   const service: FakeRemoteSettings = {
     calls: { describes: 0, updates: [] },
@@ -50,8 +65,14 @@ export function createFakeRemoteSettings(options: {
       const result = service.describeResult;
       return typeof result === 'function' ? await result() : result;
     },
-    async update(ns, patch, expectedRevision) {
-      service.calls.updates.push({ ns, patch, expectedRevision });
+    async update(...args: unknown[]) {
+      const ns = String(args[0]);
+      const patch = args[1];
+      const expectedRevision = args[2];
+      service.calls.updates.push({ ns, patch, expectedRevision, argCount: args.length });
+      if (options.strictArgCount !== undefined && args.length !== options.strictArgCount) {
+        throw new Error(`client api: settings/update expected ${String(options.strictArgCount)} argument(s), got ${String(args.length)}`);
+      }
       if (service.updateThrows !== undefined) throw service.updateThrows;
       const result = service.updateResult;
       return typeof result === 'function' ? await result(ns, patch, expectedRevision) : result;

@@ -166,12 +166,35 @@ describe('T6.1 写入管道（REQ-10.2：唯一管道 = describe + update）', (
     expectThat('updateCount', pipe.updateCount(), 1);
   });
 
-  it('没有 revision ⇒ 用**两个**实参调用（不瞎传 undefined）', async () => {
+  it('没有 revision ⇒ 仍用**三个**实参调用（第三参显式 undefined；009 收口轮 T4 订正）', async () => {
     const service = createFakeRemoteSettings();
     const pipe = createConfigPipe(() => service);
     await pipe.saveProfiles([{ name: 'a', command: 'wsl.exe' }]);
     expectThat('expectedRevision', service.calls.updates[0]?.expectedRevision, undefined);
-    expectThat('第三参不存在', 'expectedRevision' in (service.calls.updates[0] ?? {}), true);
+    expectThat('实参个数恰好 3（少一个宿主直接抛，连请求都发不出去）', service.calls.updates[0]?.argCount, 3);
+  });
+
+  it('T4 反例：同一个假宿主下，**两参**写法必红（`expected 3 argument(s), got 2`，与真机原话同形）', async () => {
+    // 🔴 这就是修前的写法：`expectedRevision === undefined` 时只传两个实参。
+    // 判据必须能证伪 —— 否则上面那条「恰好 3」可能只是碰巧成立。
+    const strict = createFakeRemoteSettings({ strictArgCount: 3 });
+    let thrown = '';
+    try {
+      await strict.update('dsh-terminal-profiles', { profiles: [] });
+    } catch (error) {
+      thrown = error instanceof Error ? error.message : String(error);
+    }
+    expectThat('反例抛出的原话', thrown, 'client api: settings/update expected 3 argument(s), got 2');
+    expectThat('反例记录到的实参个数', strict.calls.updates[0]?.argCount, 2);
+    expectThat('反例只尝试 1 次（不重试）', strict.calls.updates.length, 1);
+  });
+
+  it('T4 正例：修后的管道在同一份「按实参个数校验」的假宿主下必绿（恰好 3 实参）', async () => {
+    const strict = createFakeRemoteSettings({ strictArgCount: 3 });
+    const outcome = await createConfigPipe(() => strict).saveProfiles([{ name: 'a', command: 'wsl.exe' }]);
+    expectThat('kind', outcome.kind, 'ok');
+    expectThat('实参个数', strict.calls.updates[0]?.argCount, 3);
+    expectThat('revisionPassed=false（没给 revision ⇒ 不是并发保护写）', outcome.kind === 'ok' ? outcome.revisionPassed : true, false);
   });
 
   it('T6.4 单条无效不阻塞其余：无效行被排除出 patch，其余照常写入', async () => {

@@ -7,6 +7,11 @@
  * `ctx.get('remote.settings')` 的 `describe()` + `update(ns, patch, expectedRevision)`。
  * 命名空间 = 本包 patch **条目 id** = 包名（`cordis.patch.yml` 的 `id` 逐字）。
  *
+ * 2026-10-12（009 收口轮 T3）追加第二条写路：`mutate(ns, ops, expectedRevision)`。它**不是**
+ * 「又一个 update」—— 它按**路径**编辑（`{op:'set'|'unset', path}`），专门用来「不改写脱敏后的机密值
+ * 就能改动其它字段 / 把机密字段删掉」（宿主原文：`Apply field edits without restating redacted secrets`）。
+ * 「清除凭据」正是它唯一的用户（理由见 `UNSET_WRITE_TOKEN_OPS`）。实参个数同 `update`：**恒 3**。
+ *
  * ## 为什么单独一层
  *
  * 三个理由，都不是「好看」：
@@ -30,7 +35,7 @@
 
 import type { Scope } from '../diff/types.ts';
 import type { ElevationPolicyValue } from '../wire.ts';
-import type { RemoteSettingsLike, SettingsResponse } from './host.ts';
+import type { RemoteSettingsLike, SettingsPathOp, SettingsResponse } from './host.ts';
 
 /** 命名空间 = patch 条目 id（同时是包名，见 `cordis.patch.yml`） */
 export const SETTINGS_NAMESPACE = 'dsh-wsl-docker-ports';
@@ -67,6 +72,35 @@ export interface SettingsWriteResult {
   readonly revisionPassed: boolean;
 }
 
+/**
+ * 「清除凭据」的结果（009 收口轮 T3）。
+ *
+ * 🔴 `writeTokenConfigured` **不是内存推断**：它的来源是 `mutate` 的**返回值** —— 宿主
+ * `dsh-api-settings-controller` 的 `write()` 在落盘后**重新** `describe({redactSecrets:true})`
+ * 并返回 `namespaceView(descriptor)`（`lib/types/index.js:214-220`），即**写入后的新脱敏视图**。
+ * 所以「刷新页面再读一次」与「看这个字段」是同源的两条路 ⇒ 页面显示与写通道实际状态结构性一致。
+ * `null` = 没拿到视图（失败/缺服务）⇒ 调用方**不猜**，保持原状。
+ */
+export interface SettingsClearResult {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly writeTokenConfigured: boolean | null;
+  readonly revisionPassed: boolean;
+  /** 实际发出的 ops（断言「只发这一条 unset」用） */
+  readonly ops: readonly SettingsPathOp[];
+}
+
+/**
+ * 「清除凭据」发的**唯一** ops：把 `writeToken` 从 user 段 `unset` 掉。
+ *
+ * 为什么不是 `update({writeToken: ''})`：宿主 `walk()` 的 `set: value !== void 0` 对**空串**仍判
+ * `true`（`dsh-settings/lib/index.js:24-29`）⇒ 清除后重载页面会显示「已配置」而写通道实际 401。
+ * 冻结这份常量，让「只发这一条、且是 unset」是可断言的同一性（而不是每次现造一个新对象）。
+ */
+export const UNSET_WRITE_TOKEN_OPS: readonly SettingsPathOp[] = Object.freeze([
+  Object.freeze({ op: 'unset' as const, path: Object.freeze(['writeToken']) }),
+]);
+
 /** 读回来的配置（全部可选：用户可能什么都没配） */
 export interface SettingsConfigView {
   readonly managedPorts: readonly string[];
@@ -100,7 +134,13 @@ export interface SettingsPipe {
    * 调用方（配置页）负责生成与「只显示一次」，本层不读回、不缓存、不打印凭据。
    */
   writeWriteToken(token: string): Promise<SettingsWriteResult>;
-  /** `update` 的真实调用次数（测试断言；「零提权调用」由提权侧计数器给出） */
+  /**
+   * 清除写通道凭据（009 收口轮 T3）：走宿主 `settings.mutate(ns, [{op:'unset',path:['writeToken']}], rev)`
+   * —— **不写空串**（理由逐字见 `UNSET_WRITE_TOKEN_OPS`）。返回的 `writeTokenConfigured` 取自
+   * `mutate` 的**返回值**（= 写入后的新脱敏视图），调用方据此更新布尔，不靠内存推断。
+   */
+  clearWriteToken(): Promise<SettingsClearResult>;
+  /** `update` 的真实调用次数（测试断言；「零提权调用」由提权侧计数器给出）。**清除走 `mutate`，不计入** —— 两个口径不混 */
   updateCount(): number;
 }
 
@@ -247,6 +287,47 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
     writeElevationPolicy: (policy) => write({ elevationPolicy: policy }),
     writeScope: (port, scope) => write({ scopes: { [String(port)]: scope } }),
     writeWriteToken: (token) => write({ writeToken: token.trim() }),
+    async clearWriteToken(): Promise<SettingsClearResult> {
+      const ops = UNSET_WRITE_TOKEN_OPS;
+      const failed = (message: string, revisionPassed: boolean): SettingsClearResult => ({
+        ok: false,
+        message,
+        writeTokenConfigured: null,
+        revisionPassed,
+        ops,
+      });
+      const service = getSettings();
+      if (service === undefined) {
+        return failed('宿主未提供 remote.settings：服务端凭据**没有**清（本会话不动，避免两边不一致）', false);
+      }
+      let described: SettingsResponse;
+      try {
+        described = await service.describe();
+      } catch (error) {
+        return failed(`清除前读配置失败：${errorText(error)}`, false);
+      }
+      const revision = revisionOf(described);
+      // 🔴 实参**恰好 3 个**（宿主 `prepareInvocation` 数 `values.length`）⇒ revision 取不到也要显式占位。
+      try {
+        const result = await service.mutate(SETTINGS_NAMESPACE, ops, revision);
+        if (result.ok !== true) {
+          return failed(`清除失败：${String(result.error ?? '宿主未给出原因')}（未改动任何状态，且不重试）`, revision !== undefined);
+        }
+        // 布尔取自**服务端写入后的新视图**（`namespaceView(descriptor)`），与「刷新后再 describe 一次」同源。
+        const configured = readSecretSet(namespaceEntry(result));
+        return {
+          ok: true,
+          message: configured
+            ? '本会话凭据已清掉；但服务端写入后的视图仍报 writeToken **已配置**（该值来自更外层配置，unset 只能作用于 user 段）⇒ 写通道继续按它鉴权。'
+            : '已清除：服务端 writeToken 已 unset（回到 fail-safe：plan / apply / audit 一律 401），本会话凭据同时清掉（本地拦下、零请求）。',
+          writeTokenConfigured: configured,
+          revisionPassed: revision !== undefined,
+          ops,
+        };
+      } catch (error) {
+        return failed(`清除时抛出异常：${errorText(error)}（未改动任何状态，且不重试）`, revision !== undefined);
+      }
+    },
     updateCount: () => updateCount,
   };
 }

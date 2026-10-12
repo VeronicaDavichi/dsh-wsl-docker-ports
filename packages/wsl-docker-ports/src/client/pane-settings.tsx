@@ -29,6 +29,11 @@ export const WRITE_TOKEN_TESTID = {
   clear: 'btn-write-token-clear',
   clearConfirm: 'btn-write-token-clear-confirm',
   clearCancel: 'btn-write-token-clear-cancel',
+  /**
+   * 「服务端要读到新值」那段说明的锚点（009 收口轮 T2 加的）：文案原文里**不许**再出现
+   * 「未验证」——真机已验通投递链；用例按这个 testid 取 `textContent` 逐字核。
+   */
+  delivery: 'write-token-delivery',
 } as const;
 
 export function ManagedPortsBlock(props: {
@@ -195,7 +200,7 @@ export function WriteTokenBlock(props: {
         </button>
         {confirmingClear ? (
           <>
-            <span className="wdp-error">确认清除？清除后服务端 writeToken 写成空串 ⇒ 写入口回到一律 401（fail-safe），本会话凭据同时清掉。</span>
+            <span className="wdp-error">确认清除？清除后服务端 writeToken 会被 **unset**（把字段真的删掉，**不是写空串** —— 空串在宿主判据里仍算「已配置」）⇒ 写入口回到一律 401（fail-safe），本会话凭据同时清掉。</span>
             <button type="button" className="wdp-btn wdp-btn-primary" data-testid={WRITE_TOKEN_TESTID.clearConfirm} data-settings-control="1" disabled={busy} onClick={onClearConfirm}>
               确认清除
             </button>
@@ -224,9 +229,9 @@ export function WriteTokenBlock(props: {
           </p>
         </div>
       )}
-      <p className="wdp-muted">
-        ⚠️ 服务端要读到新值需要重载插件行；settings 到插件 config 的投递链在真机**未验证**
-        （若预演仍 401，先重载插件行再试）。
+      <p className="wdp-muted" data-testid={WRITE_TOKEN_TESTID.delivery}>
+        ⚠️ 服务端要读到新值需要重载插件行。**2026-10-12 真机已订正**：`settings/describe` 里会出现本插件命名空间，
+        凭据经 `secrets` 脱敏下发（服务端不回显值），且**轮换即时生效** —— 旧串立即 401、新串立即 200。
       </p>
     </section>
   );

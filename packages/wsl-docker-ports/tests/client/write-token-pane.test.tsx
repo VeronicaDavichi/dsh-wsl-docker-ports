@@ -1,140 +1,57 @@
 // @vitest-environment jsdom
 /**
- * 009 T2.1 / T2.3 判据：配置页「生成并保存写通道凭据」按钮（凭据块）
+ * 009 T2.1 / T2.3 判据：配置页「生成并保存写通道凭据」按钮（凭据块）—— **生成 / 一次性显示 / 布尔态 / 零 console / 失败路径**
  *
  * 这里跑的是**真组件 + 真配置管道 + 假 remote.settings**：所以「恰好一次 settings 写入」
  * 是在真的 `writeWriteToken()` → `describe()` + `update()` 路径上数的，不是 mock 掉管道假装。
  *
- * 七条判据（全部可二值判定）：
- * ① 点生成 ⇒ **恰好 1 次** settings 写入，写入值 64 位 hex（= 32 字节）；
+ * 判据（全部可二值判定）：
+ * ① 点生成 ⇒ **恰好 1 次** settings 写入，写入值 64 位 hex（= 32 字节）；轮换 = 再点一次仍是「一次点击一次写入」；
  * ② 显示区出现过该值一次；卸载重渲染后**不再出现**（凭据仍在 sessionStorage）；
- * ③ 未点生成 ⇒ DOM 里**零**凭据样值（含「已配置」态：**只显示布尔**）；
+ * ③/③b/③c/③d 未点生成 ⇒ DOM 里**零**凭据样值（含「已配置」态：**只显示布尔**）；投递链文案已订正（无「未验证」）；
  * ④ `sessionStorage` 命名空间键被写入且值 = 生成值（且**只此一格**）；
- * ⑤ 「清除凭据」⇒ 二次确认（确认前零写入）+ 写入**空串** + 清本会话；
  * ⑥ 凭据绝不进 `console.*`（静态扫描 + 运行时 spy 双重）；
- * ⑦ 写入失败 ⇒ 可读提示、不静默、不入本会话。
+ * ⑦ 生成时写配置失败 ⇒ 可读提示、不静默、不入本会话。
  *
- * 🔴 随机源在本文件里被替换成确定值（`vi.stubGlobal('crypto', …)`）⇒ 断言「写进去的就是
- * 显示出来的那一串」不需要靠猜；生产路径用的仍是 `crypto.getRandomValues`（`write-token.ts`）。
+ * 🔴 **2026-10-12 009 收口轮 T5 拆分**：拆前本文件 `split('\n')` = **480**（超「单文件 ≤ 400 行 SHALL」）。
+ * 按职责切 —— 这里只留「生成 / 一次性显示 / 布尔态 / console / 生成失败」；
+ * **「清除凭据」（含 T3 的 `mutate` unset 根治与 ⑦b 清除失败）整体搬去 `./write-token-clear.test.tsx`**；
+ * 共用台架（确定性随机源 / 假存储 / 假宿主 / 挂载）搬去 `./write-token-harness.ts`。
+ * 🔴 用例**一条没删**（拆前 **15** = 拆后 **10 + 5**，名字集合 `Compare-Object` 空差）。
+ *
+ * 🔴 随机源被替换成确定值（`stubRandom()`）⇒ 断言「写进去的就是显示出来的那一串」不需要靠猜；
+ * 生产路径用的仍是 `crypto.getRandomValues`（`write-token.ts`）。
  */
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, URL as NodeURL } from 'node:url';
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ClientRuntime, RemoteSettingsLike, SettingsResponse } from '../../src/client/host.ts';
 import { PortsPane } from '../../src/client/pane.tsx';
 import { WRITE_TOKEN_TESTID } from '../../src/client/pane-settings.tsx';
-import { createSettingsPipe, SETTINGS_NAMESPACE } from '../../src/client/settings-pipe.ts';
-import { createWriteChannel, type WriteWiring } from '../../src/client/write-channel.ts';
-import { bytesToHex, createWriteTokenStore, WRITE_TOKEN_BYTES, WRITE_TOKEN_STORAGE_KEY, type StorageLike } from '../../src/client/write-token.ts';
-import { snapshot } from '../unit/client-fixtures.ts';
-
-const BYTES = Uint8Array.from({ length: WRITE_TOKEN_BYTES }, (_, index) => index);
-/** 确定性随机源给出的那一串（32 字节 → 64 位小写 hex） */
-const EXPECTED_TOKEN = bytesToHex(BYTES);
-/** 「看起来像凭据」的形状（32+ 连续 hex）—— 判据 ③/② 用它扫整棵 DOM */
-const TOKEN_SHAPE = /[0-9a-f]{32,}/u;
-const ONCE_HINT = '离开后将不再显示，请立即复制';
+import { SETTINGS_NAMESPACE } from '../../src/client/settings-pipe.ts';
+import { WRITE_TOKEN_STORAGE_KEY } from '../../src/client/write-token.ts';
+import {
+  EXPECTED_TOKEN,
+  ONCE_HINT,
+  TOKEN_SHAPE,
+  harness,
+  mountPane,
+  resetDom,
+  stateText,
+  stubRandom,
+} from './write-token-harness.tsx';
 
 beforeEach(() => {
-  vi.stubGlobal('crypto', {
-    getRandomValues: (box: Uint8Array): Uint8Array => {
-      for (let index = 0; index < box.length; index += 1) box[index] = BYTES[index % BYTES.length] ?? 0;
-      return box;
-    },
-  });
+  stubRandom();
 });
 
 afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
+  resetDom();
 });
-
-interface StorageRig extends StorageLike {
-  readonly box: Map<string, string>;
-}
-
-function storageRig(seed?: string): StorageRig {
-  const box = new Map<string, string>();
-  if (seed !== undefined) box.set(WRITE_TOKEN_STORAGE_KEY, seed);
-  return {
-    box,
-    getItem: (key) => box.get(key) ?? null,
-    setItem: (key, value) => {
-      box.set(key, value);
-    },
-    removeItem: (key) => {
-      box.delete(key);
-    },
-  };
-}
-
-interface Recorded {
-  updates: { readonly ns: string; readonly patch: Record<string, unknown> }[];
-  describes: number;
-}
-
-interface Harness {
-  readonly runtime: ClientRuntime;
-  readonly recorded: Recorded;
-  readonly storage: StorageRig;
-}
-
-/**
- * 注入式 runtime：唯一的外部输入是假 `remote.settings` + 假存储。
- * 通道的 `fetchImpl` **故意抛错** ⇒ 本文件里任何一次真请求都会立刻炸掉用例。
- */
-function harness(options: { readonly config?: Record<string, unknown>; readonly seed?: string; readonly updateFails?: string } = {}): Harness {
-  const recorded: Recorded = { updates: [], describes: 0 };
-  const remote: RemoteSettingsLike = {
-    describe: async (): Promise<SettingsResponse> => {
-      recorded.describes += 1;
-      return { ok: true, value: { revision: 3, namespaces: [{ ns: SETTINGS_NAMESPACE, value: options.config ?? {} }] } };
-    },
-    update: async (ns: string, patch: unknown): Promise<SettingsResponse> => {
-      recorded.updates.push({ ns, patch: patch as Record<string, unknown> });
-      if (options.updateFails !== undefined) return { ok: false, error: options.updateFails };
-      return { ok: true, value: { namespaces: [{ ns, value: patch }] } };
-    },
-  };
-  const storage = storageRig(options.seed);
-  const tokenStore = createWriteTokenStore(storage);
-  const channel = createWriteChannel({
-    token: () => tokenStore.read(),
-    fetchImpl: async () => {
-      throw new Error('本文件不该发任何写通道请求（fetchImpl 故意抛错）');
-    },
-  });
-  const wiring: WriteWiring = { channel, tokenStore, declaration: async () => ({ ok: true, ports: [] }) };
-  return {
-    recorded,
-    storage,
-    runtime: {
-      source: { load: async () => snapshot({}) },
-      settings: createSettingsPipe(() => remote),
-      elevation: undefined,
-      exec: undefined,
-      write: wiring,
-    },
-  };
-}
-
-/** 渲染整页并等凭据块出现（凭据块的挂载本身**零 IPC**：T5.1 的门保持不变） */
-async function mountPane(runtime: ClientRuntime): Promise<HTMLElement> {
-  const { container } = render(<PortsPane runtime={runtime} />);
-  await screen.findByTestId(WRITE_TOKEN_TESTID.block);
-  return container;
-}
-
-function stateText(): string {
-  return screen.getByTestId(WRITE_TOKEN_TESTID.state).textContent ?? '';
-}
-
 describe('009 T2.1 判据①④：生成 ⇒ 恰好一次 settings 写入 + 入 sessionStorage', () => {
   it('① 点「生成并保存」⇒ 恰好 1 次写配置（键恰 writeToken），值是 64 位 hex（≥32 字节）', async () => {
     const test = harness();
@@ -240,44 +157,26 @@ describe('009 T2.1 判据③：未点生成 ⇒ DOM 零凭据样值（含「已�
     expect(consequence).not.toMatch(TOKEN_SHAPE);
     console.log(`  · 扫了 1 条后果文案：${consequence.slice(0, 40)}…`);
   });
-});
 
-describe('009 T2.1 判据⑤：清除（二次确认 + 空串）', () => {
-  it('⑤ 点「清除凭据」⇒ 确认前零写入；确认后写**空串**并清本会话', async () => {
-    const seeded = 'c'.repeat(64);
-    const test = harness({ seed: seeded });
-    await mountPane(test.runtime);
+  it('③d T2 文案订正：投递链说明里**不再**有「未验证」，且如实写明 2026-10-12 真机结论（零凭据样值）', async () => {
+    const configuredValue = 'a'.repeat(64);
+    const test = harness({ config: { writeToken: configuredValue } });
+    const container = await mountPane(test.runtime);
 
-    fireEvent.click(screen.getByTestId(WRITE_TOKEN_TESTID.clear));
-    // 二次确认**真的**生效：确认之前一个字节都没写出去
-    expect(test.recorded.updates).toHaveLength(0);
-    expect(screen.getByTestId(WRITE_TOKEN_TESTID.clearConfirm)).toBeDefined();
-    expect(test.storage.box.get(WRITE_TOKEN_STORAGE_KEY)).toBe(seeded);
-
-    fireEvent.click(screen.getByTestId(WRITE_TOKEN_TESTID.clearConfirm));
-    await waitFor(() => {
-      expect(test.recorded.updates).toHaveLength(1);
-    });
-    expect(test.recorded.updates[0]?.patch).toEqual({ writeToken: '' });
-    expect(test.recorded.updates[0]?.ns).toBe(SETTINGS_NAMESPACE);
-    expect(test.storage.box.has(WRITE_TOKEN_STORAGE_KEY)).toBe(false);
-    expect(screen.getByTestId(WRITE_TOKEN_TESTID.state).getAttribute('data-session-credential')).toBe('0');
-    expect(screen.getByTestId(WRITE_TOKEN_TESTID.state).getAttribute('data-config-configured')).toBe('0');
-    console.log('  · 扫了 1 次清除：确认前 0 次写入 / 确认后 1 次（patch 恰 { writeToken: "" }）/ 本会话已清');
-  });
-
-  it('⑤b 点「取消」⇒ 零写入，凭据原样留着（不是「删一半」）', async () => {
-    const seeded = 'd'.repeat(64);
-    const test = harness({ seed: seeded });
-    await mountPane(test.runtime);
-
-    fireEvent.click(screen.getByTestId(WRITE_TOKEN_TESTID.clear));
-    fireEvent.click(screen.getByTestId(WRITE_TOKEN_TESTID.clearCancel));
-    expect(test.recorded.updates).toHaveLength(0);
-    expect(test.storage.box.get(WRITE_TOKEN_STORAGE_KEY)).toBe(seeded);
-    expect(screen.getByTestId(WRITE_TOKEN_TESTID.state).getAttribute('data-session-credential')).toBe('1');
-    expect(screen.queryByTestId(WRITE_TOKEN_TESTID.clearConfirm)).toBeNull();
-    console.log('  · 扫了 1 次取消：写入 0 次、凭据 1 次仍在、确认按钮已收起');
+    const delivery = screen.getByTestId(WRITE_TOKEN_TESTID.delivery).textContent ?? '';
+    // ① 旧文案的「未验证」必须消失（它已经不是事实：真机 19→20 命名空间 + secrets 脱敏 + 轮换即时生效）
+    expect(delivery).not.toContain('未验证');
+    // ② 新文案必须**指名**订正时间与结论，别写成含糊的「已验证」
+    expect(delivery).toContain('2026-10-12');
+    expect(delivery).toContain('settings/describe');
+    expect(delivery).toContain('secrets');
+    expect(delivery).toContain('轮换即时生效');
+    // ③ 说明文案里不得出现任何凭据样值（也不得出现被脱敏的那一格的值）
+    expect(delivery).not.toMatch(TOKEN_SHAPE);
+    expect(delivery).not.toContain(configuredValue);
+    expect(container.innerHTML).not.toContain(configuredValue);
+    expect(TOKEN_SHAPE.test(container.innerHTML)).toBe(false);
+    console.log(`  · 扫了 1 段投递链文案（${String(delivery.length)} 字符）：「未验证」0 处、凭据样值 0 处、含订正日期与三条事实`);
   });
 });
 
@@ -314,8 +213,10 @@ describe('009 T2.1 判据⑥：凭据绝不进 console', () => {
     fireEvent.click(screen.getByTestId(WRITE_TOKEN_TESTID.clear));
     fireEvent.click(screen.getByTestId(WRITE_TOKEN_TESTID.clearConfirm));
     await waitFor(() => {
-      expect(test.recorded.updates).toHaveLength(2);
+      // T3 起清除走 `mutate`（不再是第二次 `update`）⇒ 计数口径随之改，检查次数不变
+      expect(test.recorded.mutates).toHaveLength(1);
     });
+    expect(test.recorded.updates).toHaveLength(1);
 
     const calls = spies.flatMap((spy) => spy.mock.calls);
     const leaked = calls.filter((args) => JSON.stringify(args).includes(EXPECTED_TOKEN) || TOKEN_SHAPE.test(JSON.stringify(args)));
@@ -339,21 +240,5 @@ describe('009 T2.1 判据⑦：错误路径（可读提示、不静默）', () =
     expect(test.storage.box.has(WRITE_TOKEN_STORAGE_KEY)).toBe(false);
     expect(screen.getByTestId(WRITE_TOKEN_TESTID.once).textContent).toBe(EXPECTED_TOKEN);
     console.log(`  · 扫了 1 条失败路径：提示「…${note.slice(0, 24)}…」；本会话凭据 0 个，明文仍可复制`);
-  });
-
-  it('⑦b 清除时写配置失败 ⇒ 不静默、本会话**不**清（避免两边不一致）', async () => {
-    const seeded = 'e'.repeat(64);
-    const test = harness({ seed: seeded, updateFails: '写入被拒绝' });
-    await mountPane(test.runtime);
-    fireEvent.click(screen.getByTestId(WRITE_TOKEN_TESTID.clear));
-    fireEvent.click(screen.getByTestId(WRITE_TOKEN_TESTID.clearConfirm));
-
-    await waitFor(() => {
-      expect(screen.getByTestId(WRITE_TOKEN_TESTID.note).textContent).toContain('写入被拒绝');
-    });
-    expect(screen.getByTestId(WRITE_TOKEN_TESTID.note).textContent).toContain('保留');
-    expect(test.storage.box.get(WRITE_TOKEN_STORAGE_KEY)).toBe(seeded);
-    expect(screen.getByTestId(WRITE_TOKEN_TESTID.state).getAttribute('data-session-credential')).toBe('1');
-    console.log('  · 扫了 1 条清除失败路径：提示带原因 + 本会话凭据保留（1 个）');
   });
 });

@@ -179,6 +179,7 @@ test('009 缺陷 1 第二层：所有权声明 —— 两种形态都让 `declar
     const service: RemoteSettingsLike = {
       describe: (): Promise<SettingsResponse> => Promise.resolve({ ok: true, value: { namespaces: [{ ns: SETTINGS_NAMESPACE, value: { managedPorts: [...declare] } }] } }),
       update: (): Promise<SettingsResponse> => Promise.resolve({ ok: true, value: { namespaces: [] } }),
+      mutate: (): Promise<SettingsResponse> => Promise.reject(new Error('本用例不该走 mutate')),
     };
     const outcome = await createDeclarationReader(createSettingsPipe(() => service))();
     assert.equal(outcome.ok, true, '声明读取必须成功（解析器与客户端同一条）');

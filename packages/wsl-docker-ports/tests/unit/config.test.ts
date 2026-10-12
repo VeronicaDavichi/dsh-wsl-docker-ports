@@ -141,6 +141,10 @@ test('009 缺陷 1：字段清单 = 客户端 5 个写方法产出的 patch 键�
       written.push(...Object.keys(patch));
       return { ok: true, value: {} };
     },
+    // 本用例只数 `update` 的 patch 键集合（「五个字段都有声明」）；清除走 mutate，这里不该被调到 ⇒ 抛。
+    mutate: async (): Promise<SettingsResponse> => {
+      throw new Error('本用例不该走 mutate');
+    },
   };
   const pipe = createSettingsPipe(() => service);
   await pipe.writeManagedPorts(['3306']);
