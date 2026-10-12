@@ -15,8 +15,9 @@
 | 配置页挂载 | `src/client/pane-settings.tsx` | 凭据块 + 写通道块（与 007 的表单 / 只读态**区块并列，不覆盖**） | 198 |
 | 配置管道 | `src/client/settings-pipe.ts` | `writeWriteToken`（第 5 个写方法，走同一个 `write()` 单键 patch 路径） | 181 |
 | 测试 | `tests/client/write-{token,channel,confirm,panel,result}.test.tsx` + `write-fixtures.ts`；`tests/unit/client-settings.test.ts` | 44 条 `vitest`（008 `T3.1`）+ **14** 条（009 T1.1–T1.3 结果区 ⇒ 客户端共 **58** 条）+ T5.7 管道面判据 | — |
+> 🔴 **2026-10-12 文档一致性轮订正（本表是当日快照，原文逐格保留不删）**：表内 **6 行行数已过期** —— `write-token.ts` 188 → **254**、`settings-pipe.ts` 181 → **333**、`pane-settings.tsx` 198 → **268**、`write-confirm.tsx` 201 → **209**、`write-panel.tsx` 234 → **233**、`write-result.tsx` 202 → **201**（`write-dto.ts` **170**、`write-channel.ts` **307** 未变）⇒ **权威表 = [tasks.md](./tasks.md) 的 `T4.2`**（`src/client/**` **17 文件**逐个实测：原始行数 + 原始/去注释字节 + 逐条判定）；**本表不整表重写**，以 `T4.2` 为准。
 
-**上限**：单文件 ≤ **400** 行（当前最大 `write-channel.ts` **307**）；去注释去空行 ≤ **40KB**（AGENTS.md：40KB 之后不许再抬阈值）。
+**上限**：单文件 ≤ **400** 行（~~当前最大 `write-channel.ts` **307**~~ ⇒ 🔴 **2026-10-12 文档一致性轮订正（旧值保留不删；307 这个数本身仍准，作废的是「最大」二字）**：实测**现最大 = `pane.tsx` 379 行**，次之 `rows.ts` 364 / `settings-pipe.ts` 333 / `index.ts` 310；逐个实测口径与判定见本表下方的 **T4.2 指针**）；去注释去空行 ≤ **40KB**（AGENTS.md：40KB 之后不许再抬阈值）。
 
 ## 2. 组件边界与状态流
 
@@ -67,4 +68,4 @@
 | 组件 / 接线 | `vitest run`（`include` 只列 `tests/client/**`，见 `vitest.config.ts`；`.tsx` 扩展名本身就是与 `node:test` 的隔离手段） | 命令原文逐字、影响面、`notes`、未确认零请求、取消零请求、401 指路不重试、409 重新预演、置灰原因、凭据一次性 / 不落盘 / 不引 localStorage、**结果四态分色 / 失败必带原因 / 清单内保序 / 结果保留**（🔴 「零请求」= **零写通道请求**，见 REQ-2.4 订正痕） |
 | 单元（无 DOM） | `node --test --test-concurrency=1 "tests/**/*.test.ts"` | 凭据仓库与生成（可注入随机源）、配置管道面（T5.7：7 项导出、`forbidden` 5 个执行入口零命中、写配置零提权调用） |
 | 静态 | 脚本复算 | `src/client/**` 零硬编码 hex（003 `NFR-7` / 002 `NFR-4` 同口径）；凭据不进日志（`console.` 与 `localStorage` 用法零命中） |
-| 真机 | 主人 / 探针 profile | V6–V8（**当前状态：未通过（未验）**） |
+| 真机 | 主人 / 探针 profile | V6–V8（**当前状态：未通过（未验）**）⇒ 🔴 **2026-10-12 文档一致性轮订正（原文保留不删）**：**V6 / V7 / V8 均已真机通过** —— `0f5c4ed`（缺陷 1 真根因）⇒ `47d19b7`（收口轮真机复跑）两轮；UI vs 服务端 `commandText` **逐字全等** —— add `portproxy-add` **123/123** + `firewall-add` **168/168**、remove `portproxy-delete` **78/78** + `firewall-delete` **64/64**。🔴 **如实边界（不得读成「四态全通过」）**：`failed` / `skipped` / `rolledBack` **三态真机从未出现** ⇒ **仅离线覆盖**（真机只出 `executed` 一态）。原文证据见本目录 [tasks.md](./tasks.md) 的 **Phase 7 §1** 与该轮判据摘要（`:51`） |
