@@ -160,3 +160,190 @@ $t = 'packages\terminal-profiles\lib\client.js'
 2. 我第一次比对 tsv 时用 `Sort-Object` 直接比，得到 **175 行差异**的假象；根因是 tsv 是 **CRLF**、我按 `\n` 切分后每行尾部都留了 `\r` ⇒ 归一后真相是 **11 行**（= 5 改 + 1 增）。**这是我自己的比对口径错误**，不是产物问题。
 3. §1.2 的 `CONFIG_PATCH_KEY` → `CONFIG_PATCH_FIELD` 订正（派单文字 vs 实测）已写在 §1.2；我**没有**为迁就派单文字而改实测值。
 4. §1.3 里我**没能**复现上一轮的 `72a135c8…`（试了 7 种口径）⇒ 我把它记成**未复现**，而不是硬凑一个「看起来对」的说法。
+
+## 9. 🔴 §8 未验项收口（2026-10-12 **文档轮**：盘上产物当场复算 —— **零真机**）
+
+> **本节口径**：§0–§8 原文（含 §0 的取证边界**错述**、§8 的 7 条未验项）**逐字保留、一字不删**；一切订正只写在本节。
+> 🔵 = 本轮**当场复算**（命令/口径写在句内）；🟡 = 只有**转写**、盘上无产物可重算；🔴 = 订正或未复现。
+> **本节零真机**：未起实例、未跑 `netsh` / `New-NetFirewallRule`、未碰 `desktop` / `web`、未碰 `packages/terminal-profiles/**`、未跑任何 `pnpm` 命令；只做**盘上字节**的读取与哈希。
+
+### 9.1 🔴 先订正 §0 的取证边界（**我上次找错了地方**）
+
+产物**分三处**（都在 `C:\Users\EDY\dsh-probe-artifacts\`）：
+
+| 目录 | mtime 窗口 | 装什么 | 对应本文件哪一节 |
+| --- | --- | --- | --- |
+| `20261012-135023\` | 13:50–14:02 | **原始 HTTP 逐字 dump**：`a1-describe-raw.txt`(34,765 B) / `a3-describe-after.txt` / `b2…` / `b3-describe-after-clear.json` / `b4-describe.json` / `b2b-plan-with-token.txt` / `b3c-plan-oldtoken.txt` / `b3c2-plan-oldtoken-header.txt` / `b4-plan-newtoken.txt` / `b4-plan-oldtoken-again.txt` / `b4-plan-nocred.txt` / `c1-plan-no-token.txt` / `b2b-audit-before.txt` / `b4-audit-after.txt` / `baseline.map` / `vp-cordis.patch.yml.ORIG`(218 B) / `desktop-cordis.patch.yml.BEFORE`(10,193 B) | **§2 / §3 / §5 的现场观测值** |
+| `20261012-140444\` | 14:04–14:29 | **重建轮**：`lib-*.{BEFORE,AFTER}.sha256` / `blobs.{BEFORE,AFTER}.txt` / `B3-portproxy.{before,after}.txt` / `portproxy.baseline.txt` / `final-portproxy.txt` / `round2-{start,final}.map` / `A-round2-evidence.md` / `B-round2-evidence.md` / `A|B-{stdout,stderr}.log` / `A-token.txt` / `snippet-unset-ops.txt` / `rpc.ps1` | **§1.3 / §2 / §4 / §5 的产物侧** |
+| `20261012-143729\` | 14:35–14:38 | `lib-baseline-rebuilt.sha` / `lib-before-any-rebuild.sha` / `ORIG-cordis.patch.yml`(218 B) / `ORIG-package.json` / `profile-before.sha` / `build-baseline.log` / **`probe-instance.log`（被进程占用）** | 属**另一轮**；本轮**只读**，不当 009 证据引用 |
+
+🔴 **三条订正（都是我的错）+ 一条本轮补算**：
+
+1. §0 写的「`E:\Temp` 下无对应产物可重算」**过于笼统**：产物不在 `E:\Temp`，在 `dsh-probe-artifacts\` 的三个时间戳目录里。
+2. 派单点名的 `b*-plan-*.txt` / `b4-audit-after.txt` / `a1-describe-raw.txt`(34,765 B) **不在 `140444`** —— 该目录里的 `A1-describe-raw.txt` 只有 **388 B**，内容是 `HANDSHAKE status=303` + `HTTP=404` + `not found`（**不是** describe 响应）。真 dump 全在 `135023`。
+3. 🔴 **`135023` 是「重建前 / 陈旧产物」窗口**：其 dump 的 mtime（13:54:30 / 13:57:56）**早于** `lib-wsl-docker-ports.BEFORE.sha256` 的 14:04:50；而该 BEFORE 里 `client.js` = `683faa83…` / **137,864 B**（= §1.1 那条「无 `.mutate(`」的旧产物），重建后（`…AFTER.sha256`，14:05:27）才是 `695fa1bb…` / 141,320 B。⇒ **`135023` 的观测值只能当「修前」用，不得代表修后行为。** 这正是 §8 未验 1 的根因：我把两个窗口当成了一个。
+4. 🔵 **本轮补算**：当前盘上 `lib/` **89 文件**与 `…AFTER.sha256`（89 行）**逐行相同（mismatch = 0）**；`lib-terminal-profiles.AFTER.sha256` 与 BEFORE 亦各自成对（4,573 B / 4,573 B）⇒ 那批产物就是重建版；`blobs.{BEFORE,AFTER}.txt`（745 B×2）**逐字节相同**（`232039e6…`）⇒ `package.json` / `pnpm-lock.yaml` 的 blob 与 sha256 前后无变化。
+
+### 9.2 §8 未验项逐条处置（一览）
+
+| §8 条目 | 本轮结论 | 复算等级 |
+| --- | --- | --- |
+| 1 现场观测值盘上无产物 | **大部分收成 🔵**：describe 原文 + 401 三态 + plan/audit 的**原始 dump 都在 `135023`**（逐字比对见 9.3）；仍 🟡 的只剩「**修后**清除 ⇒ `set:false`」这一条（只有 `B-round2-evidence.md` §3 转写，无 raw dump） | 🔵 + 🟡 |
+| 2 `portproxy` 全量 sha | **🔵 全量复算**：`b9d38664ebb234be8b74945362d86a6c3608d96e6764cbc903b11de955d1056d` | 🔵 |
+| 3 旧串 `~/.dsh` 0 命中 | **半可复算，且被我自己的取证污染**（见 9.5） | 🔵 + 🟡 |
+| 4 `failed`/`skipped`/`rolledBack` 三态 | **保留未验**，并加一条**「建议不做」**的理由（见 9.6） | 🟡 |
+| 5 落盘 `cordis.patch.yml` 回到 771 B | **口径待定**：218 B（ORIG）已复算；771 B / `77afca6c…` 盘上**无对应文件**（见 9.7） | 🟡 |
+| 6 007 根因与修复 | 仍是另一轮的事，本节**不代记账**（§6 指针不变） | — |
+| 7 401 文案「需重载插件行」与真机矛盾 | 🔴 **本轮已订正**（① 产品代码 + 规格三处，见 9.8） | ✅ |
+
+### 9.3 未验 1：现场观测值 ⇒ **有产物、可复算**（🔵）
+
+**目录路径**：`C:\Users\EDY\dsh-probe-artifacts\20261012-135023\` 与 `…\20261012-140444\`（逐文件 sha256 见下）。**复算口径**：`[IO.File]::ReadAllBytes` → 原始字节 sha256（**不做**换行归一、不转码）。
+
+`20261012-135023\`（13:50–14:02，**原始 HTTP dump 窗口 / 陈旧产物**） —— 逐文件 sha256（对**文件原始字节**取 sha256，未做任何换行归一）：
+
+| 文件 | 字节 | sha256 |
+| --- | ---: | --- |
+| `_check.map` | 3783 | `f82b4d3e7d415cb0ea76be82c7c09c3f05cc010b73061abd713d6490b1926d2a` |
+| `a1-describe-raw.txt` | 34765 | `b411228493e5ec6b876418ca96fdfa43d5242bc615d6a3ac78ad4837f550bece` |
+| `a2-update-body.json` | 305 | `773e8187d86e904cc573934725622c22dc540225988d8e2f8e25774420cb0d55` |
+| `a2-update-with-rev.txt` | 1096 | `2a1c8485066b66dbf972233b680c1c5a846712e3097d3e445e58e2077ae1ee28` |
+| `a3-describe-after.txt` | 35633 | `5b20030f225e482953d0ba2baf19f738aebd24732c2eb374946c770ea784b4a3` |
+| `a3-update-no-rev.txt` | 1434 | `cecff4040324374e399343bb4246065d57dbd92f84c04c86576af98e92f3eb7a` |
+| `b2-describe-with-token.json` | 35825 | `bb680be9f062cb133a8ff1f8e547d0d2c2483d46caba23bc68d9b33f40b42f14` |
+| `b2b-audit-before.txt` | 423 | `0328ecf6418352d1de4524585b435bc4436406b0f2c3e55961e29c64b6bc1893` |
+| `b2b-plan-with-token.txt` | 978 | `98556600982d997649537ad1a0dafab4741c3105ae8bff65772997ecdd528814` |
+| `b3-describe-after-clear.json` | 35825 | `ff4e1b79cc703debb8c1facbd78fd9b8c9453e69fe2ec3d3b900abe081c844eb` |
+| `b3c-plan-oldtoken.txt` | 1046 | `6d21e65f2917daa396be675111247901cdc4eb120e23d3a982e3fe0009ebf03e` |
+| `b3c2-plan-oldtoken-header.txt` | 1046 | `ac49eaa3ce2c7b0aa71f1cd5285a045c8b998e3c6a4ea4bb8d9a3b20fb0356fe` |
+| `b4-audit-after.txt` | 423 | `c8036d5a764fac1a2feba6ff465b705e4e3feb0106d26b8c8c0f7fb990e62919` |
+| `b4-describe.json` | 35825 | `b8443ff979f6768b2f5ff02fc17ebda6bbc675bc76e0d808507860f464b220cd` |
+| `b4-plan-newtoken.txt` | 978 | `884460439de8d892dd85260bcf9bbca92fa1577b1514dbfbfbe7c54c7ae53804` |
+| `b4-plan-nocred.txt` | 519 | `2a84965556826d6b4eb23fc4b1ebd3cecf9df67c2c1d709cf7e509013bd2c209` |
+| `b4-plan-oldtoken-again.txt` | 522 | `35823fe5df03dd1792e50dd0291665f9300654ee6a5884aee2ca5d1a6080c1e2` |
+| `baseline.map` | 3783 | `f82b4d3e7d415cb0ea76be82c7c09c3f05cc010b73061abd713d6490b1926d2a` |
+| `c1-plan-no-token.txt` | 1046 | `fb94147ad4b448d4aaee60223db119e5912567148dda8c5748ef013d57cd87b0` |
+| `desktop-cordis.patch.yml.BEFORE` | 10193 | `c77ff9867dfe27a07efe7730c315283b9d288a924e60b15c7f06165dc54a3e63` |
+| `final.map` | 3783 | `f82b4d3e7d415cb0ea76be82c7c09c3f05cc010b73061abd713d6490b1926d2a` |
+| `final2.map` | 3783 | `f82b4d3e7d415cb0ea76be82c7c09c3f05cc010b73061abd713d6490b1926d2a` |
+| `final3.map` | 3783 | `f82b4d3e7d415cb0ea76be82c7c09c3f05cc010b73061abd713d6490b1926d2a` |
+| `rpc.ps1` | 1182 | `4b0bd998fdbfc93f888f1eb33aee1a89d3424127922bb22a5fe479d0853db3b1` |
+| `snapshot.ps1` | 518 | `fbe855d23d013617bb66b14e82857fdaf1e98fadbac56ae093f9eb61357661c1` |
+| `vp-cordis.patch.yml.ORIG` | 218 | `8c2d1f557ff4d18f5d3c1b284a7246cacc571853b468ff56e4fa33204827c1f6` |
+| `vp-package.json.ORIG` | 381 | `33ed261562cfc42021566bf3b43b3a0de97f0683092c183b2bd638e587bece88` |
+
+`20261012-140444\`（14:04–14:29，**重建轮**） —— 逐文件 sha256（对**文件原始字节**取 sha256，未做任何换行归一）：
+
+| 文件 | 字节 | sha256 |
+| --- | ---: | --- |
+| `A-pid.txt` | 7 | `444799939c8769b4f8165708b0dc2ab0a8f7b04c069c697bf0ae71a930350538` |
+| `A-round2-evidence.md` | 4543 | `7d335ac88af76cbf04d86e2dc92d921d414645c2f7337359bd187651ca75d205` |
+| `A-stderr.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `A-stdout.log` | 83 | `90a81fcf70d82f212b57fb7e7561e8c24c927fd28b4403ccbd038673663ddb73` |
+| `A-token.txt` | 45 | `2644022c95850c1e37e00350ec4f2c917fe2932a6b3668a1596b8d02323d3471` |
+| `A1-describe-raw.txt` | 388 | `3c4bc82aa6beea55444c02e18fdeded1f34b11a2672e4853bb1821a2744e5733` |
+| `B-round2-evidence.md` | 8120 | `940f31fd473e184d6dd8b48ca7ec72acf96598155948a3c0507f0f8f77add680` |
+| `B-stderr.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `B-stdout.log` | 83 | `a3b1ef9ded4f763ebb6b4652e81b663f99093e7697ff1bfdafe67dea2000eaf5` |
+| `B3-portproxy.after.txt` | 1109 | `b9d38664ebb234be8b74945362d86a6c3608d96e6764cbc903b11de955d1056d` |
+| `B3-portproxy.before.txt` | 1109 | `b9d38664ebb234be8b74945362d86a6c3608d96e6764cbc903b11de955d1056d` |
+| `DevToolsActivePort.BEFORE` | 60 | `08f6e85e7f090273926055383632b8ec35dc329a10981259234801dac4753c78` |
+| `blobs.AFTER.txt` | 745 | `232039e6977fcb37e36f49a71595c09d141687bf55675f4489c622d236f82599` |
+| `blobs.BEFORE.txt` | 745 | `232039e6977fcb37e36f49a71595c09d141687bf55675f4489c622d236f82599` |
+| `final-portproxy.txt` | 1109 | `b9d38664ebb234be8b74945362d86a6c3608d96e6764cbc903b11de955d1056d` |
+| `lib-terminal-profiles.AFTER.sha256` | 4573 | `fe27b5440478e8f0ee6da14dc9d9a9421a1dc3bd35ecc932fecf5e2d962685e8` |
+| `lib-terminal-profiles.BEFORE.sha256` | 4573 | `3116cd8ea35ebf7e418178fbd8f0196662ac63ca131ab2400ef9af84c5cc9eb9` |
+| `lib-wsl-docker-ports.AFTER.sha256` | 8389 | `147362e1e3f44d52b11538120d9d46959ae321b0bf2a675c405e37fa2ec818ce` |
+| `lib-wsl-docker-ports.BEFORE.sha256` | 8303 | `1c07e3a90c22581f903817009ccca4b9c769142c4efa47aec1731ceecfd9b1bc` |
+| `portproxy.baseline.txt` | 1109 | `b9d38664ebb234be8b74945362d86a6c3608d96e6764cbc903b11de955d1056d` |
+| `round2-final.map` | 3783 | `f82b4d3e7d415cb0ea76be82c7c09c3f05cc010b73061abd713d6490b1926d2a` |
+| `round2-start.map` | 3783 | `f82b4d3e7d415cb0ea76be82c7c09c3f05cc010b73061abd713d6490b1926d2a` |
+| `rpc.ps1` | 1182 | `4b0bd998fdbfc93f888f1eb33aee1a89d3424127922bb22a5fe479d0853db3b1` |
+| `snippet-unset-ops.txt` | 522 | `100fa4312030ddebc7be3d38376dba806f93da6e842c26872b55197d4f34a8bc` |
+**逐字比对结果**（脚本：`fs.readFileSync` 原文 + `JSON.parse` + 字符串 `===` / `startsWith`，逐条打印 PASS）：
+
+| # | 观测项（逐字） | 出处（raw dump） | 比对 |
+| --- | --- | --- | --- |
+| 1 | `"secrets":[{"path":["writeToken"],"set":false}],"revision":0` | `a1-describe-raw.txt`（同值亦见 `a3-describe-after.txt`） | ✅ 逐字一致 |
+| 2 | `"secrets":[{"path":["writeToken"],"set":true}],"revision":1` | `b2-describe-with-token.json`（UI 点「生成并保存」之后） | ✅ |
+| 3 | `"secrets":[{"path":["writeToken"],"set":true}],"revision":2` | `b3-describe-after-clear.json`（**陈旧产物窗口**） | 🔴 **修前症状**：清除后**仍报 `set:true`** ⇒ §2 第 1 行要求的 `set:false` 在 **`135023` 这一轮并没有出现**；`set:false` 只出现在 `140444\B-round2-evidence.md` §3 的**转写**里（🟡，无 raw dump） |
+| 4 | `"secrets":[{"path":["writeToken"],"set":true}],"revision":3` | `b4-describe.json`（轮换之后） | ✅ |
+| 5 | `未配置写通道凭据：…（fail-safe）。配置方法：① … ② … 不需要重载插件）。之后以 …` | `b3c-plan-oldtoken.txt` / `b3c2-plan-oldtoken-header.txt` / `c1-plan-no-token.txt`（三份**逐字节同文**，HTTP=**401**，message 长 **349** 字符） | ✅ 与源码 `src/transport/write-auth.ts:162` **逐字一致**（含 `WRITE_TOKEN_CONFIG_HINT` 293 字符） |
+| 6 | `缺少写通道凭据：拒绝本次请求（零执行、零写入、零审计）。` | `b4-plan-nocred.txt`（HTTP=**401**，28 字符） | ✅ 与 `write-auth.ts:167` 逐字一致 |
+| 7 | `写通道凭据不正确：拒绝本次请求（零执行、零写入、零审计）。` | `b4-plan-oldtoken-again.txt`（HTTP=**401**，29 字符） | ✅ 与 `write-auth.ts:170` 逐字一致 |
+| 8 | `"planId":"72f7234b7ca1864275167dfe3eb332207f64f5792b797f23481c74048640dd12"`（**64 hex**）、`confirm.ticket` 为 UUID、`elevation={"policy":"unknown","backend":"gsudo","available":true}`、`commandText` 无 `reset`/通配符 | `b2b-plan-with-token.txt` / `b4-plan-newtoken.txt`（HTTP=**200**，两份 planId **相同** —— 同 scope/端口 ⇒ 同计划内容） | ✅（本轮 regex 复算：`^[0-9a-f]{64}$`、UUID、`/reset|\*/` 均通过） |
+| 9 | `{"ok":true,"records":[],"size":0,"dropped":0}` | `b2b-audit-before.txt` / `b4-audit-after.txt`（HTTP=**200**） | ✅ 零副作用（审计 `size` 全程 0） |
+| 10 | 🔴 **口径差异（必须写明）**：上面 5 份 describe **都是 21 个命名空间**（19 宿主 + `dsh-terminal-profiles` + `dsh-wsl-docker-ports`）⇒ 那一轮**两个插件都装了**；而 §2 的「**20** 个命名空间（只装组件②）」是**另一轮**、且**没有 raw dump** | `135023` 的 5 份 dump | ⇒ 两个数字都对，但**不是同一次运行**，**不得互相引用**；§2 的 20 仍是 🟡 |
+
+### 9.4 未验 2：`portproxy` 全量 sha ⇒ **一致**（🔵，不跑 `netsh`）
+
+```powershell
+# 口径：对文件原始字节取 sha256（4 份快照同值），并逐字节比对
+Get-FileHash B3-portproxy.before.txt,B3-portproxy.after.txt,portproxy.baseline.txt,final-portproxy.txt -Algorithm SHA256
+```
+
+| 文件 | 字节 | sha256（全量） |
+| --- | ---: | --- |
+| `B3-portproxy.before.txt` | 1109 | `b9d38664ebb234be8b74945362d86a6c3608d96e6764cbc903b11de955d1056d` |
+| `B3-portproxy.after.txt` | 1109 | 同上 |
+| `portproxy.baseline.txt` | 1109 | 同上 |
+| `final-portproxy.txt` | 1109 | 同上 |
+
+- ✅ **与 §5 的前后缀一致**：前缀 `b9d38664` ✔、后缀 `d1056d` ✔ ⇒ 「前后缀」与「全量」**同一口径**（对同一字节流取 sha256），不是两套算法。
+- ✅ 4 份**逐字节相同**（`SequenceEqual` = True）；`0.0.0.0` 规则行 **19** 条、非空行 **22** 行 ⇒ 与 §5「19 条 / 22 行」一致（22 = 19 + 表头 3 行；该输出**碰巧不含**字面 `v4tov4`）。
+- ⚠️ **边界**：这是**盘上快照的复算**，不是现场重查（本轮不跑 `netsh`）⇒ 它证明「当时前后一致 + 与 baseline 一致」，**不证明此刻系统仍是 19 条**。
+
+### 9.5 未验 3：旧串 0 命中 ⇒ **profile 树内可复算；`~/.dsh` 全树已不可复算（我污染了它）**
+
+- ✅ **可复算的一半**：`C:\Users\EDY\.dsh\profiles` 全树递归检索，旧串 **0 命中**、新串 **0 命中**（两次独立复算：`Select-String` 全树 + node `readFileSync` 递归，均 0）。
+- 🔴 **不可复算的一半 + 我的错**：`~/.dsh` **全树**的「0 命中」我**不写通过** —— 本轮 node 全树扫描**捕到 1 次瞬时命中**：`C:\Users\EDY\.dsh\storages\session_projcache\sessions\560cc201-2c59-41f0-adb7-5b6cfb9580db.json`（= **DSH 自己的会话转录缓存**）；随后同一个文件的复查**又是 0**（mtime 14:49:11），与另一次全树扫描的 0 一致。根因：**我把两个串打进了终端输出** ⇒ 被会话缓存落盘，**我的取证动作变成了新的取证对象**。
+- 口径必须写明：「0 命中」当时的原始口径**必然排除了证据文件自身**（旧串原文本来就**写在** `B-round2-evidence.md` 第 34 行）⇒ **不冒称本轮可复算**，只保留「profile 树内 0 命中」这一层（🔵）。
+- ⇒ 未经证实的写法（禁止）：「整个 `~/.dsh` 0 命中 ✅ 已复算」。正确写法：「**profile 树内 0 命中**（🔵）；`~/.dsh` 全树（🟡，本轮被会话缓存污染 ⇒ 不可复算）」。
+
+### 9.6 未验 4：`failed` / `skipped` / `rolledBack` 三态 ⇒ **保留未验 + 建议不做**
+
+- 事实不变：真机只出现 `executed` 一态（`140444\B-round2-evidence.md` 亦未记三态）⇒ **「四态真机各态可区分」不成立**（沿用 Phase 7 §5 ① / Phase 8 §2 ①）。
+- 🔴 **建议不做**（理由：**构造风险 > 收益**）：
+  1. 要在真机看到 `failed`，必须让 `netsh … add` 或 `New-NetFirewallRule` **真的失败**（占位/同名/权限）；要看到 `rolledBack`，必须让「**第一条成功、第二条失败**」在同一次 apply 里发生。这两件事都意味着**真的改动主人的系统**（转发规则 + 防火墙规则），且可能留下**半成品规则**。
+  2. 收益只是**结果区的分色与文案渲染**，而这部分**离线已被充分覆盖**：`tests/client/write-result.test.tsx` 有 ⑥「四态同时非空、四个 tone 互不相同」、⑩「预演→确认后四态 4 组可见」等 **14** 条用例（`it(` 计数；本轮 `vitest run` = **11 文件 / 111 通过**，含该文件）。
+  3. 结论：**不动真机**。若将来非做不可，边界应是「一次性 profile + 只碰一个**未被占用**的端口 + 先写好回滚脚本 + 事前抓 `portproxy` 快照」，并在同一轮里把快照 sha 复算回来。
+
+### 9.7 未验 5：`cordis.patch.yml` 回到 771 B ⇒ **口径待定**（218 B 已复算）
+
+- 🔵 **`vp-cordis.patch.yml.ORIG`**（`135023\`）= **218 B**，sha256 `8c2d1f557ff4d18f5d3c1b284a7246cacc571853b468ff56e4fa33204827c1f6`；`143729\ORIG-cordis.patch.yml` **同值**（两目录一致，`SequenceEqual` = True）。内容 = 3 行注释 + `[]`。该 sha **逐字出现在** `round2-start.map` / `round2-final.map` 的 `cordis.patch.yml` 行（36 行快照清单）⇒ **ORIG = 该 map 的基线** ✅。
+- 🔴 **771 B 在盘上找不到**：`135023` / `140444` / `143729` / `E:\Temp` / `~/.dsh\profiles` 内**没有任何 771 B 的 yml**（按字节数筛出的全是无关 `node_modules` 文件）；`B-round2-evidence.md` 第 53 行自己给的 sha `77afca6c…` 也**没有对应文件**（除该 md 自身外全树 0 命中）。
+- ⇒ **口径待定**：**218 B（探针 profile 的 ORIG）** 与 **771 B（§4 说的「写凭据之前的 settings 文档」）** 是**两个不同对象**，本轮**只复算了前者**；后者（含 `77afca6c…`）记 **未复现**（不冒充、不硬凑）。
+- 🔴 活 profile 现状（**只读，且不作为证据**）：`~/.dsh\profiles\volatile-probe\cordis.patch.yml` = **343 B** / sha `cdc61a08…`（= ORIG 的 3 行注释 + `ui-settings-general` 一条 patch），**既不是 218 也不是 771**；且**另一轮正在跑探针实例**（`143729\probe-instance.log` 被占用）⇒ 活 profile 的尺寸/内容**本轮不稳定**，不据此推断任何结论。
+
+### 9.8 未验 7 ⇒ **关闭**：401 文案「改完配置需重载插件行」已订正（①）
+
+**真机事实（`writeToken` 是 `.volatile()`、宿主每请求现读）**：轮换/清除**即时生效**，一次重载都没做。
+
+| # | 位置（原文逐字） | 判定 | 处置 |
+| --- | --- | --- | --- |
+| 1 | `src/client/write-token.ts:55`「并确认服务端已读到该值（**改完配置需重载插件行**）」 | 🔴 **错**（与真机事实矛盾） | 已改为「`writeToken` 是 **volatile** 字段、宿主**每次请求现读** ⇒ 改完**即时生效**，**不需要**重载插件行」 |
+| 2 | `src/client/pane-settings.tsx:233`（delivery）「⚠️ **服务端要读到新值需要重载插件行**。**2026-10-12 真机已订正**：…且**轮换即时生效**」 | 🔴 **错且自相矛盾**（同一段先说需重载、后说即时生效） | 已改为「…**轮换即时生效**（旧串立即 401、新串立即 200）、**清除同样即时生效**，**不需要重载插件行**」（保留 ③d 用例要的 `2026-10-12` / `settings/describe` / `secrets` / `轮换即时生效` 四个字面量） |
+| 3 | `specs/009-write-ui/requirements.md:34` REQ-3.1 末句「提示文案 SHALL 说明「**改完配置需重载插件行**」」 | 🔴 **错**（把错话写成了 SHALL） | 已改为「SHALL 说明「**去哪里配置**」且 **SHALL NOT** 要求用户重载插件行」，并**保留原文作订正痕** |
+| 4️⃣ 额外发现（派单未点名，同文件同主张） | `pane-settings.tsx:176`「…请先「生成并保存写通道凭据」，**再重载插件行使服务端读到新值**」；`:189`「…**服务端要读到新值需要重载插件行**」 | 🔴 **同错**（同一文件里两处；不改则与 :233 自相矛盾） | 一并订正（同文件、同一主张，最小改动） |
+| 5️⃣ 额外发现（同一条判据的另两张表） | `requirements.md:91` / `README.md:54` 的 U3 行「配置页「生成并保存」**+ 重载插件行** ⇒ 401 消失」 | 🔴 **同错**（判据里把「重载」当必需步骤） | 一并订正为「⇒ 401 **立即**消失（volatile 现读，**不需要**重载插件行）」 |
+
+**🔴 保留项（其实是**对的**，一字未改，附理由）**：
+
+- `src/transport/write-auth.ts:59`「两种写法都**即时生效**（字段是 volatile，宿主每次请求现读凭据，**不需要重载插件**）」—— **本来就是真机事实**，它是这次的**正确 SSoT**。
+- `src/client/write-token.ts:217` / `src/client/settings-pipe.ts:97` 的「重载**页面**」—— 讲的是**刷新浏览器页面**后 `describe()` 仍报 `set:true` 的**修前症状**（与 `set:false` 对照），**不是**「重载插件行」⇒ **保留**。
+- `stack-decision.md:346` / `stack-decision-changelog.md:144` 的「HMR 串行重载 / remount」—— 讲的是 **ordinary 字段变更会 remount** 与 `patchReload: live` 机制（**另一件事**：`elevationPolicy` 之类普通字段确实会 remount），**保留**。
+- `tasks.md` **未动**：其 `T2.2` 判据行（`:31-32`）与 `V7` 行（`:44`）已**自带**「原判据里「重载插件行」真机上**不是必需的**（留痕不改判据）」的订正痕（`:32` / `:161`），且 `:299` 写明该段「与 008 原文**逐字相同**」⇒ 单方面改会造两处漂移。⚠️ **遗留**：`tasks.md:297` 的转述「UI 文案已明写「若无效应重载插件行」」**因 ① 的订正而变旧**，与 008 侧同句一起留待统一处理（**登记，不在本轮回改**）。
+
+**验证**：**未改任何行为 / 接口 / 判据语义**（只改字符串与 markdown 文字）；仓库内**没有任何测试断言旧措辞**（`grep` 在 `tests/**`：`重载插件行` **0 命中**；只有 4 处「重载**页面**」= 浏览器刷新语义）⇒ 无需同步测试；三道门全绿见 9.9。
+
+### 9.9 本轮自检（**每步字节级**）与**我自己的错**
+
+**字节级自检（每次写盘后立刻跑）**：`loneCR = 0`、控制字符（TAB 之外）= 0、`BOM = False`、行数 ≤ 400 ⇒
+`requirements.md` **98** 行 / `README.md` **64** 行 / `acceptance-round.md` **< 400**（本文件写完后复算在报告里给出）/ `tasks.md` **330** 行（**本轮未动**）。⚠️ 全部 `.md` 与源码改动**都走** `[IO.File]::ReadAllBytes` / `WriteAllBytes` + `UTF8Encoding($false)`，**不用 `edit` 工具**（它会静默归一 CRLF）；每个锚点**先断言恰命中 N 次**，不命中就**整批拒绝**（本轮 7 个锚点首次全部 `anchors=1`，退出码 0）。
+
+**我自己的错（如实，不掩饰）**：
+
+1. 🔴 **取证污染了取证对象**：`Select-String` 全树先报「旧串 0 命中」，而我随后用 node 复扫同一棵树**捕到 1 次命中**（DSH 会话转录缓存）—— 根因是**我把两个凭据串打进了终端输出**。⇒ 处置：`~/.dsh` 全树**标不可复算**，只保留「profile 树内 0 命中」（9.5）。这也直接说明：**凭据值不该进报告正文**。
+2. 🔴 **解析口径错**：`a3-describe-after.txt` 我第一版脚本按「整文件 JSON」解析 ⇒ `SyntaxError: Unexpected non-whitespace character after JSON`；真相是该 dump 是**裸数组体**（`{..},{..}`，**没有**外层 `[]`）⇒ 补 `[]` 后解析成功。**错的是我的脚本，不是产物。**
+3. 🔴 **窗口混淆（本次订正的核心）**：我上次把 `140444` 当唯一产物目录 ⇒ 现在订正为三目录并**明确标注 `135023` = 陈旧产物窗口**（9.1 第 3 条）。**`135023` 的 `b3-describe-after-clear.json` = `set:true`**，若不当心，会被误引成「修后仍 `set:true`」的反证 —— 这条**必须先讲清窗口**。
+4. 🟡 **未复现的仍写未复现**：`77afca6c…`（771 B）与上一轮的 `72a135c8…` 一样，**盘上无文件 ⇒ 不硬凑**（9.7）。
