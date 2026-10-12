@@ -68,6 +68,7 @@
 - [ ] **T4.3 [NFR-1]** 依赖未增：`package.json` 依赖项数与写前一致；未引 E2E/HTTP 框架。
   - 判据：`git diff` 里 `package.json` 的 dependencies/devDependencies 无新增；`pnpm install --frozen-lockfile` exit 0。
 - [ ] **T4.4 [NFR-2]** 改 `apply.ts` 前**先腾出行余量**（当前 **396/400**，仅剩 **4** 行；`plugin.ts` **393**）—— 腾不动就按顶部行数门口径**拆 Spec**；本轮**只记录、不动 `apply.ts`**。
+> 🔴 **`lib/` 重建硬判据（交付 / 真机验收前 SHALL；008 的产物同受此门约束）**：同包产物 `packages/wsl-docker-ports/lib/**` 未按当前 HEAD 重建就上真机 ⇒ V1–V5 与任何真机复跑的结论**作废**（`lib/` 在 `.gitignore` 第 3 行，**`git status` 看不见它过期**）；判据与真凭实据（逐字节备份 → 直接 `node` 重建、**不经 `pnpm run`** → 验收后逐字节还原、per-file sha256 **diff 0**）**只留一份** —— 见 [009-write-ui/tasks.md](../009-write-ui/tasks.md) 的 **Phase 8 §1**，此处不复制。
 
 > **T1.7 施工口径（2026-10-09 实测后定）**：`plugin.ts` 已达 **389 行**，直接内联接线会涨到 **418 行 ⇒ 违反
 > 「单文件 ≤ 400 行」SHALL**（`tests/unit/client-structure.test.ts` 当场判红 ✓ 该门**绝不放宽**）。

@@ -2,7 +2,7 @@
 
 > 每行一个任务；`[REQ-N]` 指向 [requirements.md](./requirements.md)。**「判据」必须是可二值判定的**（跑得出来、看得见）。
 > **来源**（2026-10-12 从 [008-write-transport](../008-write-transport/tasks.md) 拆出，**同包不拆包**）：承接 008 的 `T3.2`（结果四态）、008 `T3.3` 清单里的 **V6**（真机 UI 复核）、**007 配置页的「生成并保存写通道凭据」按钮**，以及只属于 UI 面的新判据。**008 侧保留 `T3.2` / `V6` 编号为空位并注明「已迁至 009」。**
-> **行数门**：warn **200** 只是提示、不强制压缩；硬门 = LeanSpec `maxLines` **400**（本文件当前 **256**，余量 **144**；🔴 **2026-10-12 收口轮订正**：原记 **148** —— 它在本轮开始前就已过期（当时实测 **171**），回填真机证据与 Phase 7 后为 **256**，口径一律以 `split('`n')` 当场复算为准）。接近 400 ⇒ 必须再拆 Spec，**不得**删已验证结论 / 未验项 / 裁定依据 / 命令原文证据。
+> **行数门**：warn **200** 只是提示、不强制压缩；硬门 = LeanSpec `maxLines` **400**（本文件当前 **285**，余量 **115**；🔴 **2026-10-12 收口轮订正**：原记 **148** —— 它在本轮开始前就已过期（当时实测 **171**），回填真机证据与 Phase 7 后为 **256**，本轮追加 T3.2 判据摘要 + Phase 8 后为 **285**，口径一律以 `split('`n')` 当场复算为准）。接近 400 ⇒ 必须再拆 Spec，**不得**删已验证结论 / 未验项 / 裁定依据 / 命令原文证据。
 > **真机白名单**：探针只许**临时 / 一次性 profile**（AGENTS.md：**不得**用 `desktop` / `web`），跑完逐字节还原。
 
 ## Phase 0：契约冻结（不写产品代码）
@@ -48,6 +48,7 @@
   - 判据：本文件含 V6–V8 三行 + 状态标注；配方指针可达（「迁入记录」里确有原文，逐字可核）。**实测**：三行均在册，状态与真机记录逐条一致 ✓（离线可判定，已勾）。**2026-10-12 第十轮（收口轮）再次回填**：V6 / V7 / V8 三行状态由「部分达成 / 未验 / 可验部分全中」改写为 **通过 / 通过（成功态·三态仅离线）/ 通过**，依据逐条写在各行内（原文**保留不删**，订正痕追加在同格）。
 - [x] T3.2 [REQ-10.2] 真机按清单跑一遍（**需主人在场**；本 Spec 本轮**未开浏览器、未装插件、未起实例、未跑任何 `netsh` / `New-NetFirewallRule`**）。
   - 判据：V6–V8 三行各自给出真机原文证据（响应体 / 页面文本 / 文件内容哈希）；跑完逐字节还原。**2026-10-12 第九轮实况**：真机**跑过一轮**（V1–V5 全过、V8 可验部分全中、还原逐字节 ✓），但 **V6 只到一半**（零步骤 ⇒ 逐条命令比对做不了）、**V7 未验且无截图** ⇒ 本条**不勾**（缺两行证据，见 Phase 5）。🔴 **第十轮（收口轮）订正并勾选**：缺陷 1 真根因修好后**再跑一轮**，V6 / V7 / V8 三行各自拿到真机证据（响应体 + 页面文本 + 哈希：见上表三行与 Phase 7 的证据清单）；**收尾复算全绿**（`portproxy` **19**、我方防火墙 **0**、`git status --porcelain` 空、`--frozen-lockfile` exit **0**）⇒ 勾选条件满足，原文「不勾」的理由**已随证据作废**（保留不删）。
+  - 🔴 **2026-10-12 收尾轮真机判据摘要（本条勾选状态的直接依据；逐字节脚本当场复算，原始产物在盘）**：`POST /dsh-wsl-docker-ports/write/plan` ⇒ `ready:true`、**2 步**、add `planId` = `013f7123611f2fa4d1a4ac7ad733b52b2fb8ae81de3c81b1e01e331b68072bd1`、remove `planId` = `088f84280d45b8aa7c1e6427b3ef9d494cb8aab5980a4bd68b220f88942543be`（产物 `E:\Temp\dsh-ui-accept5\plan-add.raw.json` / `plan-remove.raw.json`；remove 的 `planId` 与第九轮**同值** ⇒ `REMOVE_PLANID_MATCH_ACCEPT4 = True`）；**两组数字** = ① V6 预演 **UI vs 服务端逐字全等** —— `portproxy-add` **123/123** + `firewall-add` **168/168**（`ALL_STEPS_VERBATIM_EQUAL = True`；影响面 164 字符逐字含「会新增 1 条 portproxy 规则 + 1 条防火墙规则」与「共 2 条」、**不含「未验证」**），② remove 逐字全等 —— `portproxy-delete` **78/78** + `firewall-delete` **64/64**（`REMOVE_ALL_STEPS_VERBATIM_EQUAL = True`）；配套计数：add ⇒ `portproxy` **19→20** / 我方防火墙 **0→1** / 全部规则 **816→817**，remove ⇒ **20→19**（抓取与写入前**逐字节相同**）/ **1→0** / **817→816**，`audit` **2 条 `applied`** 且凭据命中 **0**。**两张截图路径**：`E:\Temp\dsh-ui-accept5\shots\v6-regression-preview.png` 与 `E:\Temp\dsh-ui-accept5\shots\{v7-head-add,v7-head-remove}.png`（上一轮四张 `E:\Temp\dsh-ui-accept4\shots\{v6-confirm-ready,v7-result-add,v7-result-remove,v8-credential}.png` 已在 V6–V8 行内引用）。
 
 ## Phase 4：收口
 
@@ -194,6 +195,29 @@
 | `node --test …`（terminal-profiles） | exit 1（4 个文件是 vitest-only，**既有**） | exit 1，同样这 4 个 | 与基线**逐条相同**，非回归 |
 | `vitest run`（wsl-docker-ports） | **9 文件 / 108 通过** | **11 文件 / 111 通过** | **+2 文件**（`pane-write.test.tsx` / `write-token-clear.test.tsx`）**+3 用例**（③d / ⑤c / ⑤d）；台架 `*.tsx` 不被收集 |
 | `vitest run`（terminal-profiles） | **34 文件 / 423 通过 \| 1 skipped** | **34 文件 / 425 通过 \| 1 skipped** | **+2**（T4 三条净增），零回归 |
+
+## Phase 8：2026-10-12 收尾轮 —— `lib/` 重建**硬判据** + 未验项台账 + 验收环境备注（本轮**只改文档**：零代码、零真机、零新依赖、不跑 `pnpm run`）
+
+### 1) 🔴 新增硬判据（SHALL）：交付 / 真机验收前**必须重建 `lib/` 并记录 sha**
+
+- **判据（可二值判定）**：真机验收**开始前**，`packages/wsl-docker-ports/lib/**` 必须由**当前 HEAD 源码**当场重建并产出 per-file sha256 清单；验收后当场复算该清单与基线对比。**未重建 ⇒ 真机加载的是旧产物 ⇒「离线全绿」与「真机通过」脱钩，真机结论作废。**
+- **真凭实据（本轮实测；`lib/` 当时仍停在 `0f5c4ed` 的产物上）**：① `lib/**` mtime **11:08:17** vs `src/**` **11:40:48**（**差 32 分钟** —— 源码已改、产物未换）；② `unset` 在 HEAD `src/client/**` 复算 **25** 处（大小写敏感；不敏感 **29**）而基线 `lib/client.js` **0** 处（🔴 派单原文记 **28**，我复算不出该值 ⇒ **以复算为准**；「基线 **0** 处」这条判据本身不受影响）；③ `lib/` 在 `.gitignore` 第 **3** 行 ⇒ **`git status` 看不见它过期**（`git check-ignore -v packages/wsl-docker-ports/lib/client.js` ⇒ `.gitignore:3:lib/`）—— 这正是「不重建也能 `git status` 空」的原因。
+- **本轮处理（顺序固定、可复现）**：① 先**逐字节备份** `lib/`（**88** 文件 + per-file sha256 tsv）→ ② **直接 `node` 调用**既有构建脚本重建（🔴 **不经 `pnpm run`**：pnpm 11 的 `verify-deps-before-run` 会 auto-install 并写回 `pnpm-lock.yaml`）→ ③ 真机验收后**逐字节还原**。
+- **还原判据（当场复算，非引述）**：基线 tsv（**88** 行）vs 还原后当场重算（**88** 行）`Compare-Object` = **差异 0**；`lib/client.js` 回到 **137,864 B** / sha256 `683faa83…`。**整树 sha 记「相等」** —— 派单记录 `a8e4da21…`，🔴 我**未复现**该前缀（自定可复现口径：per-file tsv 88 行按路径排序、LF 连接、对 UTF-8 字节取 sha256 ⇒ 当场得 `72a135c8…`）；**能独立二值判定的只有 per-file `88/88 diff 0`**，整树前缀按派单记录标注，不谎称复算过。
+- **产物与备份（在盘，可核对）**：`E:\Temp\dsh-ui-accept5\{lib-baseline\,lib-baseline.sha256.tsv,lib-head.sha256.tsv,lib-restored.sha256.tsv,build-2-client.log}`；`lib-head.sha256.tsv` = **89** 行（重建版）、与基线 tsv diff **11** 行 ⇒「过期」与「重建」两态都在盘上可核；当前盘上 `lib/` = 基线（**88** 文件、`lib/client.js` **137,864 B**）。
+
+### 2) 未验项台账（如实；**一律不写成通过**）
+
+① 🔴 `failed` / `skipped` / `rolledBack` **三态真机未出现**（真机只走到成功态，三态节点数 **0 / 0 / 0**）⇒ **仅离线覆盖**（`tests/client/write-result.test.tsx` **14** 条）⇒「四态真机各态可区分」**不成立**。
+② 🔴 **「清除凭据」的真机落盘未验**：`mutate({op:'unset', path:['writeToken']})` 之后 `describe.secrets[].set` 是否真变 **`false`**、写入口是否真回到**一律 401** —— 本轮只做到**两段式二次确认的形态观测**，**未点确认**；离线证据（宿主真函数 `applyPathOp` + 组件面）在册，**真机未跑**。
+③ `mutate` 的**真机落盘形态**未验（该键是被物理删除，还是被写成 `null` / 空串 —— 属宿主实现，未读那一层）。
+④ **007 的同款修复真机未复跑**（`expectedRevision` 分支在本机真实 profile 里没被走到；离线正/反例已双向证）。
+⑤ `host-face.ts` 的**再导出链**只在 `tsc` 下验过（`lib/` 重建后已在真机加载，但**类型面未单独复验**）。
+
+### 3) 验收环境备注（本轮为验收真实动过的唯一环境项）
+
+- 为验收曾把 `desktop` 的 `mcp-chrome-devtools` **临时**改为 `--browserUrl http://127.0.0.1:9223`（专用 Chrome + CDP 9223，不碰主人正在跑的实例）⇒ **已回退为 `--autoConnect`**（临时改动已回退）。**当场只读复核**：`C:\Users\EDY\.dsh\profiles\desktop\cordis.patch.yml` 里该条目 `args[0] = "--autoConnect"` ✅。
+- **备份文件路径**：`C:\Users\EDY\.dsh\profiles\desktop\cordis.patch.yml.bak-20261012-v6v8`（**10,192 B**，2026-10-12 09:30:05）—— 与当前配置逐行 `Compare-Object` **差异 0**；逐字节比到 **10,192** 字节**全等**，唯一差异是当前文件多一个**尾换行**（`0a`）⇒ 回退干净。
 
 ---
 
