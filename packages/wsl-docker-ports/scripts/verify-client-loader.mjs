@@ -11,12 +11,22 @@
  *
  * 结构性断言最容易退化成恒真（`for (const x of []) assert(x)`）。因此每个循环都报计数，
  * 计数为 0 时**判失败**（`expectScanned`）—— 恒真断言在计数上就露馅。
+ *
+ * ## §P2 三条字节判据（2026-10-12 扩面后新增；上面那 24 条断言**一字未改**）
+ *
+ * 判据本体 / 上限 SSoT / 双重锁 / 5 组变异哨兵都在 [`scripts/p2-main-bundle-gate.mjs`](./p2-main-bundle-gate.mjs)
+ * —— 独立成文件是**被迫的**：挂在本门上会把它顶到 **410 行** > 400 行（SHALL，**实测判红**），
+ * 与 `terminal-profiles` 当初拆出 `scripts/p2-main-bundle.mjs` **同一个原因**（判据本体一个字没改）。
+ * 🔴 本包登记 = 144,149 B、`nature: 'debt'` = **存量欠账，不是认可值**（棘轮只许降）。
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+
+/** §P2 的判据本体 / 预算 SSoT / 双重锁 / 哨兵都在这里（**唯一一份实现**，与 terminal-profiles 共用） */
+import { runP2MainBundleGate } from './p2-main-bundle-gate.mjs';
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(readFileSync(path.join(pkgRoot, 'package.json'), 'utf8'));
@@ -211,6 +221,15 @@ expectScanned(
 const cssHex = /#[0-9a-fA-F]{3,8}\b/g;
 const bundleCssHits = [...source.matchAll(cssHex)].length;
 check('⑤ 产物内零硬编码 hex 颜色（含内联 CSS 字符串）', bundleCssHits === 0, `命中 ${String(bundleCssHits)} 处`);
+
+/** §6–§8：§P2 三条字节判据 + 上限双重锁 + 变异哨兵（唯一实现在共享模块里；本文件只调用） */
+runP2MainBundleGate({
+  pkgName: String(pkg.name),
+  source,
+  mainBytes: existsSync(artifactPath) ? statSync(artifactPath).size : 0,
+  check,
+  expectScanned,
+});
 
 console.log(`\n=== 结果：${String(checks)} 项断言，失败 ${String(failures.length)} 项 ===`);
 for (const failure of failures) console.log(`  FAIL ${failure}`);

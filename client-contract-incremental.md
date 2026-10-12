@@ -235,6 +235,32 @@ export interface DshPackageManifest {
 
 **同步落点（一处不漏）**：`packages/terminal-profiles/scripts/verify-client-loader.mjs`（判据实现：`MAIN_BUNDLE_LIMIT_BYTES` = 65,536 / `MAIN_SIZE_CHECK_NAME` / `xtermFingerprintHits` / `mainBundleInvariantChecks`；推导与重定条件写在 `MAIN_BUNDLE_LIMIT_RATIONALE`）· `tests/unit/client-artifacts.test.ts`（同步原 2 例 + **新增 2 条变异哨兵**：塞入 `@xterm/xterm` 标记 ⇒ 该直接判据当场变红；`上限 + 1` 的人造读数 ⇒ 上限判据变红、`= 上限` 仍绿 ⇒ **证明两者都不恒真**）· `stack-decision-changelog.md` 变更记录 **#50** · `stack-decision.md` 的 `## 变更记录` 指针行。
 
+
+#### P2·适用范围订正（2026-10-12）
+
+> 上面 §P2 的正文与「P2·2026-10-12 追加变更记录」**一字未删**；下面是**同一坐标上的追加**记录，它补齐 §P2 的**适用范围**与 `wsl-docker-ports` 的**存量欠账**登记。
+
+**① §P2 三条判据适用于三包（一宿主批不两套标准）**：`terminal-profiles` 与 `wsl-docker-ports` 的主 bundle 都受**同一套**判据管 —— ① 不含 xterm 实现（指纹 `@xterm/xterm` + `.xterm-viewport`）② 不含**内联 React**（`__SECRET_INTERNALS_…`）③ `mainBytes <= 逐包登记上限`（**含等号**）。判据本体**只有一份** = [`packages/wsl-shared/scripts/lib/p2-main-bundle.mjs`](./packages/wsl-shared/scripts/lib/p2-main-bundle.mjs)（本仓先例：`export-surface.mjs` / `strip-comments.mjs` 都是「一份实现、多处 import」；**不许复制第二份判据**）；上限 / 性质 / 记录日 / 留痕登记在机器可读 SSoT [`packages/wsl-shared/scripts/main-bundle-budgets.mjs`](./packages/wsl-shared/scripts/main-bundle-budgets.mjs)，并与本节下面的标记块**逐字段绑定**（只改一边必红）。
+
+**② 本包主 bundle 的越线早于 008 / 009**：`wsl-docker-ports` 的**初始 client 半**（commit `8bfb6fb`）即 **83,709 B > 64 KiB** ⇒ 越线**不是**新功能造成的；而 **65,536 B 当初只由 `terminal-profiles` 推导**（依据是它的构成与成长史，见上一节「上限 64 KiB 的推导」），**从来不是**「三包通行的推导值」。
+
+**③ 故本包登记为存量欠账**：上限 **144,149 B**、`nature: 'debt'`、记录日 2026-10-12、留痕 `#52`；**棘轮只许降**（抬上限必须「机器表 + 本节标记块」两边同改 **且** 新增 changelog 留痕，门会**自己数行**核对编号真存在）。🔴 **144,149 B 是欠账值，不是认可值** —— 相对 §P2 的推导口径（65,536 B）本包**已越线 78,613 B（2.20×）**；「门绿」只表示「**没有再涨**」，**不表示达标**；🔴 **不得为过门而删功能**。
+
+**④ 收敛路径 = 拆懒加载 chunk**：只切**渲染面**（`src/client/**` 的渲染与配置面料）**不够** —— 按本轮构成推算，切后主包仍 ≈ **70,246 B** > 65,536 B，**仍超 4,710 B** ✗ ⇒ 须**连带**拆**写路径内核**（`src/client/write/**` 等），预期主包 ≈ **49 KB** ✓。该拆包动作**须单独立项**（不在本轮、也不在本 Spec 面内）。
+
+**⑤ 前置阻塞** = **0.2.0-rc.2 的 `require.async` 语义未验**（契约 §Z5 残留）：拆 chunk 的**运行时前提**（宿主是否真按 `require.async("./<file>.js")` 取兄弟文件）在真机确认前不敢定稿。
+
+**逐包上限表（机器可读；核对脚本只解析下面两个标记之间的行，勿改格式）**：
+
+<!-- main-bundle-budgets:SSoT -->
+| 包 | 上限（字节） | 性质 | 记录日 | 留痕 |
+| --- | --- | --- | --- | --- |
+| `dsh-terminal-profiles` | 65536 | hard | 2026-10-12 | #50 |
+| `dsh-wsl-docker-ports` | 144149 | debt | 2026-10-12 | #52 |
+<!-- main-bundle-budgets:SSoT:end -->
+
+> **判定落点**：机器表 ↔ 本节标记块的**逐字段相等**、棘轮方向、留痕号可追，三件事都由 [`packages/wsl-docker-ports/scripts/verify-client-loader.mjs`](./packages/wsl-docker-ports/scripts/verify-client-loader.mjs) 的 §7 判（`terminal-profiles` 的门**不新增判据** ⇒ 该包读数仍锁在 **60/60**）；§P2 三条判据本体由**两个包的门共用**。
+
 ### P3 第三条客户端→宿主通道：`ctx.remote.<service>.<method>()` + `ctx.remote.$on(event, fn)`
 
 - `dsh-desktop-next\src\client\computer-use.tsx:28` `context.remote.pluginManager.listPlugins()`；`:41` `context.remote.pluginManager.setPluginEnabled(row.entryId, enabled)`；`:20-21` `context.remote.$on('plugin-manager/changed', reload)` + `context.on('connection/reset', reload)`

@@ -55,20 +55,16 @@ export const BASELINE_MODULES = [
 ];
 
 /**
- * 「react 被**打进包**了」的判据串：React 18 开发版内部的东西，任何**由宿主供给**的正确产物里都不会出现
- * （自有源码里也不会有）⇒ 用来抓「`external` 漏声明导致基线模块被内联」这一类静默错误。
+ * 「react 被**打进包**了」的判据串 + 断言收集器 `makeChecks`（**本体已移出本文件**）。
+ *
+ * 🔴 **2026-10-12 扩面留痕**：§P2 的三条判据**扩到三包**（主人裁定「一宿主批不两套标准」）⇒
+ * 判据本体与它依赖的这两个符号必须**只有一份**（本仓规矩：不许各自解释口径；先例
+ * `export-surface.mjs` 三包共用）。新家 =
+ * [`../../wsl-shared/scripts/lib/p2-main-bundle.mjs`](../../wsl-shared/scripts/lib/p2-main-bundle.mjs)。
+ * 这里**再导出**，本包既有的 `import { INLINED_REACT_MARKER, makeChecks } from './lib/loader-harness.mjs'`
+ * **一字不用改**（语义与实现逐字节相同，只是换了个文件住）。
  */
-export const INLINED_REACT_MARKER = '__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED';
-
-export function makeChecks() {
-  const checks = [];
-  /** 只认字面 `true`：`Boolean(x)` 会把「错类型的真值」也放过（门变瞎的一种） */
-  const check = (name, ok, detail) => {
-    checks.push({ name, ok: ok === true, detail: String(detail) });
-    return ok === true;
-  };
-  return { checks, check };
-}
+export { INLINED_REACT_MARKER, makeChecks } from '../../../wsl-shared/scripts/lib/p2-main-bundle.mjs';
 
 /** 抓「产物 require 了没人供给的模块」⇒ 返回越界清单（相对路径是小块引用，不算 external） */
 export function outOfSurface(specifiers, allowed) {
