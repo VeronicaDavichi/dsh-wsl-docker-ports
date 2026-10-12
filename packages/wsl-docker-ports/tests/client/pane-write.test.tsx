@@ -30,7 +30,14 @@ describe('T5.7 端口声明写回', () => {
     render(<PortsPane runtime={test.runtime} />);
     await screen.findByTestId('tbl-ports');
 
-    expect((screen.getByTestId('chk-preset-mysql') as HTMLInputElement).checked).toBe(true);
+    // 🔴 不能只等 `tbl-ports`：`tbl-ports` 与 presets 勾选态**不在同一次提交里落 DOM**
+    // —— preset 勾选态由 `PortsPane` 的 `useEffect` 从 `view` 灌进 state（`pane.tsx` 的
+    // `setCheckedPresets(...)`），而 `tbl-ports` 在**前一次**提交就已进 DOM ⇒
+    // 「findBy 返回后立刻同步读 checked」存在窗口（本轮实测真的读到过 checked=false）。
+    // 这里等的是**同一条断言**（期望值 / 被测属性一字未改），只是等它成立，不是放宽判据。
+    await waitFor(() => {
+      expect((screen.getByTestId('chk-preset-mysql') as HTMLInputElement).checked).toBe(true);
+    });
     fireEvent.click(screen.getByTestId('chk-preset-spring-boot'));
     fireEvent.change(screen.getByTestId('inp-managed-ports'), { target: { value: '3306\n1000-3000' } });
     fireEvent.click(screen.getByTestId('btn-save-managed-ports'));
