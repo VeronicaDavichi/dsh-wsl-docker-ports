@@ -57,6 +57,7 @@
 ## P. 🔴 增量修正（同日第二轮回收，**覆盖 §C8 / §E14 / §D13 / §E15 与 §Z 的相应条目**）
 
 > 本节正文（P1–P9；含同日历史重号 P3 / P4 / P5 各两组，原文顺序与编号一律未改）见 [`client-contract-incremental.md`](./client-contract-incremental.md) 的同名「## P.」小节——**标题原文未改、正文一字未动**。
+> 🔴 **2026-10-12 §P2 追加变更记录（尺寸口径：比例代理 → 直接判据 + 64 KiB 明确上限）** —— 原文在分片 [`client-contract-incremental.md`](./client-contract-incremental.md) 的 **§P2 段末**（新坐标 = 该文件的小节「**P2·2026-10-12 追加变更记录**」，位于 §P2 正文之后、`### P3 第三条客户端→宿主通道` 之前）。**§P2 原正文一字未改**，只追加；判据实现落点 = `packages/terminal-profiles/scripts/verify-client-loader.mjs`（`MAIN_BUNDLE_LIMIT_BYTES` = 65,536 B、`mainBundleInvariantChecks`），留痕 = `stack-decision-changelog.md` **#50**。
 
 ---
 

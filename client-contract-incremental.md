@@ -214,6 +214,27 @@ export interface DshPackageManifest {
 
 **顺带（Phase 4 直接可用）**：官方终端页的 `devDependencies` 同时含 `@xterm/xterm`、`@xterm/addon-fit`、`react`、`react-dom`、`@types/react`、`@types/react-dom`、`@testing-library/react`、`clsx`，以及它 `require` 的**每一个** `@deepseek-ai/dsh-client-*` 包；`peerDependencies` 只有 `@deepseek-ai/cordis: ~4.0.4` ⇒ **external 的声明方式 = 全部进 devDependencies**（宿主在运行时供给），组件测试用 `@testing-library/react`（需 jsdom 环境）。
 
+#### P2·2026-10-12 追加变更记录（**尺寸口径变更**：比例代理 → 直接判据 + 明确上限）
+
+> 上面 §P2 的正文（撤回与实证）**一字未改**；下面是**同一坐标上的追加**记录，它取代其中「体积」这一条的实现口径。
+> 触发：主人 2026-10-12 裁决（原话）「**保留已在运行的实质判据（主 bundle 不含 xterm 实现），把“×10”换成有记录的明确上限（如主 ≤ 64 KB）并在 `client-contract.md` §P2 追加变更/理由**；本仓规范：改口径 = 改契约 + 追加留痕。」
+
+| 项 | 旧口径（**已作废**） | 新口径（生效） |
+| --- | --- | --- |
+| 判据 | `mainBytes * 10 < chunkBytes`（**体积比例代理**） | ① 主 bundle **不含 xterm 实现**（指纹 `@xterm/xterm` + `.xterm-viewport`）② 主 bundle **不含内联 React**（`__SECRET_INTERNALS_…` 标记）③ `mainBytes <= 65,536 B`（**64 KiB 明确上限**，含等号） |
+| 标签 | 「体积比 chunk 小**两个数量级**」—— **错**：代码是 **10×**，不是 100× | 数值上限写进判据名（`主 bundle: 体积 ≤ 明确上限 64 KiB…`）；名字里**不再出现**「两个数量级」 |
+| 「chunk 显著大于主 bundle」 | 当**硬判据**用 | 降为**软提示**（`measurements.sizeHint`：只记账，**不参与** `ok` / `failures`） |
+
+**实测依据（2026-10-12，Windows 侧 `node` 直调；两次构建逐字节一致）**：`lib/client.js` = **53,014 B**、`lib/client.terminal.js` = **447,255 B** ⇒ 比值 **1 : 8.44**；旧判据（要求 > 10×）差 **21,405 B / 4.6%** ⇒ **恒定红**，且**与 xterm 无关**。xterm 指纹在主 bundle **0 命中**（`@xterm/xterm` = 0、`.xterm-viewport` = 0、`requestMode` = 0、`_core` = 0、`FitAddon` = 0；对照 chunk = 3 / 1 / 3 / 218 / 2）⇒ **同一门里的实质判据一直是绿的**。主 bundle 的成长来自**合法功能增长**（007 只读态 + 002 guide 入口进主 bundle），不是把 xterm 打进了主包。
+
+> ⚠️ **订正一处流传的读数**：改口径前引用的主 bundle **46,866 B** 是**陈旧产物**（`lib/` 止于并行轮 15:45，而 15:56 的 `a44a98f` 改过 `src/client/**` 且**未重建**）。按 HEAD 源码逐提交重建：**43,537（`8bfb6fb`）→ 44,317（`934da46`）→ 46,866（`6191b57`）→ 53,014（`a44a98f`）** —— 前三个数与仓内已记录值**逐字吻合**，可作方法自证。
+
+**上限 64 KiB 的推导（可复算）**：构成（esbuild metafile 的 `bytesInOutput`）= 007 配置页族 **34,530 B（65.1%）**（`config-page` 11,183 + `config-readonly` 8,501 + `config-pipe` 5,791 + `config-slot` 4,186 + `config-row-model` 2,616 + `config-row` 2,253）+ 002 标签壳 **9,984 B（18.8%）**（`tab` 5,273 + `index` 2,443 + `styles` 2,268）+ `config/row-rules.ts` **4,596 B（8.7%）** + 终端薄壳 **2,483 B（4.7%）**（`TerminalPane` 1,913 + `xterm-loader` 570）+ esbuild 包装/helper **1,421 B（2.7%）** = **53,014 B**。成长史见上；**最大单次交付增量 = +6,148 B**；已交付面（002 / 007 / 009）**无**待进主 bundle 的客户端工件 ⇒ 取 **64 KiB = 65,536 B** 后余 **12,522 B**（≈ 当前体积的 23.6%、≈ 最大单次增量的 **2.04×**）。
+
+🔴 **这不是物理规律，只是当前证据下的合理值**：上限**不阻止**未来的合法功能把主包做大。**下列任一发生即必须改契约 + 追加留痕后重定上限**：① 002 / 007 / 009 的**新**客户端面要进主 bundle（P1 与「下一期」**不在**本 Spec 面内）；② `mainBytes` 触到上限 —— **先拆**（把配置页族改成懒加载 chunk，§E 允许）**再谈**抬上限，**不得先塞后抬**；③ 余量 < 一次「同类细化」的实测增量（当前 ≈ 6 KB）。
+
+**同步落点（一处不漏）**：`packages/terminal-profiles/scripts/verify-client-loader.mjs`（判据实现：`MAIN_BUNDLE_LIMIT_BYTES` = 65,536 / `MAIN_SIZE_CHECK_NAME` / `xtermFingerprintHits` / `mainBundleInvariantChecks`；推导与重定条件写在 `MAIN_BUNDLE_LIMIT_RATIONALE`）· `tests/unit/client-artifacts.test.ts`（同步原 2 例 + **新增 2 条变异哨兵**：塞入 `@xterm/xterm` 标记 ⇒ 该直接判据当场变红；`上限 + 1` 的人造读数 ⇒ 上限判据变红、`= 上限` 仍绿 ⇒ **证明两者都不恒真**）· `stack-decision-changelog.md` 变更记录 **#50** · `stack-decision.md` 的 `## 变更记录` 指针行。
+
 ### P3 第三条客户端→宿主通道：`ctx.remote.<service>.<method>()` + `ctx.remote.$on(event, fn)`
 
 - `dsh-desktop-next\src\client\computer-use.tsx:28` `context.remote.pluginManager.listPlugins()`；`:41` `context.remote.pluginManager.setPluginEnabled(row.entryId, enabled)`；`:20-21` `context.remote.$on('plugin-manager/changed', reload)` + `context.on('connection/reset', reload)`

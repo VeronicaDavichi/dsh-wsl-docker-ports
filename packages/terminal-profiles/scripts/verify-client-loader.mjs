@@ -13,7 +13,8 @@
  * **主 bundle** §A3/B5/B7/§P2/§P3：`load` 恰好 1 次、`id` 逐字 = 包名、**不带 `chunk` 字段**、
  * 出参 `{apply,inject,name}` 且**无 `default`**、`inject === ['slots']`、取块实参逐字
  * `"./client.terminal.js"` 且无裸 `require` 版本、含 `react` 的 external require（external 真生效）、
- * require ⊆ 基线 ∪ 清单声明、**不含 xterm 特征**、体积 << chunk。
+ * require ⊆ 基线 ∪ 清单声明、**不含 xterm 特征**、**不含内联 React**、
+ * **体积 ≤ 明确上限**（§P2 直接判据 + 数值上限；2026-10-12 主人裁决的口径变更，见本文件 §P2 块注释）。
  *
  * **行为面（真跑 `apply`）** §C9/C10/§P4：材质化时**零 `require.async`**、**零 DOM 访问**（官方 README：
  * CSS injection 必须在 factory 闭包内）；`apply` 后恰好 1 个页类型 + 2 个右栏 seat + **1 个配置页槽位**
@@ -134,7 +135,21 @@ function checkManifest(check, manifest, libDir) {
   return declaredExternal ?? [];
 }
 
-function checkMainBundle(check, mainSource, mainBytes, chunkBytes, declaredExternal) {
+// §P2 的三条不变量（直接判据 ×2 + 明确上限 ×1）本体在 `./lib/p2-main-bundle.mjs`（单文件 ≤ 400 行是 SHALL，
+// 与 `loader-harness.mjs` / `loader-apply-checks.mjs` 同因同法）；这里**原样再导出**，让门与用例共用一个入口。
+export {
+  INLINED_REACT_CHECK_NAME,
+  MAIN_BUNDLE_LIMIT_BYTES,
+  MAIN_BUNDLE_LIMIT_RATIONALE,
+  MAIN_SIZE_CHECK_NAME,
+  XTERM_PURITY_CHECK_NAME,
+  mainBundleInvariantChecks,
+  xtermFingerprintHits,
+} from './p2-main-bundle.mjs';
+
+import { MAIN_BUNDLE_LIMIT_BYTES, mainBundleInvariantChecks } from './p2-main-bundle.mjs';
+
+function checkMainBundle(checks, check, mainSource, mainBytes, chunkBytes, declaredExternal) {
   const surface = new Set([...BASELINE_MODULES, ...declaredExternal]);
   const main = materialize({ source: mainSource, filename: MAIN_BUNDLE_FILE, document: undefined });
   check('主 bundle: __ModuleLoader__.load 恰好一次', main.record.loads.length === 1, `load ${main.record.loads.length} 次`);
@@ -171,21 +186,13 @@ function checkMainBundle(check, mainSource, mainBytes, chunkBytes, declaredExter
 
   const mainRequires = readRequires(mainSource);
   check('主 bundle: require 面含 react（external 真生效，§P4）', mainRequires.includes('react'), JSON.stringify([...new Set(mainRequires)]));
-  check(
-    '主 bundle: react **没有**被打进包（内联标记不存在）',
-    !mainSource.includes(INLINED_REACT_MARKER),
-    INLINED_REACT_MARKER,
-  );
+  // §P2 三条不变量：直接判据 ①（不含 xterm 实现）+ ②（不含内联 React）+ ③（体积 ≤ 明确上限）
+  // ⇒ 与 `tests/unit/client-artifacts.test.ts` 的变异哨兵**共用同一实现**（`mainBundleInvariantChecks`）
+  checks.push(...mainBundleInvariantChecks(mainSource, mainBytes, chunkBytes));
   const outOfScope = outOfSurface(mainRequires, surface);
   check('主 bundle: require ⊆ 基线 ∪ 清单声明（§P4）', outOfScope.length === 0, JSON.stringify(outOfScope));
   const ghosts = ghostDeclarations(declaredExternal, mainRequires);
   check('主 bundle: 清单 external 无幽灵声明（§P4）', ghosts.length === 0, JSON.stringify(ghosts));
-  check(
-    '主 bundle: 不含 xterm 实现（指纹：模块名 + xterm 自己的 CSS 选择器；§P2 内联的是 chunk）',
-    !mainSource.includes('@xterm/xterm') && !mainSource.includes('.xterm-viewport'),
-    `@xterm/xterm=${mainSource.includes('@xterm/xterm')} .xterm-viewport=${mainSource.includes('.xterm-viewport')}`,
-  );
-  check('主 bundle: 体积比 chunk 小两个数量级（§P2）', mainBytes * 10 < chunkBytes, `${mainBytes} B vs ${chunkBytes} B`);
   check(
     '主 bundle: 材质化时零 require.async 调用（取块只在 useMemo/挂载时）',
     main.record.async.length === 0,
@@ -275,12 +282,24 @@ export function verifyClientLoader(options = {}) {
   const chunkSource = readFileSync(chunkPath, 'utf8');
   const mainBytes = statSync(mainPath).size;
   const chunkBytes = statSync(chunkPath).size;
-  const mainScan = checkMainBundle(check, mainSource, mainBytes, chunkBytes, declaredExternal);
+  const mainScan = checkMainBundle(checks, check, mainSource, mainBytes, chunkBytes, declaredExternal);
   const { main, loaded, mainRequires, asyncRequests, documentAccessesAtMaterialization } = mainScan;
   const run = checkApplyBehaviour(check, main, loaded);
   const chunkRequires = checkChunk(check, chunkSource, declaredExternal);
 
   const failures = checks.filter((entry) => !entry.ok);
+  /**
+   * **软提示（非判据）**：`chunk / 主 bundle` 的比值。它**不参与** `ok` / `failures` ——
+   * 「主 bundle 是否合法」由上面三条不变量判定（不含 xterm 实现 / 不含内联 React / ≤ 上限），
+   * 而「chunk 有多大」只是 xterm 落在懒加载块里的**旁证**。旧口径把这条旁证当硬判据，才有 2026-10-12 的误红。
+   */
+  const sizeHint = {
+    chunkIsLarger: chunkBytes > mainBytes,
+    mainToChunkRatio: Number((chunkBytes / mainBytes).toFixed(2)),
+    headroomBytes: MAIN_BUNDLE_LIMIT_BYTES - mainBytes,
+    limitBytes: MAIN_BUNDLE_LIMIT_BYTES,
+    note: 'chunk 显著大于主 bundle 只是**旁证/记账**（软提示），不是判据；超限与否只由 mainBytes <= MAIN_BUNDLE_LIMIT_BYTES 决定。',
+  };
   return {
     ok: failures.length === 0,
     checks,
@@ -288,6 +307,7 @@ export function verifyClientLoader(options = {}) {
     measurements: {
       mainBytes,
       chunkBytes,
+      sizeHint,
       mainRequires: [...new Set(mainRequires)],
       mainAsyncRequests: asyncRequests.map((request) => `${request.raw} → ${JSON.stringify(request.value)}`),
       chunkRequires: [...new Set(chunkRequires)],
@@ -316,6 +336,10 @@ if (invokedDirectly) {
   console.log(`  取块实参折叠路径 = ${JSON.stringify(report.measurements.mainAsyncRequests ?? [])}`);
   console.log(`  chunk require    = ${JSON.stringify(report.measurements.chunkRequires ?? [])}`);
   console.log(`  清单 external    = ${JSON.stringify(report.measurements.declaredExternal ?? [])}`);
+  const hint = report.measurements.sizeHint;
+  console.log(
+    `  §P2 上限 = ${hint?.limitBytes} B；实测主 ${mainBytes} B（余 ${hint?.headroomBytes} B）· 软提示（**非判据**）chunk/主 = ${hint?.mainToChunkRatio}×`,
+  );
   if (typeof report.reason === 'string') console.error(`✗ verify-client-loader: ${report.reason}`);
   for (const failure of report.failures) console.error(`  ✗ ${failure.name} :: ${failure.detail}`);
   if (!report.ok) {
