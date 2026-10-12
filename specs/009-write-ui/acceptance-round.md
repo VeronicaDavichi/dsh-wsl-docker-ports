@@ -271,7 +271,7 @@ $t = 'packages\terminal-profiles\lib\client.js'
 | 5 | `未配置写通道凭据：…（fail-safe）。配置方法：① … ② … 不需要重载插件）。之后以 …` | `b3c-plan-oldtoken.txt` / `b3c2-plan-oldtoken-header.txt` / `c1-plan-no-token.txt`（三份**逐字节同文**，HTTP=**401**，message 长 **349** 字符） | ✅ 与源码 `src/transport/write-auth.ts:162` **逐字一致**（含 `WRITE_TOKEN_CONFIG_HINT` 293 字符） |
 | 6 | `缺少写通道凭据：拒绝本次请求（零执行、零写入、零审计）。` | `b4-plan-nocred.txt`（HTTP=**401**，28 字符） | ✅ 与 `write-auth.ts:167` 逐字一致 |
 | 7 | `写通道凭据不正确：拒绝本次请求（零执行、零写入、零审计）。` | `b4-plan-oldtoken-again.txt`（HTTP=**401**，29 字符） | ✅ 与 `write-auth.ts:170` 逐字一致 |
-| 8 | `"planId":"72f7234b…"`（**64 hex**；2026-10-12 脱敏：原值为真机 `planId`，仅保留首 8 位）、`confirm.ticket` 为 UUID、`elevation={"policy":"unknown","backend":"gsudo","available":true}`、`commandText` 无 `reset`/通配符 | `b2b-plan-with-token.txt` / `b4-plan-newtoken.txt`（HTTP=**200**，两份 planId **相同** —— 同 scope/端口 ⇒ 同计划内容） | ✅（本轮 regex 复算：`^[0-9a-f]{64}$`、UUID、`/reset|\*/` 均通过） |
+| 8 | `"planId":"72f7234b…"`（**64 hex**；2026-10-12 脱敏：原值为真机 `planId`，仅保留首 8 位）、`confirm.ticket` 为 UUID、`elevation={"policy":"unknown","backend":"gsudo","available":true}`、`commandText` 无 `reset`/通配符 | `b2b-plan-with-token.txt` / `b4-plan-newtoken.txt`（HTTP=**200**，两份 planId **相同**（原值已于 2026-10-12 脱敏为仅首 8 位 ⇒ 该「相同」结论**不可由本文件复算**，依据为当次真机证据） —— 同 scope/端口 ⇒ 同计划内容） | ✅（本轮 regex 复算：`^[0-9a-f]{64}$`、UUID、`/reset|\*/` 均通过） |
 | 9 | `{"ok":true,"records":[],"size":0,"dropped":0}` | `b2b-audit-before.txt` / `b4-audit-after.txt`（HTTP=**200**） | ✅ 零副作用（审计 `size` 全程 0） |
 | 10 | 🔴 **口径差异（必须写明）**：上面 5 份 describe **都是 21 个命名空间**（19 宿主 + `dsh-terminal-profiles` + `dsh-wsl-docker-ports`）⇒ 那一轮**两个插件都装了**；而 §2 的「**20** 个命名空间（只装组件②）」是**另一轮**、且**没有 raw dump** | `135023` 的 5 份 dump | ⇒ 两个数字都对，但**不是同一次运行**，**不得互相引用**；§2 的 20 仍是 🟡 |
 

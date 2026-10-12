@@ -202,6 +202,7 @@
 > 🔴 **订正留痕（2026-10-12 拆分迁移轮；上面本条判据原文按路径的引用保留原文、不删）**：原文两处按路径引用的 `tests/unit/transport-apply.test.ts`（① 编号 144 行的 T2.2/T2.3 段、② 本段「（基线 369 + 新增 12：… `transport-apply` 4 条）」）**已拆、该路径不再存在** ⇒ 拆分事实与复算数字见上一段的订正块（台架 305 + plan 152 + exec 232 + rollback 70 + wire 70；16 条用例名集合 `Compare-Object` **空差**；三道门全绿）。本段的**历史计数**（369 / 381 / 386）一律**保留原值**——它们记的是各自的**时点**，不是现值。
 
 ## ✅ T2.8 真机写入验收：PASS（2026-10-10，探针 profile `volatile-probe`，端口 43311）
+- ⚠️ **订正留痕（2026-10-12 脱敏扫描轮）**：本节的两份原始产物 `evidence/t28-plan-raw.json` / `evidence/t28-audit-raw.json` 里的**真机 `planId`（64 hex）已就地脱敏为仅首 8 位**（原值不再入库）；同文件内的 `ports` / `steps` / `commandText` / `action` / `elevation` 一字未改 ⇒ 「计划 ↔ 审计」的对应关系仍可由该文件复算。
 
 **投递面（此前唯一未证的一环）已证实**：探针 profile 的 `cordis.patch.yml` 里
 `- id: dsh-wsl-docker-ports` + `config: { elevationPolicy: ask }` ⇒ `plan` 响应实测
