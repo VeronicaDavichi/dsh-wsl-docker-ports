@@ -132,7 +132,7 @@ packages/terminal-profiles/package.json +    "check:size": "node ../wsl-shared/s
 | `node --test` | `node --test --test-concurrency=1 "tests/unit/**/*.test.ts" "tests/contract/**/*.test.ts"` | **419 tests / 419 pass / 0 fail / exit 0**（基线 414 + 本轮 5） |
 | `vitest` | `..\..\node_modules\.bin\vitest.CMD run` | **24 文件 / 125 通过 / 0 失败 / exit 0** |
 
-⚠️ **全 glob 的假红必须说清**：`node --test "tests/**/*.test.ts"` 会连**并行轮**的 12 个 `tests/client/zz-load-*.test.ts` 一起收（它们头两行就是 `// @vitest-environment jsdom` + `import { describe, expect, it } from 'vitest'`）⇒ 该次 **431 tests / 419 pass / 12 fail**，**12 条全部是那 12 个未跟踪的探测件**，与本 Spec 无关（本轮**未提交**它们）。`vitest` 的 24 文件里同样含 13 个 `zz-*` 探测件（14 条）⇒ **扣除后 = 11 文件 / 111 条**。
+⚠️ **全 glob 的假红必须说清**：`node --test "tests/**/*.test.ts"` 会连**并行轮**的 12 个 `tests/client/zz-load-*.test.ts` 一起收（它们头两行就是 `// @vitest-environment jsdom` + `import { describe, expect, it } from 'vitest'`）⇒ 该次 **431 tests / 419 pass / 12 fail**，**12 条全部是那 12 个未跟踪的探测件**，与本 Spec 无关（本轮**未提交**它们）。`vitest` 的 24 文件里同样含 13 个 `zz-*` 探测件（14 条）⇒ **扣除后 = 11 文件 / 111 条**。 🔴 **同日订正（并行轮清理后复跑，追加留痕）**：那 12 个 `zz-load-*` 探测件随后被并行轮**删除**（其提交 `4089574 test(ports): flake 定因修复 …`）⇒ 复跑：全 glob `node --test` = **419 / 419 pass / 0 fail / exit 0**，`vitest` = **11 文件 / 111 条 / exit 0**。上文 `431 / 419 / 12` 与 `24 文件 / 125 条` 是**当轮实测的历史值**（时点证据），**保留不删**。
 
 ## 8. `tasks.md` 行数自述订正 + 本轮追加后实测
 
