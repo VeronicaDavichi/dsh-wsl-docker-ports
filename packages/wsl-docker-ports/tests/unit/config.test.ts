@@ -1,19 +1,25 @@
 /**
  * 009 缺陷 1：宿主侧 `Config` 声明（`node --test`，无 DOM、无真机写入）
  *
- * 要证的四件事（每条二值判定）：
+ * 要证的五件事（每条二值判定）：
  * 1. **不是假 schema**：`createPortsSchema(真工厂)` 造出来的 schema 必须能通过宿主的
  *    `isSchemastery()` 判据（`schema['~standard'].vendor === 'schemastery'`），
  *    并有**真实校验行为**（合法通过、类型错拒绝、语义未知值降级 —— 与 002 同族同口径）；
  * 2. **字段与两侧读写面同源**：`PORTS_CONFIG_FIELDS` = 客户端 5 个写方法产出的 patch 键集合
  *    （少一个 ⇒ 客户端写不进去；多一个 ⇒ 声明了没人用的字段）；
- * 3. **刻意不 volatile**：本包入口按**直接属性读**取策略/凭据，标 volatile 会读成 `undefined`
- *    ⇒ 提权落 `none`、凭据永久 401。所以 schema 构建期 **0 次** `volatile()` 调用（硬断言）；
- * 4. **解析失败不造假**：`Config` 要么是上面那种真 schema、要么是 `undefined` + 诊断原话，
+ * 3. 🔴 **五个字段全部 `.volatile()`**（**2026-10-12 订正，旧判据「刻意 0 次」已作废、留痕见下**）：
+ *    宿主 `describe()` 的 `volatileForm(schema) !== undefined` 是命名空间出现的**第二道门**，
+ *    `write()` 还会对非 volatile 路径直接抛 `Config field "…" is not volatile` ⇒ 字段集必须全标；
+ *    代价（活体包装）由**读侧** `src/config-read.ts` 的统一解包承担，不是靠「别标 volatile」躲开；
+ * 4. **`writeToken` 另外标 `.role('secret')`**：宿主 `describe()` 一律 `redactSecrets: true`，
+ *    不标则该字段会进 `describe().value` ⇒ 凭据明文发给浏览器；
+ * 5. **解析失败不造假**：`Config` 要么是上面那种真 schema、要么是 `undefined` + 诊断原话，
  *    绝不允许是第三种（假 schema 会让宿主静默按「无声明」处理，且比 `undefined` 更难发现）。
  *
  * 🔴 本文件**不碰真机**：只用宿主依赖（profile 层 / 002 的 `node_modules`）在**本进程**里
- * 构造 schema 并调用它 —— 「真机 `settings/describe` 里是否真出现本命名空间」不在本文件能证的范围内。
+ * 构造 schema 并调用它；「宿主是否真按 volatile 收下这个命名空间」由
+ * `tests/unit/config-gate.test.ts` 用**宿主的真 `volatileForm`** 判，「真机 `settings/describe` 里
+ * 是否真出现本命名空间」不在本文件能证的范围内（未验项，见 009 tasks.md）。
  */
 
 import assert from 'node:assert/strict';
@@ -42,21 +48,51 @@ function callable(schema: SchemaLike): CallableSchema {
   return schema as unknown as CallableSchema;
 }
 
-/** 记录式假工厂：只看结构面（字段清单、`volatile()` 调用次数、`dict` 缺失时的降级） */
+/** 字段是否是 **volatile 活体包装**（B-1 定案：带 `.get()` 的深冻结对象） */
+function isRef(value: unknown): boolean {
+  return value !== null && typeof value === 'object' && typeof (value as { get?: unknown }).get === 'function';
+}
+
+/** 解包活体包装（与宿主 `plainConfig` 同口径：`isVolatile(v) ⇒ plainConfig(v.get())`，只用于断言可读值） */
+function plain(value: unknown): unknown {
+  if (isRef(value)) return plain((value as { get: () => unknown }).get());
+  if (Array.isArray(value)) return value.map((item) => plain(item));
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, plain(item)]));
+  }
+  return value;
+}
+
+/**
+ * 记录式假工厂：只看结构面（字段清单、哪个字段被标了 `volatile()` / `role()`、`dict` 缺失时的降级）。
+ *
+ * 🔴 「哪个字段」是**在 `object(fields)` 收口时**反查的：节点在 `volatile()` 那一刻还不知道自己叫
+ * 什么名字（链式调用发生在 Object literal 里）⇒ 必须按**节点身份**记标记，等 `object()` 拿到
+ * 字段→节点映射后再回答「哪个字段标了」。
+ */
 function recordingFactory(withDict: boolean): {
   readonly z: SchemaFactory;
   readonly volatileCalls: () => number;
+  readonly volatileFields: () => readonly string[];
+  readonly roleOf: (field: string) => string | undefined;
   readonly fields: () => readonly string[];
   readonly kindOf: (field: string) => string;
 } {
   let volatileCalls = 0;
   let captured: Record<string, SchemaLike> = {};
   const kinds = new Map<SchemaLike, string>();
+  const volatileHit = new Set<SchemaLike>();
+  const roles = new Map<SchemaLike, string>();
   const make = (kind: string): SchemaLike => {
     const node = {
       kind,
       volatile(): SchemaLike {
         volatileCalls += 1;
+        volatileHit.add(node as unknown as SchemaLike);
+        return node;
+      },
+      role(role: string): SchemaLike {
+        roles.set(node as unknown as SchemaLike, role);
         return node;
       },
     };
@@ -76,6 +112,8 @@ function recordingFactory(withDict: boolean): {
   return {
     z,
     volatileCalls: () => volatileCalls,
+    volatileFields: () => Object.keys(captured).filter((field) => volatileHit.has(captured[field] as SchemaLike)),
+    roleOf: (field) => roles.get(captured[field] as SchemaLike),
     fields: () => Object.keys(captured),
     kindOf: (field) => kinds.get(captured[field] as SchemaLike) ?? '(missing)',
   };
@@ -114,12 +152,25 @@ test('009 缺陷 1：字段清单 = 客户端 5 个写方法产出的 patch 键�
   console.log(`  · 扫了 ${String(record.fields().length)} 个字段与 ${String(written.length)} 次写入：键集合完全一致`);
 });
 
-test('009 缺陷 1：刻意不 volatile（构建期 `volatile()` 调用 0 次）', () => {
+test('009 缺陷 1（2026-10-12 订正）：五个字段**全部** `.volatile()`，`writeToken` 另带 `role(secret)`', () => {
   const record = recordingFactory(true);
   createPortsSchema(record.z);
-  assert.equal(record.volatileCalls(), 0, `本包入口是**直接属性读**（config.elevationPolicy / writeToken / distro）：标 volatile 会读成 undefined ⇒ 提权落 none、凭据永久 401，故必须是 0 次`);
-  assert.deepEqual(record.fields(), [...PORTS_CONFIG_FIELDS]);
-  console.log('  · 扫了 1 份 schema：volatile() 0 次（ordinary 字段，与 002 的 profiles 数组刻意不同）');
+  // 🔴 旧判据「构建期 volatile() 0 次」**已作废**：它把缺陷 1 的修法判成违规。真机两次给出依据：
+  // ① describe() 的 volatileForm 门（0 volatile ⇒ 命名空间整个消失）；② write() 的
+  // `Config field "…" is not volatile`（非 volatile 字段根本写不进去）。两处都在 `src/config.ts` 文件头留痕。
+  assert.deepEqual(
+    record.volatileFields(),
+    [...PORTS_CONFIG_FIELDS],
+    '五个字段必须全标 volatile：少任何一个 ⇒ 命名空间不出现（volatileForm 门）/ update 直接抛 is not volatile / describe().value 里读不回来',
+  );
+  assert.equal(record.volatileCalls(), PORTS_CONFIG_FIELDS.length, '`volatile()` 调用次数必须**恰好**等于字段数（不许多标）');
+  assert.equal(record.roleOf('writeToken'), 'secret', 'writeToken 必须标 role(secret)：宿主 redactSecrets: true ⇒ 不标则凭据明文进 describe().value');
+  assert.deepEqual(
+    PORTS_CONFIG_FIELDS.filter((field) => record.roleOf(field) !== undefined),
+    ['writeToken'],
+    '只有 writeToken 是 secret（别的字段标了会白白从 describe().value 里消失，客户端读不到）',
+  );
+  console.log(`  · 扫了 ${String(PORTS_CONFIG_FIELDS.length)} 个字段：volatile ${record.volatileFields().join('/')}（${String(record.volatileCalls())} 次调用）；secret 仅 writeToken`);
 });
 
 test('009 缺陷 1：`dict` 缺失只降级 `scopes`，不放弃整个工厂', () => {
@@ -134,25 +185,40 @@ test('009 缺陷 1：`dict` 缺失只降级 `scopes`，不放弃整个工厂', (
   console.log('  · 扫了 2 份工厂：有 dict ⇒ scopes=dict；无 dict ⇒ scopes=any（其余 4 字段不变）');
 });
 
-test('009 缺陷 1：真工厂 ⇒ 真 schema（宿主判据 vendor=schemastery）+ 真校验行为', () => {
+test('009 缺陷 1：真工厂 ⇒ 真 schema（宿主判据 vendor=schemastery）+ 真校验行为 + 活体形态', () => {
   const { z, from } = realFactory();
   const schema = callable(createPortsSchema(z));
   assert.equal(schema['~standard']?.vendor, 'schemastery', `宿主的 isSchemastery() 判的就是这个（Zod 会让 volatile 静默失效）；来源：${from}`);
 
-  assert.deepEqual(schema(undefined), { managedPorts: [], scopes: {} }, '缺省值：两个集合为空，三个字符串字段可缺省');
+  const empty = schema(undefined) as Record<string, unknown>;
   assert.deepEqual(
-    schema({ managedPorts: ['3306', '1000-3000'], scopes: { '3306': 'lan' }, distro: 'Ubuntu2204', elevationPolicy: 'ask', writeToken: 'x' }),
-    { managedPorts: ['3306', '1000-3000'], scopes: { '3306': 'lan' }, distro: 'Ubuntu2204', elevationPolicy: 'ask', writeToken: 'x' },
-    '合法文档原样通过',
+    PORTS_CONFIG_FIELDS.filter((field) => isRef(empty[field])),
+    [...PORTS_CONFIG_FIELDS],
+    '🔴 **第二层陷阱的现场证据**：五个字段解析出来都是带 `.get()` 的活体包装（宿主交给我们的是包装，不是值）',
   );
+  assert.deepEqual(
+    plain(empty),
+    { managedPorts: [], scopes: {}, distro: undefined, elevationPolicy: undefined, writeToken: undefined },
+    '缺省值（**解包后**）：两个集合为空；三个字符串字段缺省 = `undefined`（`get()` 取到 undefined ⇒ 客户端读到「未配置」）',
+  );
+
+  const full = { managedPorts: ['3306', '1000-3000'], scopes: { '3306': 'lan' }, distro: 'Ubuntu2204', elevationPolicy: 'ask', writeToken: 'x' };
+  const resolved = schema(full) as Record<string, unknown>;
+  assert.deepEqual(plain(resolved), full, '合法文档解包后原样通过');
+  assert.deepEqual(
+    PORTS_CONFIG_FIELDS.filter((field) => isRef(resolved[field])),
+    [...PORTS_CONFIG_FIELDS],
+    '合法文档同样全部是活体包装 ⇒ 读侧必须统一走 src/config-read.ts（直接属性读会拿到包装对象）',
+  );
+  assert.equal((resolved['writeToken'] as { get(): unknown }).get(), 'x', '凭据在**解析结果**里是能取到的（脱敏只发生在 describe 的出口，不影响宿主自用）');
 
   for (const bad of [{ managedPorts: 3306 }, { elevationPolicy: 5 }, { writeToken: 42 }]) {
     assert.throws(() => schema(bad), /expected (array|string)/u, `类型错必须被拒：${JSON.stringify(bad)}`);
   }
   // 语义未知值**不**在 schema 层拒绝：003 的既定口径是「认不出 ⇒ unknown ⇒ 落 none」（fail-safe 在语义层）
-  const degraded = schema({ elevationPolicy: 'bogus' }) as { readonly elevationPolicy?: string };
+  const degraded = plain(schema({ elevationPolicy: 'bogus' })) as { readonly elevationPolicy?: string };
   assert.equal(degraded.elevationPolicy, 'bogus', '未知策略值必须在 schema 层放行（降级由语义层做，不在 schema 层抛）');
-  console.log(`  · 扫了 1 份真 schema（来源 ${from}）：缺省/合法/3 类类型错/1 个语义未知值，行为与 002 同族一致`);
+  console.log(`  · 扫了 1 份真 schema（来源 ${from}）：缺省/合法/3 类类型错/1 个语义未知值；活体包装 5/5 已确证`);
 });
 
 test('009 缺陷 1：解析器 —— 结构面判定与 `default` 互操作（缺一个方法就拒绝）', () => {

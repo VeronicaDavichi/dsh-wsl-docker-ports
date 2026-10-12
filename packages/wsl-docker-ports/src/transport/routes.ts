@@ -35,6 +35,7 @@
 
 import { isWebServerSurface, pathOf } from '../route.ts';
 import type { HttpRequestLike, HttpResponseLike, RoutePluginContextLike, WebServerSurfaceLike } from '../route.ts';
+import type { ConfigValueSource } from '../config-read.ts';
 import type { PortsErrorCode } from '../wire.ts';
 import { createWriteAuthenticator } from './write-auth.ts';
 import type { WriteHeaderBag } from './write-auth.ts';
@@ -85,8 +86,10 @@ export interface WriteRouteDeps {
   /**
    * 写通道凭据（T2.9）：`plan` / `apply` / `audit` **共用同一份**。
    * 🔴 **缺省 = 未配置 = 一律 401**（fail-safe；不是「放行」）—— 见 `./write-auth.ts`。
+   * 形态三类都收（字符串 / volatile 活体包装 / 零参取值函数）：本包 `Config` 标了 volatile ⇒
+   * 生产上传进来的是 `config-read.ts` 的**读取函数**，鉴权每次请求现读它（轮换凭据即时生效）。
    */
-  readonly writeToken?: string | undefined;
+  readonly writeToken?: ConfigValueSource;
 }
 
 /** 与 003 同名的活状态（惰性注入的回调可能晚于返回才跑） */
@@ -191,6 +194,8 @@ export function registerWriteRoute(ctx: RoutePluginContextLike, deps: WriteRoute
     audit: WRITE_AUDIT_PATH,
   } as const;
   // 凭据在**注册期**定下来（T2.9）：请求期不再读配置 ⇒ 不存在「半个请求换了一份配置」的窗口
+  // 🔴 但「定下来的」是**来源**（可能是 `config-read.ts` 的现读函数，也可能就是字符串）：
+  // 鉴权器每次 `authorize()` 现解包，故 volatile 轮换凭据即时生效，而单次请求内只解包一次。
   const auth = createWriteAuthenticator(deps.writeToken);
   let requests = 0;
   let live = 0;
@@ -343,7 +348,10 @@ export function registerWriteRoute(ctx: RoutePluginContextLike, deps: WriteRoute
     get reason(): string | undefined {
       return reason;
     },
-    authConfigured: auth.configured,
+    /** getter：凭据来源现读 ⇒ live 轮换后这里立刻翻，不吃注册期快照（**不泄露**凭据本体） */
+    get authConfigured(): boolean {
+      return auth.configured;
+    },
     paths,
     requestCount: () => requests,
     registrationCount: () => live,

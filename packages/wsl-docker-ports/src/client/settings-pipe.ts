@@ -79,6 +79,12 @@ export interface SettingsConfigView {
    * 🔴 这是一个**布尔**，不是字符串：值本体在下面 `readConfig()` 里被就地化成 `true/false` 后**丢弃**，
    * 结构上不存在「把既有凭据交给 UI」的路径 ⇒ 页面无法回显它（不是「记得别渲染」的自觉，而是没有入口）。
    * 空串（含纯空白）一律算「未配置」，与 `../transport/write-auth.ts` 的 `trim` 口径一致。
+   *
+   * 🔴 **权威来源是 `secrets[]` 而不是 `value`**：`writeToken` 在 `Config` 里标了 `.role('secret')`，
+   * 宿主 `describe()` 一律 `redactSecrets: true` ⇒ 字段从 `value` 里被摘掉，只在
+   * `secrets: [{ path: ['writeToken'], set }]` 留布尔（`dsh-api-settings-controller` 的
+   * `namespaceView()` 逐字保留 `secrets`）⇒ 只能从那里读。（`value.writeToken` 作为兜底保留：
+   * 未脱敏的调用方/测试替身仍然可用，且两条路径都只产出布尔。）
    */
   readonly writeTokenConfigured: boolean;
 }
@@ -107,16 +113,38 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined;
 }
 
-/** 从 `describe()` 里取本命名空间的当前值（形如 `{ namespaces: [{ ns, value }] }`） */
-export function namespaceValue(described: SettingsResponse): unknown {
+/** 从 `describe()` 里取本命名空间的**整条记录**（形如 `{ namespaces: [{ ns, value, secrets }] }`） */
+export function namespaceEntry(described: SettingsResponse): Record<string, unknown> | undefined {
   const value = asRecord(described.value);
   const namespaces = value?.['namespaces'];
   if (!Array.isArray(namespaces)) return undefined;
   for (const entry of namespaces) {
     const record = asRecord(entry);
-    if (record?.['ns'] === SETTINGS_NAMESPACE) return record['value'];
+    if (record?.['ns'] === SETTINGS_NAMESPACE) return record;
   }
   return undefined;
+}
+
+/** 从 `describe()` 里取本命名空间的当前值（形如 `{ namespaces: [{ ns, value }] }`） */
+export function namespaceValue(described: SettingsResponse): unknown {
+  return namespaceEntry(described)?.['value'];
+}
+
+/**
+ * 凭据「已配置」的**权威读法**：宿主 `describe()` 一律 `redactSecrets: true`，把
+ * `role('secret')` 字段（本包的 `writeToken`）从 `value` 里摘掉，只在
+ * `secrets: [{ path: ['writeToken'], set: boolean }]` 里留布尔 —— 所以生产环境只能从这里读。
+ * 🔴 只回布尔：**没有任何路径**把凭据本体带出本函数（REQ-1.3）。
+ */
+function readSecretSet(entry: Record<string, unknown> | undefined): boolean {
+  const secrets = entry?.['secrets'];
+  if (!Array.isArray(secrets)) return false;
+  return secrets.some((item) => {
+    const record = asRecord(item);
+    const path = record?.['path'];
+    if (!Array.isArray(path)) return false;
+    return path[path.length - 1] === 'writeToken' && record?.['set'] === true;
+  });
 }
 
 /**
@@ -197,17 +225,21 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
     async readConfig(): Promise<SettingsConfigView> {
       const service = getSettings();
       if (service === undefined) return { managedPorts: [], distro: undefined, elevationPolicy: undefined, scopes: {}, writeTokenConfigured: false };
-      const value = asRecord(namespaceValue(await service.describe()));
+      const entry = namespaceEntry(await service.describe());
+      const value = asRecord(entry?.['value']);
       const distro = value?.['distro'];
       const policy = value?.['elevationPolicy'];
-      // 🔴 既有凭据**只**被化成布尔，`raw` 不参与返回值构造（REQ-1.3：绝不回显既有值）
+      // 🔴 既有凭据**只**被化成布尔，`raw` 不参与返回值构造（REQ-1.3：绝不回显既有值）。
+      // 两条读法都是**降级到布尔**，且都不带值出函数：
+      // ① 权威路径 = `secrets[{path:['writeToken'], set}]`（宿主 `redactSecrets: true` ⇒ `value` 里没有它）；
+      // ② 兜底路径 = `value.writeToken` 是字符串（未脱敏的调用方/测试替身）。
       const writeToken = value?.['writeToken'];
       return {
         managedPorts: readStringArray(value?.['managedPorts']),
         distro: typeof distro === 'string' ? distro : undefined,
         elevationPolicy: policy === 'none' || policy === 'ask' || policy === 'passby' ? policy : undefined,
         scopes: readScopes(value?.['scopes']),
-        writeTokenConfigured: typeof writeToken === 'string' && writeToken.trim() !== '',
+        writeTokenConfigured: readSecretSet(entry) || (typeof writeToken === 'string' && writeToken.trim() !== ''),
       };
     },
     writeManagedPorts: (decls) => write({ managedPorts: [...decls] }),

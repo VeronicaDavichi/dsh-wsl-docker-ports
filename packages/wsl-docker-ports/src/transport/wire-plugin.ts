@@ -23,6 +23,7 @@
 import type { Executor } from 'dsh-wsl-shared';
 
 import type { RoutePluginContextLike } from '../route.ts';
+import type { ConfigValueSource } from '../config-read.ts';
 import type { ElevationDeps } from '../elevate/types.ts';
 import { createApplyChannel } from './apply.ts';
 import { createAuditLog } from './audit.ts';
@@ -67,14 +68,15 @@ export function degradedPlanFacts(): PlanFacts {
  * @param elevationDeps 005 依赖面的覆盖（离线测试注入假快照/假文件表；生产与 `plugin.ts` 都留空）
  *   —— ⚠️ 只影响**执行层**的 IO 替身，不改任何安全判据（票据门/白名单/回滚红线都在 apply.ts 里）
  * @param writeToken 写通道凭据（T2.9，来自插件 config 的 `writeToken`）；🔴 **缺省 = 未配置 = 三个端点
- *   一律 401**（fail-safe）—— 绝不因为「忘了配」而让写通道裸奔
+ *   一律 401**（fail-safe）—— 绝不因为「忘了配」而让写通道裸奔。形态三类都收（字符串 / volatile 活体包装 /
+ *   零参取值函数）：生产传的是 `config-read.ts` 的现读函数 ⇒ 轮换凭据不需要重挂载。
  */
 export function attachWriteChannel(
   ctx: RoutePluginContextLike,
   facts?: PlanFacts | undefined,
   executor?: Executor | undefined,
   elevationDeps?: Partial<ElevationDeps> | undefined,
-  writeToken?: string | undefined,
+  writeToken?: ConfigValueSource,
 ): WriteChannelHandle {
   const effective = facts ?? degradedPlanFacts();
   const audit = createAuditLog();
@@ -108,7 +110,8 @@ export interface PluginReadParts {
   readonly probeElevation: () => Promise<{ readonly available: boolean; readonly backend: string | null }>;
   /** 现读 .wslconfig 的 localhostForwarding（可选）；取不到 ⇒ null（不猜 false） */
   readonly probeLocalhostForwarding?: (() => Promise<boolean | null>) | undefined;
-  readonly elevationPolicy?: string | undefined;
+  /** 配置档的策略；形态三类都收（活体包装 / 平凡值 / 现读函数）—— 见 `transport/real-facts.ts` */
+  readonly elevationPolicy?: ConfigValueSource;
 }
 
 /**

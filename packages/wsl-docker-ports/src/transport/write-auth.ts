@@ -29,6 +29,8 @@
  */
 
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { readConfigToken } from '../config-read.ts';
+import type { ConfigValueSource } from '../config-read.ts';
 
 /** 请求面（`WriteRequestLike` 的结构子集：只要 `url` 与可选的 `headers`） */
 export interface CredentialRequestLike {
@@ -51,8 +53,10 @@ export const WRITE_AUTHORIZATION_HEADER = 'authorization';
  * profile 的 `cordis.patch.yml` 里那一条 `- id: dsh-wsl-docker-ports` 的 `config:` 块。
  */
 export const WRITE_TOKEN_CONFIG_HINT =
-  '配置方法：在 profile 的 cordis.patch.yml 里给 `- id: dsh-wsl-docker-ports` 条目加一项 ' +
-  '`config: { writeToken: "<随机长串>" }`（与 elevationPolicy 同一处；改完需重载插件），' +
+  '配置方法：① 本包配置页的「生成并保存写通道凭据」（写进 settings 命名空间的 `writeToken` 字段，' +
+  '推荐）；或 ② profile 的 cordis.patch.yml 里给 `- id: dsh-wsl-docker-ports` 条目加一项 ' +
+  '`config: { writeToken: "<随机长串>" }`（与 elevationPolicy 同一处）。' +
+  '两种写法都**即时生效**（字段是 volatile，宿主每次请求现读凭据，不需要重载插件）。' +
   '之后以 `Authorization: Bearer <令牌>` 或 `?token=<令牌>` 调用本通道。';
 
 /** 鉴权失败：只有 `unauthorized` 一个码（401）⇒ 与既有 404/405/503 的语义不重叠 */
@@ -124,13 +128,20 @@ export function readWriteCredential(request: CredentialRequestLike): string | un
 }
 
 /**
- * 造一个鉴权器（**一次注册一个实例**：凭据在注册期就定下来，请求期不再读配置）。
+ * 造一个鉴权器（**一次注册一个实例**，但**每次请求现读凭据**）。
  *
- * @param token 插件配置里的 `writeToken`；`undefined` / 空白 ⇒ **未配置** ⇒ 一律拒绝（fail-safe）
+ * @param source 插件配置里的 `writeToken`：字符串 / volatile 活体包装（本包 `Config` 标了 volatile ⇒
+ *   宿主给的就是这种）/ 零参取值函数（`plugin.ts` 透传 `config-read.ts` 的读取函数）三类都收；
+ *   解包后为空/空白/非串 ⇒ **未配置** ⇒ 一律拒绝（fail-safe）。
+ *
+ * 🔴 **为什么每次现读而不是注册期拍一次**：`Config` 全部字段标了 volatile ⇒ `update` 的 volatile-only
+ * 写入是**原地**更新、不重挂载（008 的票据/审计环因此不被清掉）；若把凭据拍在注册期，用户在配置页轮换
+ * 凭据后宿主仍拿旧值 ⇒ 新凭据一律 401（**永久 401**，正是缺陷 1 的第二层陷阱）。`configured` 也做成
+ * getter，同一条理由（`routes.ts` 的 `authConfigured` 是活视图）。
  */
-export function createWriteAuthenticator(token: string | undefined): WriteAuthenticator {
-  const expected = typeof token === 'string' ? token.trim() : '';
-  const configured = expected !== '';
+export function createWriteAuthenticator(source: ConfigValueSource): WriteAuthenticator {
+  /** 每次现读并归一化：空/空白/非串 ⇒ `undefined`（= 未配置） */
+  const expectedToken = (): string | undefined => readConfigToken(source);
 
   const deny = (message: string, presented: boolean): WriteAuthFailure => ({
     ok: false,
@@ -140,10 +151,13 @@ export function createWriteAuthenticator(token: string | undefined): WriteAuthen
   });
 
   return {
-    configured,
+    get configured(): boolean {
+      return expectedToken() !== undefined;
+    },
     authorize(request: CredentialRequestLike): WriteAuthResult {
       const supplied = readWriteCredential(request);
-      if (!configured) {
+      const expected = expectedToken();
+      if (expected === undefined) {
         return deny(
           `未配置写通道凭据：拒绝所有写请求（plan / apply / audit 一律 401，fail-safe）。${WRITE_TOKEN_CONFIG_HINT}`,
           supplied !== undefined,

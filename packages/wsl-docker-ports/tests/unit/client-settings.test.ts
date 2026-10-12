@@ -229,6 +229,38 @@ test('T2.3 读回：writeToken **只**化成布尔（值本体不出管道，页
   console.log('  · 扫了 4 种配置形态：true / 空白 false / 缺失 false / 非字符串 false；凭据本体 0 次出现在读回结果里');
 });
 
+test('009 订正：`writeToken` 标了 `role(secret)` ⇒ 「已配置」改从 `secrets[]` 读（value 里已没有它）', async () => {
+  const TOKEN = 'e'.repeat(64);
+  /** 宿主 `describe()` 的真实出口形状：`{ ns, value, secrets }`（`redactSecrets: true` 的产物） */
+  const service = (secrets: unknown): RemoteSettingsLike => ({
+    describe: async (): Promise<SettingsResponse> => ({
+      ok: true,
+      value: { revision: 3, namespaces: [{ ns: SETTINGS_NAMESPACE, value: { distro: 'Ubuntu2204', elevationPolicy: 'ask' }, secrets }] },
+    }),
+    update: async (): Promise<SettingsResponse> => ({ ok: true, value: {} }),
+  });
+  const read = (secrets: unknown) => createSettingsPipe(() => service(secrets)).readConfig();
+
+  const configured = await read([{ path: ['writeToken'], set: true }]);
+  assert.equal(configured.writeTokenConfigured, true, 'secrets.set=true ⇒ 已配置（凭据本体在 value 里根本不存在）');
+  assert.equal(configured.distro, 'Ubuntu2204', '同一份 describe 里别的字段照旧读得到');
+  assert.equal((await read([{ path: ['writeToken'], set: false }])).writeTokenConfigured, false, 'secrets.set=false ⇒ 未配置');
+  assert.equal(
+    (await read([{ path: ['other'], set: true }, { path: ['writeToken', 'inner'], set: true }])).writeTokenConfigured,
+    false,
+    '只看**本字段**（path 末段 === writeToken）的 set：别的 secret 位置与子路径都不算',
+  );
+  assert.equal((await read(undefined)).writeTokenConfigured, false, '没有 secrets 数组 ⇒ 未配置（不猜）');
+  assert.equal(JSON.stringify(configured).includes(TOKEN), false, '读回结果里不得出现凭据本体');
+  // ⚠️ **已知不一致（本轮记录、不修；影响见 009 tasks.md）**：清空派发的是**空串**，而宿主
+  // `walk()` 的 `set: value !== void 0` 对空串**仍给 true** ⇒ 「清除」后重新载入页面会显示「已配置」，
+  // 而写通道实际 401。方向是**更保守**（显示已配置 ↔ 实际拒绝），不是安全退化；根治办法是「清除」
+  // 改走 `mutate({op:'unset', path:['writeToken']})`（宿主原文：Apply field edits without restating
+  // redacted secrets）⇒ 归零成 `set:false`。本轮不动客户端写路径，只钉住事实。
+  assert.equal((await read([{ path: ['writeToken'], set: true }])).writeTokenConfigured, true, '⚠️ 已知：空串在宿主侧 set 仍为 true（远程看不到值，故本判据无法区分空串与真凭据）');
+  console.log('  · 扫了 5 种 secrets 形态：true / false / 他字段+子路径 false / 无数组 false / 空串 true（已知不一致，已留痕）');
+});
+
 test('T5.7 读回：命名空间与 revision 的形状兼容三种写法', () => {
   const shapes: readonly { readonly name: string; readonly value: unknown; readonly expected: unknown }[] = [
     { name: '顶层 revision', value: { revision: 5, namespaces: [] }, expected: 5 },

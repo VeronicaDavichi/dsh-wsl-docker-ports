@@ -7,41 +7,73 @@
  * 宿主进程不持有活体副本 ⇒ 推断「没有 volatile 需求 ⇒ 不需要 `Config`」，并把结论挂到
  * 「真机 T0.5 确认 settings 命名空间是否需要宿主侧 schema」这一步上。
  *
- * 🔴 **2026-10-12 真机给出答案：需要。** `POST /api/settings/describe` 返回的 20 个命名空间里
+ * 🔴 **2026-10-12 真机给出答案：需要。** `POST /api/settings/describe` 返回的 19 个命名空间里
  * **有** `dsh-terminal-profiles`、**没有** `dsh-wsl-docker-ports`。⇒ 客户端的 `readConfig()`
  * 一路读默认值（`managedPorts` 恒空）⇒ 所有权声明 `declaration` 恒为 `[]` ⇒ 服务端把所有端口
  * 判成 `port-not-managed` ⇒ 计划永不 `ready`、零步骤（V6 的「逐条 `commandText` 比对」因此
- * 不可能做、V7 因此被卡住）。⇒ **命名空间的存在性由「模块是否导出 `Config`」决定，与 volatile 无关**；
- * 「不需要 volatile」推不出「不需要 `Config`」——这是本包的原始推理错误。
+ * 不可能做、V7 因此被卡住）。
+ *
+ * ## 两道门（缺一不可）——`896fa42` 的「只导出 `Config`」**已被真机证伪**，留痕不删
+ *
+ * ① **导出 `Config`** 是必要条件：`dsh-settings` 的 `schema(entry)` = `entry.fiber?.runtime?.Config`
+ *    ⇒ 不导出就取不到 schema（`896fa42` 只修了这一半，真机 `describe` 仍无本命名空间 ⇒ 被证伪）。
+ * ② 🔴 **但不充分**：`describe()` 紧接着要 `volatileForm(schema) !== undefined`，**零 volatile 的
+ *    `Config` 会让整个命名空间消失**（`dsh-settings/lib/index.js` 的 `describe()` 里
+ *    `const form = volatileForm(schema); if (form === void 0) return [];`；`volatileForm` 递归找
+ *    `meta.volatile`，**`type === 'object'` 本身不算**）。⇒ 009 Task A 把真机那 19 个命名空间
+ *    **逐个**回盘核对：19/19 都有 ≥1 个 volatile 字段，而本包（`Config` 在、0 volatile）正是
+ *    天然反例（判据见 `tests/unit/config-gate.test.ts`）。
+ * ③ `write()` 还有同向的第二道判据：patch 落到非 volatile 路径直接抛
+ *    `Config field "…" is not volatile`（`validatePaths`）⇒ **凡客户端要经 `remote.settings.update`
+ *    写的字段都必须标 volatile**（本包五个字段都是客户端写的，故五个全标）。
+ *
+ * ## 标了 volatile 之后：**读侧必须统一解包**（第二层陷阱）
+ *
+ * B-1 早已定案：volatile 字段解析出来是**带 `.get()` 的深冻结活体包装**，直接属性读会拿到包装对象
+ * 本身 ⇒ 提权档落 `none`（永远写不动）、凭据恒 401。⇒ 正确处置是 `./config-read.ts` 的**统一解包**
+ * （活体与平凡两类形态同一套读法、**每次现读**：volatile 写入是原地更新，现读才拿得到新值），
+ * 而**不是**把字段退回平凡 —— 退了命名空间根本不出现、`update` 直接抛。
  *
  * 2026-10-09 集成方裁定「**不许用『先加个依赖试试』解决**」继续有效并被遵守（见下「零新增依赖」）。
  *
- * ## 为什么不标 `.volatile()`
+ * ## 标 volatile 的字段集：**五个全标**（依据是宿主源码，不是口味）
  *
- * 002 的 B-1 结论：`.volatile()` 字段解析出来是**带 `.get()` 的深冻结活体对象**，直接把属性当值读
- * 会得到 `undefined`。而本包的宿主面是**直接属性读**（`plugin.ts` 的 `config?.elevationPolicy` /
- * `config?.writeToken` / `config?.distro`）⇒ 标 volatile 会让提权档读成 `undefined` ⇒ 落 fail-safe
- * `none`（永远写不动），凭据也永远 401 —— **正确性倒退**。003 REQ-12.4 也只要求「保存前先确认
- * （编辑可能触发重挂载）」，未要求 volatile。
+ * 1. 少了就**没有命名空间**（`volatileForm` 门，见上 ②）；
+ * 2. 少了**写不进去**：`write()` 的 `validatePaths` 对非 volatile 路径直接抛
+ *    `Config field "…" is not volatile` —— 而客户端 `settings-pipe.ts` 的五个写方法
+ *    （`managedPorts` / `scopes` / `distro` / `elevationPolicy` / `writeToken`）正是这五个字段；
+ * 3. 少了**读不回来**：`describe()` 的 `value`/`base`/`user` 都是
+ *    `projectForm(form, plainConfig(entry.fiber.config))`，而 `form` = **volatile 子树**
+ *    ⇒ 非 volatile 字段在返回值里**根本不存在**，客户端 `readConfig()` 会把它读成「未配置」
+ *    （`writeTokenConfigured` 恒 false ⇒ 「服务端已配置」永远显示不出来）。
+ * 4. 标了之后**不再重挂载**（`equal()` 首行 `if (schema?.meta?.volatile) return true` ⇒
+ *    volatile-only 走 `_commitVolatile()`），对 008 的票据/审计环是**净收益**；
+ *    代价是「值不能拍一次」，由 `./config-read.ts` 的现读口径兜住（五个字段全部经它读）。
  *
  * ## 字段（以代码为准；客户端与宿主两侧共用一个命名空间）
  *
  * | 字段 | 写方 | 读方 | schema |
  * | --- | --- | --- | --- |
- * | `managedPorts` | 客户端配置页（`settings-pipe.ts`） | 客户端（声明 → `/write/plan` 的 `declaration`） | `array(string)`，缺省 `[]` |
- * | `scopes` | 客户端（逐端口） | 客户端 | `dict(string)`，缺省 `{}` |
- * | `distro` | 客户端 | **宿主**（`PortsPluginConfigLike.distro`） | `string` |
- * | `elevationPolicy` | 客户端 | **宿主**（`apply` 的策略解析） | `string` |
- * | `writeToken` | 客户端（生成凭据时） | **宿主**（`transport/write-auth.ts` 的 401 门） | `string` |
+ * | `managedPorts` | 客户端配置页（`settings-pipe.ts`） | 客户端（声明 → `/write/plan` 的 `declaration`） | `array(string).volatile()`，缺省 `[]` |
+ * | `scopes` | 客户端（逐端口） | 客户端 | `dict(string).volatile()`，缺省 `{}` |
+ * | `distro` | 客户端 | **宿主**（`PortsPluginConfigLike.distro`，经 `config-read.ts` 现读） | `string.volatile()` |
+ * | `elevationPolicy` | 客户端 | **宿主**（`apply` 的策略解析，经 `config-read.ts` 现读） | `string.volatile()` |
+ * | `writeToken` | 客户端（生成凭据时） | **宿主**（`transport/write-auth.ts` 的 401 门） | `string.role('secret').volatile()` |
  *
  * ⚠️ `elevationPolicy` **刻意**只声明 `string`、不写枚举：003 的既定口径是「缺省/认不出 ⇒ `unknown`
  * ⇒ 落 `none`」（fail-safe 在语义层），真机观察到的 `policy:'unknown'` 就是这条路径。把枚举写进
  * schema 会让**旧文档里的未知值在加载期报错**，比语义层降级更坏。
  *
- * ⚠️ `writeToken` 的**宿主侧回显**是未验项：真机 `describe` 的每个命名空间带
- * `secrets: [{ path, set }]`，schemastery 也有 `.role('secret')`（本机 probe 实测存在），但
- * 「宿主是否按 `role` 生成 `secrets[]`」离线判不了 ⇒ 本轮**不加 role**（不加 = 不改语义；
- * 本包自己的页面只读布尔、不回显值）。真机复验时一并看 `secrets[]` 是否含 `writeToken`。
+ * ⚠️ `writeToken` 的 `role('secret')` 是**宿主源码判据**（不再是未验项）：`dsh-api-settings-controller`
+ * 的 `describe()` 一律 `settings.describe({ redactSecrets: true })`，其 JSDoc 逐字写着
+ * 「Every remote read uses `redactSecrets: true`, so a `role('secret')` field cannot ride a response」；
+ * `dsh-settings` 的 `redactSecrets()`（结构化脱敏）把该字段从 `value` 里摘掉、只在
+ * `secrets: [{ path, set }]` 里留 `{ path: ['writeToken'], set: boolean }`；客户端拿它算
+ * 「服务端是否已配置」的布尔（**绝不回显值**，009 REQ-1.3）。生产同族实证：
+ * `dsh-web-search-deepseek` 的 `apiKey: z.string().role("secret").volatile()` 且该命名空间在真机
+ * `describe` 里正常出现 ⇒ 「secret + volatile 同字段」是被生产验证过的组合。
+ * 🔴 **不标 `role('secret')` 的后果是真实的泄露**：volatile 字段会进 `describe().value` ⇒
+ * 凭据明文经 `namespaceView()` 发给浏览器（含宿主自带设置页）。
  *
  * ## 零新增依赖：**多锚点**运行时解析（不是静态 import）
  *
@@ -85,9 +117,11 @@ export const PORTS_CONFIG_FIELDS = ['managedPorts', 'scopes', 'distro', 'elevati
 
 export type PortsConfigField = (typeof PORTS_CONFIG_FIELDS)[number];
 
-/** 本包用到的最小 schema 面（`SchemaLike` 与 002 同形：只要求 `volatile()` 存在） */
+/** 本包用到的最小 schema 面（`SchemaLike` 与 002 同形：只要求 `volatile()` / `role()` 存在） */
 export interface SchemaLike {
   volatile(): SchemaLike;
+  /** `.role('secret')`：宿主据此把字段从 `describe().value` 摘掉、只留 `secrets[{path,set}]` */
+  role(role: string): SchemaLike;
 }
 
 /**
@@ -106,15 +140,22 @@ export interface SchemaFactory {
   dict?(item: SchemaLike): SchemaLike;
 }
 
-/** 造 `Config`：字段与 `PORTS_CONFIG_FIELDS` **同源**（少一个/多一个都会被测试抓到） */
+/**
+ * 造 `Config`：字段与 `PORTS_CONFIG_FIELDS` **同源**（少一个/多一个都会被测试抓到）。
+ *
+ * 🔴 **五个字段全部 `.volatile()`**，`writeToken` 另加 `.role('secret')` —— 依据逐条见文件头
+ * 「标 volatile 的字段集」：少了 volatile 则命名空间不出现（`volatileForm` 门）、`update` 抛
+ * `is not volatile`、`describe().value` 里读不到；少了 `role('secret')` 则凭据明文进 `value`。
+ * 顺序与生产同族一致（`z.string().role("secret").volatile()`，见 `dsh-web-search-deepseek`）。
+ */
 export function createPortsSchema(z: SchemaFactory): SchemaLike {
   const dict = typeof z.dict === 'function' ? z.dict.bind(z) : undefined;
   return z.object({
-    managedPorts: z.array(z.string()),
-    scopes: dict === undefined ? z.any() : dict(z.string()),
-    distro: z.string(),
-    elevationPolicy: z.string(),
-    writeToken: z.string(),
+    managedPorts: z.array(z.string()).volatile(),
+    scopes: (dict === undefined ? z.any() : dict(z.string())).volatile(),
+    distro: z.string().volatile(),
+    elevationPolicy: z.string().volatile(),
+    writeToken: z.string().role('secret').volatile(),
   });
 }
 

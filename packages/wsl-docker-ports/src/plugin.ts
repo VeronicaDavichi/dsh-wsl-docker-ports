@@ -10,8 +10,9 @@
  * - `export function apply(ctx, config?)` —— 宿主调用；**返回值被宿主忽略**，给测试/集成方留一个句柄。
  * - `export default { name, inject, apply }` —— 宿主官方三种形态之一（函数 / 对象 / `class`），
  *   两种都给以免疫宿主侧解析差异（002 也是这样）。
- * - **导出 `Config`**（声明在 `./config.ts`；与 002 同形态）—— 2026-10-12 真机订正：缺它 ⇒ 宿主不给
- *   本包注册 settings 命名空间 ⇒ 客户端读到的所有权声明恒空 ⇒ 计划零步骤（旧口径见下面那节）。
+ * - **导出 `Config`**（声明在 `./config.ts`；与 002 同形态）—— 2026-10-12 真机两次订正：缺它 ⇒
+ *   宿主取不到 schema；**只有它不够** ⇒ `describe()` 还要 `volatileForm(schema) !== undefined`，
+ *   零 volatile 的命名空间**一样消失**。两个条件都满足才注册 settings 命名空间（详见 `./config.ts`）。
  *
  * 🔴 **少了 `apply`，profile 里插了 patch 也不会激活** —— 宿主只会 import 到一堆普通导出。
  * 这正是本包 `exports["."]` 从 `./src/index.ts` 切到 `./lib/index.js` 的原因。
@@ -29,22 +30,21 @@
  *    （真机实测：`apply` 时刻 `ctx.get('webServer')` 是 `undefined`，服务要到 `+755ms` 才到 —— 同步取一次
  *    就下结论会让路由**永不注册且零报错**，即缺陷 A）。
  *
- * ## `Config` 已在 `./config.ts` 声明（2026-10-12 真机订正这一节）
+ * ## `Config` 已在 `./config.ts` 声明（2026-10-12 真机订正，**留痕不删**）
  *
- * 旧口径（本文件 2026-10-09 版，**留痕不删**）：认为「P0 四个配置项走客户端 `remote.settings` 写回、宿主进程不持有活体副本 ⇒ 没有 volatile 需求 ⇒ 不需要 `Config`」。🔴 **真机推翻**：命名空间存在与否只看模块**有没有导出 `Config`**，与 volatile 无关（真机 `settings/describe` 有 002 的 `dsh-terminal-profiles`、没有本包 ⇒ 客户端声明恒空 ⇒ 计划零步骤）。
- * 现在导出**真** schemastery schema（字段与两侧读写面对齐），**零新增依赖**：多锚点运行时解析，实测证据与锚点清单在 `./config.ts` 文件头；**刻意不标 `.volatile()`** —— 本入口按**直接属性读**取 `elevationPolicy` / `writeToken` / `distro`，标了会读成 `undefined`（提权落 `none`、凭据永久 401）。
- * 📌 **2026-10-09 集成方裁定「不许用『先加个依赖试试』解决」继续有效**：本轮没有加任何依赖，也没有声明假 schema（解析不到 ⇒ `Config === undefined` + 诊断，绝不造假）。
+ * 🔴 旧口径（2026-10-09 版）：以为「宿主不持有活体副本 ⇒ 没有 volatile 需求 ⇒ 不需要 `Config`」——**真机两次推翻**。根因与宿主源码判据（`describe()` 的 `volatileForm` 门、`write()` 的 `is not volatile` 抛错、`role('secret')` × `redactSecrets`）全部记在 `./config.ts` 文件头与 009 `tasks.md`，此处不重复。
+ * ⚠️ **代价在读侧**：volatile 字段解析出来是**带 `.get()` 的活体包装**（B-1 定案）⇒ 本入口不再直接属性读，一律经 `./config-read.ts` 的 `createHostConfigReaders(config)`（两类形态同一读法、**每次现读** ⇒ 提权档不会退化成 `none`、凭据不会永久 401）。零新增依赖；解析不到 ⇒ `Config === undefined` + 诊断，绝不造假 schema。
  *
  * ## 仍然缺的那一件（不静默，写进 `gaps`）
  *
- * **提权写路径的接线**：执行器属 **005**（`runElevate` + `defaultElevationDeps` **已实现**），缺的是「带 ownership 判定的写计划装配」+「浏览器点击 → 宿主执行」的传输（本波只开了只读 GET）。
- * ⇒ 本入口**不做**假的 `ElevationInvoker`：那会让「写成功」变成谎报。如实记成 gap。
+ * **提权写路径的接线**：执行器属 **005**（`runElevate` + `defaultElevationDeps` **已实现**），缺的是「带 ownership 判定的写计划装配」+「浏览器点击 → 宿主执行」的传输（本波只开了只读 GET）⇒ 本入口**不做**假的 `ElevationInvoker`（那会让「写成功」变成谎报），如实记成 gap。
  */
 
 import { createExecutor, listDistros, resolveDistro } from 'dsh-wsl-shared';
 import type { DistroResolution, Executor, WslDistro, WslSharedError } from 'dsh-wsl-shared';
 import { diff } from './diff/engine.ts';
 import type { DiffInput, DiffOutcome } from './diff/types.ts';
+import { createHostConfigReaders } from './config-read.ts';
 import { createElevationAvailabilityProbe } from './elevate/backend.ts';
 import type { ElevationAvailability } from './elevate/backend.ts';
 import type { BackendChoice } from './elevate/types.ts';
@@ -174,12 +174,17 @@ export interface WslDockerPortsPluginHandle {
   dispose(): void;
 }
 
-/** 插件配置（`distro` = 目标发行版，留空按 001 的四级优先级解析；`elevationPolicy` = `none`/`ask`/`passby`，🔴 缺省/认不出 ⇒ 事实面 `'unknown'` ⇒ 执行层按 SSoT 默认落到 `none`（不写），见 `transport/apply.ts` 文件头；清单当前**没有** `config:` 块 ⇒ 生产上是空对象） */
+/**
+ * 插件配置（`distro` = 目标发行版，留空按 001 的四级优先级解析；`elevationPolicy` = `none`/`ask`/`passby`，
+ * 🔴 缺省/认不出 ⇒ 事实面 `'unknown'` ⇒ 执行层按 SSoT 默认落到 `none`（不写），见 `transport/apply.ts` 文件头）。
+ *
+ * 🔴 字段类型是 `unknown` 而**不是** `string`：`Config` 标了 volatile ⇒ 宿主交给 `apply` 的是**活体包装**而不是字符串；单测/集成方手工传参会给平凡值。两类都收，读法统一在 `./config-read.ts`。
+ */
 export interface PortsPluginConfigLike {
-  readonly distro?: string | undefined;
-  readonly elevationPolicy?: string | undefined;
+  readonly distro?: unknown;
+  readonly elevationPolicy?: unknown;
   /** 写通道凭据（008 T2.9）；🔴 缺省/空白 ⇒ 写通道**一律 401**（fail-safe，plan 也一样），见 `transport/write-auth.ts` */
-  readonly writeToken?: string | undefined;
+  readonly writeToken?: unknown;
 }
 
 /** 宿主入口（cordis 调用；返回值被忽略） */
@@ -199,12 +204,14 @@ export function applyWslDockerPorts(
   deps: PortsHostDeps = {},
 ): WslDockerPortsPluginHandle {
   const executor = deps.executor ?? createExecutor();
-  const configured = config?.distro;
+  // 🔴 配置一律经活体读取面（`distro`/`elevationPolicy`/`writeToken` 都标了 volatile ⇒ 宿主给的是
+  // 带 `.get()` 的包装）。四个方法**每次现读**：volatile 写入原地更新，现读才不会吃到 apply 时刻的旧值。
+  const hostConfig = createHostConfigReaders(config);
 
   const resolveTarget = async (): Promise<TargetDistro> => {
     const listed = await listDistros(executor);
     if (!listed.ok) return listed;
-    const resolved = resolveDistro(listed.distros, configured);
+    const resolved = resolveDistro(listed.distros, hostConfig.distro());
     if (!resolved.ok) return resolved;
     return { ok: true, resolved, distros: listed.distros };
   };
@@ -281,8 +288,8 @@ export function applyWslDockerPorts(
 
   // ② 路由：**注册发生在宿主可用时机**（`ctx.inject(['webServer'])`），此处不再同步 `ctx.get` 定生死
   const route: PortsRouteRegistration = registerPortsRoute(ctx, builder);
-  // ③ 写通道（008 T1.7 + T2.9）：接线在 wire-plugin.ts，此处只留一行调用（⇒ 不挤爆 400 行 SHALL）；config 的 `elevationPolicy` / `writeToken` 都在这一行透传（缺省 ⇒ fail-safe：事实面 'unknown' ⇒ 不写；凭据未配置 ⇒ 401）
-  const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({ executor, netsh: deps.netsh, probeEth0: () => service.probeEth0(false), probeElevation: () => availability.probe(), probeLocalhostForwarding: createDefaultLocalhostForwarding(), elevationPolicy: config?.elevationPolicy }), executor, undefined, config?.writeToken);
+  // ③ 写通道（008 T1.7 + T2.9）：接线在 wire-plugin.ts，此处只留一行（⇒ 不挤爆 400 行 SHALL）。🔴 透传的是 `config-read.ts` 的**活体读取函数**（不是值本身）：两个消费点都在 apply 之后才用（策略判决每次计划、凭据每次请求）⇒ 现读才吃得到 live 写入（缺省 ⇒ fail-safe：事实面 'unknown' ⇒ 不写；凭据未配置 ⇒ 401）
+  const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({ executor, netsh: deps.netsh, probeEth0: () => service.probeEth0(false), probeElevation: () => availability.probe(), probeLocalhostForwarding: createDefaultLocalhostForwarding(), elevationPolicy: hostConfig.elevationPolicy }), executor, undefined, hostConfig.writeToken);
 
   /**
    * webServer 缺口：**每次读都按 `route` 的当前状态算**。
