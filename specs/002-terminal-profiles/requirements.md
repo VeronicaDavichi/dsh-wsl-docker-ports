@@ -148,7 +148,7 @@ Agent 工具族与沙箱权限**已整体迁至 [004-terminal-agent-surface](../
 ## 4. 非功能需求
 
 - **NFR-1** `react` 走 `peerDependencies: ^18.2.0`，SHALL NOT 打进 bundle。
-- **NFR-2** xterm 两个包 SHALL 落在**独立的客户端 chunk** 里（`require.async("./client.<name>.js")` + `chunk:` 字段自注册），主 bundle 体积 SHALL 记录基线并在实现后对比（不设硬阈值，但须记账）；**`react` / `react-dom*` / `@deepseek-ai/*` SHALL 保持 external**（`require` 由宿主供给，按官方终端页的做法全部声明为 `devDependencies`）。**2026-10-09 订正留痕**：原文即「落在懒加载 chunk」（**正确**）；同日一度改为「单产物」并**被实物推翻撤回**，理由与证据见 REQ-5.1 与 [`client-contract.md`](../../client-contract.md) §P2。
+- **NFR-2** xterm 两个包 SHALL 落在**独立的客户端 chunk** 里（`require.async("./client.<name>.js")` + `chunk:` 字段自注册），主 bundle 体积 SHALL 记录基线并在实现后对比（不设硬阈值，但须记账） 〔**2026-10-12 口径订正（原文保留，待主人复核）**：本句「不设硬阈值」**已作废** —— 体积现有**硬上限** `mainBytes <= 65,536 B`（64 KiB，含等号），SSoT = [`client-contract-incremental.md`](../../client-contract-incremental.md) 的 `#### P2·2026-10-12 追加变更记录`（判据实现 = `packages/terminal-profiles/scripts/verify-client-loader.mjs` 的 `MAIN_BUNDLE_LIMIT_BYTES`）；是否把该上限写进 NFR-2 正文**待主人复核**〕；**`react` / `react-dom*` / `@deepseek-ai/*` SHALL 保持 external**（`require` 由宿主供给，按官方终端页的做法全部声明为 `devDependencies`）。**2026-10-09 订正留痕**：原文即「落在懒加载 chunk」（**正确**）；同日一度改为「单产物」并**被实物推翻撤回**，理由与证据见 REQ-5.1 与 [`client-contract.md`](../../client-contract.md) §P2。
 - **NFR-3** 内网/离线可用：SHALL NOT 依赖 CDN、SHALL NOT 运行 `npx`；依赖安装后打进 bundle（handover 硬约束）。
 - **NFR-4** 零全局 CSS、零硬编码 hex（只用 `--dsw-*` token）。
 - **NFR-5** `typecheck` + `vitest` + `build` 三项 SHALL 全绿。

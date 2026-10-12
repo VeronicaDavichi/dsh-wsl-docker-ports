@@ -291,3 +291,10 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 - 🔴 **本批未验（不许冒充）**：① 003 的 `guide` 胶囊**确实也出现了**（`D.1` 行注明「另有「端口转发」胶囊」，§3 的点击前文本含「端口转发 / 查看容器的端口映射与 portproxy 规则…」），点击后右栏也有 `tab "WSL Docker 端口" selectable`（**未选中**）—— 但**「去点 003 的那个胶囊 ⇒ 切到端口页」这一步本批没做** ⇒ 003 的 `V1`「点得进去」**仍未被直接确认** ✗（不并账、不冒充）。
 - 🔴 **002 的关闭评估本轮未做**（未勾项数未复算、`T7.3` 的整包质量门未重跑）⇒ **状态不动**（仍 `in-progress`），只补痕。
 - ⚠️ **证据计数口径**：`MANIFEST.txt` 自报「文件数 = 79」（含 `ORIG/`、`ORIG-full/` 两个子目录），而派单文字写「77 文件」⇒ **两者不一致**；我按 `MANIFEST.txt` 的原文标注，**未把 77 当既成事实**。
+
+### 🔴 库级缺陷 修（2026-10-12；`.gitignore` 层级无关的 `lib/`）—— 对上文 L282 `verify-client-loader` 行的**库侧**补痕（原文保留）
+
+- **缺陷**：全仓 `scripts/lib/**` **零跟踪**（`git ls-files packages/terminal-profiles/scripts/lib` **空**，已核实）⇒ 干净 clone 里本门**已跟踪**的薄壳 `scripts/verify-client-loader.mjs` 与 `scripts/p2-main-bundle.mjs` 的 `import './lib/loader-harness.mjs'` / `'./lib/loader-apply-checks.mjs'` **解析失败** ⇒ `check:client` 这道门**跑不起来**。
+- **根因**：`.gitignore:3` 的 `lib/` **无前导斜杠 ⇒ 层级无关**（匹配任意深度的同名目录），把**门自己的台架** `packages/terminal-profiles/scripts/lib/` 与构建产物一并忽略 —— 源台架和构建产物撞在同一条规则上。
+- **修法**：`.gitignore` **只追加一行** `!packages/*/scripts/lib/`（只放行该目录；`packages/*/lib/` 构建产物**仍被忽略**）；台架两文件按**显式路径** `git add`，**内容一字未改**（已逐字扫过：无凭据 / 无 token / 无绝对路径）。
+- **验证三条**：① `git ls-files packages/terminal-profiles/scripts/lib` **非空**（`loader-harness.mjs` **390 行** / **14,361 B**、`loader-apply-checks.mjs` **121 行** / **5,979 B**（行数 = `ReadAllLines` 口径；按 `` `n `` split 则为 **391 / 122**））② 构建产物仍被忽略（`git check-ignore -v packages/terminal-profiles/lib/client.js` 仍命中 `.gitignore:3:lib/`，rc=0）③ `node scripts/verify-client-loader.mjs`（cwd = `packages/terminal-profiles`）**60 条判据（含 4 条反控）· exit 0**。
