@@ -22,7 +22,7 @@ transitions:
 # WSL Docker 管理器 + 端口转发可视化
 
 **类型**: 需求驱动（requirements-first）
-**状态**: in-progress（2026-10-08 开工；Phase 0 的 T0.1 / T0.2 / T0.4 **已完成**）
+**状态**: in-progress（2026-10-08 开工；Phase 0 的 T0.1 / T0.2 / T0.4 **已完成**）；**2026-10-12 关闭评估轮**：Phase 5 的 **T5.1–T5.8 八条已按离线判据逐条结清**（判据 / 命令 / 原始输出见 [closure-round.md](./closure-round.md)），仍余 **6** 条（2 条真机项 + 1 条待拍板 + 3 条 P1）⇒ **状态仍 `in-progress`**
 **优先级**: medium（P0 为组件主体，P1 + 下一期另有边界，见「分期」）
 **包名**: `dsh-wsl-docker-ports`（**插件包**）
 **位置**: `packages/wsl-docker-ports/`
@@ -103,6 +103,7 @@ WSL 里的 docker 引擎（本机实测：WSL 内 `/usr/bin/docker`，server **2
 | [requirements.md](./requirements.md) | REQ-1..3、6、9..12、14..16 与 EARS 验收标准、交互控件清单、NFR、约束与假设（**REQ-4/5/7/8/13 已迁出**，编号留空位）|
 | [design.md](./design.md) | 架构、数据模型、端口状态机（纯函数）、NAT 门、注入点、安全、测试策略、决策权衡 |
 | [tasks.md](./tasks.md) | 按阶段拆分的任务与真机验收清单（**不触发提权**，故无需人工点 UAC）|
+| [closure-round.md](./closure-round.md) | **2026-10-12 关闭评估轮**：14 条未勾项逐条判据与实测输出（T5.1–T5.8 结清；6 条留给真机批次 / 待拍板 / P1）|
 | [**005-elevation-write-path**](../005-elevation-write-path/README.md) | **提权写路径（2026-10-08 拆出）**：声明式所有权 · 作用域与防火墙最小放行 · UAC 辅助进程 · 来源约束 · 卸载清理 |
 
 > **拆分说明**：本 Spec 拆前四个文件为 **199 / 195 / 191 / 165** 行，`requirements.md` 与 `design.md` 双双贴 `leanspec` 的 warn 阈值（200）。拆的是**文档与验收边界**，**不是包边界** —— 003 与 005 的产物都在 `packages/wsl-docker-ports/`（003 拥有 `read/` `diff/` `ui/`，005 拥有 `write/` `elevate/`）。运行时是**同包内调用**：003 的按钮调 005 的写操作，因此**只有 005 → 003 的 `depends_on`**（反向不建边，避免成环）。
