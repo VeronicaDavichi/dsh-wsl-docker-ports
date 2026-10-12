@@ -94,6 +94,16 @@
 - **REQ-6.2** 本包 SHALL NOT 注册 slot、SHALL NOT 注册模型工具、SHALL NOT 注册 HTTP 路由；SHALL NOT 提供 PTY；SHALL NOT 带 `cordis.patch.yml`、行或配置页。
 - **REQ-6.3** 公开面 SHALL 为**纯函数 + 可注入执行器**（默认 `spawn`，测试可替换为 fake），以保证无宿主、无网络也能跑全量测试。
 - **REQ-6.4**（**2026-10-08 主人拍板订正**）公开面**运行时**导出 SHALL ≤ 12 个符号（可调用面），防止本包退化成杂物袋；**类型导出**（`export type` / `interface`）编译后被完全擦除、不进 bundle，**不计入**本条，但 SHALL 由自检脚本**单独统计并打印**（总量另有软阈值 **25**，超限需说明）。超限须先改本 Spec。
+  - 🔴 **2026-10-12 主人拍板——订正 / 扩展痕（上面三条原文一字未删）**：上面写的「**运行时导出 SHALL ≤ 12**」是 **`wsl-shared` 的口径**；**扩大适用范围时改为「逐包记录上限 + 棘轮（只许降不许升）」**，`terminal-profiles` 的 **31 / 45 是首次登记的存量欠账、不是认可值**。三个包的上限登记在**机器可读 SSoT** [`packages/wsl-shared/scripts/export-budgets.mjs`](../../packages/wsl-shared/scripts/export-budgets.mjs)，并与下面的机器可读表**逐字绑定**（改一边必红：`node packages/wsl-shared/scripts/check-exports.mjs`）；**扫描口径同步从「只扫 `src/index.ts`、非递归」改为「`package.json#exports` 的全部声明入口 → 沿 re-export 边递归」**（唯一实现 = `packages/wsl-shared/scripts/lib/export-surface.mjs`，三个门共用）。**收敛方向与优先级**（照 003 T6.7⑤ 先例）：① **先删「可证明无消费者」的导出**（逐条核到入口级消费方 0 条才可摘）→ ② 再谈阈值 / 拆分（要主人拍板 + 改 SSoT 两边 + 追加 `stack-decision-changelog.md` 留痕）；🔴 **禁止为了过门而删有消费者的导出**。绑定力：**运行时超限 = 红（SHALL 不变）**；**类型超限仍是软指标（只告警）**，但它的记录上限同样受棘轮约束。
+  - **逐包上限表（机器可读；核对脚本只解析下面两个标记之间的行，勿改格式）**：
+    <!-- export-budgets:SSoT -->
+    | 包 | runtime 上限 | types 上限 | 留痕 |
+    | --- | --- | --- | --- |
+    | `dsh-wsl-shared` | 12 | 25 | #1–#50 |
+    | `dsh-terminal-profiles` | 31 | 45 | #51 |
+    | `dsh-wsl-docker-ports` | 12 | 25 | #51 |
+    <!-- export-budgets:SSoT:end -->
+  - **行尾归一痕（2026-10-12）**：`stack-decision.md` 与 `stack-decision-changelog.md` 里各 **1 处** lone-LF 行尾（两文件里**同一逻辑行** = changelog **#46**「提权 订正（真机）」行）**已归一为 CRLF**（= 两文件的主导 EOL）；**非内容变更**，该行正文字节一字未改。留痕见 changelog **#51**。
   - **软阈值变更留痕（2026-10-08 同日二次拍板：20 → 25）**：Phase 4 后实测**运行时 7/12 ✅、类型 15（合计 22 > 20）**；阈值 20 是「只有 3 个模块」时定的，包已长到 7 个模块，而 15 个类型**逐个都有消费方**（002/003/005 的配置与 UI）⇒ 提高软指标并留痕，**不砍类型、不拆包**。运行时 SHALL（≤ 12）与判定逻辑不变，只换阈值；`check-exports.mjs` 头部、`AGENTS.md` 硬规则表、`tasks.md`（校验门行/口径节/T6.1）、`README.md` 已同步。
   - **订正留痕**：本条原写「≤ 12 个符号（**含类型**）」。Phase 1+2 实测运行时 **3** + 类型 **10** = 合计 13，若含类型则 Phase 3–5 完成后**必然做不到**（eth0 / 路径翻译 / `.wslconfig` 还要各加类型），故按「本条约束的是**可调用面**」订正。依据：类型在运行时不存在、不能被 `import` 当值用，也无法让产物变肿。
 

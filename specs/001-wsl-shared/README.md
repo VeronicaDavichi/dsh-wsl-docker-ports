@@ -110,6 +110,7 @@ handover 已拍板「三包 —— 两个插件包 + 一个非插件共享包」
 | 依赖方向 | 002 / 003 → 001，**单向**；001 只依赖 `node:` 内置 | 避免循环依赖；001 无宿主能力需求，可离线单测 |
 | 执行器 | `spawn` + **argv 数组**，绝不拼 shell 字符串 | 注入面最小；路径含空格/中文不需要引号游戏 |
 | 公开面预算 | **运行时**导出 ≤ 12；**类型导出不计入**（单独统计并打印，类型总量**软阈值 25**）| 类型编译后被完全擦除、不进 bundle，本条约束的是**可调用面**；**2026-10-08 主人拍板**（同日二次拍板软阈值 20 → 25），REQ-6.4 已订正留痕 |
+| 逐包导出预算（**2026-10-12 扩展**）| `wsl-shared` **12 / 25** · `terminal-profiles` **31 / 45（存量欠账，非认可值）** · `wsl-docker-ports` **12 / 25**；**棘轮 = 只许降不许升**（改上限必须同时改机器表 + REQ-6.4 文档表 + 追加 changelog 留痕）| SSoT = [`packages/wsl-shared/scripts/export-budgets.mjs`](../../packages/wsl-shared/scripts/export-budgets.mjs)；三个门共用一份解析实现（`packages/wsl-shared/scripts/lib/export-surface.mjs`），扫描改**递归**（`exports` 全部声明入口），口径痕与欠账收敛方向见 [REQ-6.4](./requirements.md) |
 | 编码 | 由调用方显式指定，**不猜** | `wsl.exe` 实测 UTF-16LE；`netsh` 实测**纯 ASCII**（原「OEM 代码页」假设已推翻，003 A-2 同步订正）—— 猜错就是乱码解析 |
 | eth0 探测 | 失败**报错**，不回落 `127.0.0.1` / 空串 | 静默回落会让 portproxy 规则指向错误地址（handover 里的「坑 #4」）|
 | 发行版 Stopped | 探测时**报 `DistroNotRunning`**，不静默冷启动 | 跑 `wsl -d X -- cmd` 会启动该发行版，属用户未预期的副作用 |

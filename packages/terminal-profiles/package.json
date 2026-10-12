@@ -30,6 +30,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "check:client": "node scripts/verify-client-loader.mjs",
+    "check:exports": "node scripts/check-exports.mjs",
     "check:size": "node ../wsl-shared/scripts/check-size.mjs"
   },
   "dependencies": {

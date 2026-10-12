@@ -9,6 +9,24 @@
  * 该门的**本包副本**，**没有**改共享门、**没有**把门扩到别的包（后者属 001 的口径变更，待主人拍板；
  * 见 `specs/003-wsl-docker-ports/tasks.md` 的 T6.7⑤ 建议登记行）。
  *
+ * ## ⚠️ 订正（2026-10-12，原文保留、只追加——上面那段「待主人拍板」的状态已变）
+ *
+ * 主人 2026-10-12 拍板：**门扩到三个包**，口径改为**逐包预算表 + 棘轮（只许降不许升）**，扫描改**递归**
+ * （`package.json#exports` 的全部声明入口 → 沿 re-export 边递归）。因此本脚本三处变更：
+ * 1. **解析不再自带副本**：`parseExports` 改为 import 自
+ *    [`../wsl-shared/scripts/lib/export-surface.mjs`](../../wsl-shared/scripts/lib/export-surface.mjs)
+ *    （三个门共用一份实现 ⇒ 不会再漂移）；
+ * 2. **预算不再硬编码 12 / 25**：改从
+ *    [`../wsl-shared/scripts/export-budgets.mjs`](../../wsl-shared/scripts/export-budgets.mjs)
+ *    的 SSoT 读（本包登记仍是 **12 / 25**，与 003 收敛时一致）；
+ * 3. **新口径读数是递归口径**：本包公开面 = `exports` 的**两个**声明入口（`.` → `src/index.ts`、
+ *    `./client` → `src/client/index.ts`）的并集 ⇒ 运行时仍 **6**（client 入口的 `inject`/`name`/`apply`
+ *    与根入口同名、按名字去重）、类型 **9**（client 入口多出 `ClientApplyResult` / `ClientDegradeReason`）。
+ *    ⚠️ 旧口径（只扫 `src/index.ts`）读数是 6 / **7** —— 两个读数都在 12 / 25 内，**预算不因此变化**。
+ *
+ * 下面 23 条断言**一字未改**（`CONSUMERS` 逐名字登记表照旧对运行时 6 个名字生效），只**追加**
+ * 一条「声明入口全覆盖」的覆盖面断言（`记录 24`）与一条 SSoT 来源断言（`记录 25`）。
+ *
  * ## 三重防假绿
  *
  * ① **变异哨兵**：用**收敛前**的 33 个名字（逐字取自 git blob `f0585d02…`）
@@ -25,11 +43,18 @@
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { EXPORT_BUDGETS } from '../../wsl-shared/scripts/export-budgets.mjs';
+import { collectPublicFace, judgeSurface } from '../../wsl-shared/scripts/lib/export-surface.mjs';
 
+const PKG_NAME = 'dsh-wsl-docker-ports';
+const PKG_DIR = fileURLToPath(new URL('..', import.meta.url));
+
+/** SSoT 读来的本包预算（**不再硬编码**；改上限 = 改 SSoT 两边 + 留痕） */
+const BUDGET = EXPORT_BUDGETS[PKG_NAME];
 /** 001 REQ-6.4：运行时导出 ≤ 12（SHALL） */
-const RUNTIME_BUDGET = 12;
+const RUNTIME_BUDGET = BUDGET.runtime;
 /** 001 REQ-6.4：类型总量软阈值（只告警，不失败） */
-const TOTAL_SOFT_MAX = 25;
+const TOTAL_SOFT_MAX = BUDGET.types;
 
 const entryPath = fileURLToPath(new URL('../src/index.ts', import.meta.url));
 const pkgPath = fileURLToPath(new URL('../package.json', import.meta.url));
@@ -81,32 +106,6 @@ function record(label, ok, detail, scanned) {
   console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label} — ${detail}（扫描项 ${String(scanned)}）`);
 }
 
-/** 与共享门逐条同口径的解析：只认显式列举（`export * from` 直接判失败） */
-function parseExports(source) {
-  const runtime = new Set();
-  const types = new Set();
-  const stripType = (name) => name.trim().replace(/^type\s+/, '');
-  for (const match of source.matchAll(/export\s+(type\s+)?\{([^}]*)\}/g)) {
-    const blockIsTypeOnly = Boolean(match[1]);
-    for (const item of (match[2] ?? '').split(',')) {
-      const raw = item.trim();
-      if (raw.length === 0) continue;
-      const name = stripType(raw);
-      if (name.length === 0) continue;
-      if (blockIsTypeOnly || /^type\s+/.test(raw)) types.add(name);
-      else runtime.add(name);
-    }
-  }
-  for (const match of source.matchAll(/export\s+(?:async\s+)?(?:const|function|class|enum)\s+([A-Za-z0-9_$]+)/g)) {
-    if (match[1] !== undefined) runtime.add(match[1]);
-  }
-  for (const match of source.matchAll(/export\s+(?:interface|type)\s+([A-Za-z0-9_$]+)/g)) {
-    if (match[1] !== undefined) types.add(match[1]);
-  }
-  for (const name of types) runtime.delete(name);
-  return { runtime, types };
-}
-
 /** 判定函数（**同一个**函数既判现清单，也判变异哨兵 —— 哨兵才有意义） */
 function judgeRuntime(names) {
   const list = [...names];
@@ -121,10 +120,14 @@ function judgeRuntime(names) {
 const source = readFileSync(entryPath, 'utf8');
 const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
 
-console.log('=== 0. 解析 src/index.ts ===');
+console.log('=== 0. 解析 src/index.ts（递归口径：exports 全部声明入口） ===');
 record('没有 `export * from`', !/^export\s+(?:type\s+)?\*\s+from/m.test(source), '显式列举才可静态核对预算', 1);
 
-const { runtime, types } = parseExports(source);
+const face = collectPublicFace(PKG_DIR);
+const judgedNow = judgeSurface(face, BUDGET);
+const runtime = new Set(judgedNow.runtime);
+const types = new Set(judgedNow.types);
+const runtimeEntryOnly = face.perEntry[0]?.runtime ?? [];
 record('解析出运行时导出（正则失效必须响）', runtime.size > 0, `运行时 ${String(runtime.size)} 个`, runtime.size);
 record('解析出类型导出（同上）', types.size > 0, `类型 ${String(types.size)} 个`, types.size);
 record('入口没有 `var`/`let` 形式的漏网导出', !/^export\s+(?:var|let)\s/m.test(source), '只允许 const/function/class/enum 形态', 1);
@@ -140,6 +143,8 @@ const softWarn = total > TOTAL_SOFT_MAX ? ` ⚠️ 合计超软阈值 ${String(T
 console.log(`  · 运行时 ${String(runtime.size)}/${String(RUNTIME_BUDGET)}，类型 ${String(types.size)}，合计 ${String(total)}${softWarn}`);
 console.log(`    运行时：${judged.list.join(', ')}`);
 console.log(`    类型：${[...types].join(', ')}`);
+console.log(`    · 递归口径（2026-10-12）：公开面文件 ${face.files.join('、')}；每入口读数 ${face.perEntry.map((row) => `${(row.subpaths ?? [row.subpath]).join('/')} = ${String(row.runtime.length)}r/${String(row.types.length)}t`).join('；')}`);
+console.log(`    · 旧口径（只扫 src/index.ts）读数：${String(runtimeEntryOnly.length)}r / ${String(face.perEntry[0]?.types.length ?? 0)}t（两个读数都在预算内，预算未变）`);
 
 console.log('\n=== 2. 变异哨兵（用收敛前的 33 个名字喂**同一个**判定函数） ===');
 const mutant = judgeRuntime(PRE_CONVERGENCE_RUNTIME);
@@ -176,6 +181,11 @@ console.log('\n=== 5. 已摘导出的「真的不在」核对 ===');
 const stillExported = removed.filter((name) => Object.prototype.hasOwnProperty.call(mod, name));
 record('27 个已摘名字都不在模块导出里', stillExported.length === 0, `残留：${stillExported.join(', ') || '（无）'}`, removed.length);
 record('模块键集 ⊆ 存留清单 ∪ {default}', keys.every((key) => key === 'default' || judged.list.includes(key)), `越界键：${keys.filter((key) => key !== 'default' && !judged.list.includes(key)).join(', ') || '（无）'}`, keys.length);
+
+console.log('\n=== 6. 递归覆盖面 + SSoT 来源（2026-10-12 追加，前 23 条一字未改） ===');
+record('声明入口全部被扫到（递归口径；退回旧口径⇒此处红）', judgedNow.ok, judgedNow.reasons.join('；') || `${face.entries.length} 个声明入口 → ${face.files.join('、')}`, face.entries.length);
+const budgetSource = `export-budgets.mjs 的 ${PKG_NAME} = ${String(BUDGET.runtime)}/${String(BUDGET.types)}（nature=${String(BUDGET.nature)}、留痕 ${String(BUDGET.trace)}）`;
+record('预算数值来自 SSoT（本脚本不再硬编码）', BUDGET.runtime === 12 && BUDGET.types === 25, `${budgetSource}；表 ↔ REQ-6.4 文档锁由中央门 packages/wsl-shared/scripts/check-exports.mjs 负责`, 1);
 
 console.log(`\n=== 结果：${String(checks)} 项断言，失败 ${String(failures.length)} 项 ===`);
 for (const failure of failures) console.log(`  FAIL ${failure}`);

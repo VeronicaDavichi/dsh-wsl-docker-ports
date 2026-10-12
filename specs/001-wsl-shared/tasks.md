@@ -3,6 +3,7 @@
 > 任务引用 [requirements.md](./requirements.md) 的 REQ-N；设计依据见 [design.md](./design.md)。
 > 完成定义（每个任务）：代码 + **验证命令跑绿** + 无遗留副作用。
 > 校验门（`.lean-spec/config.json`）：单文件 warn 200 行 / max 400 行；本包目标**代码**体积 ≤ **40KB**（**注释与空行不计入** —— 2026-10-08 主人拍板；**同日三次拍板把阈值 15KB → 25KB → 40KB**，末次原话「**40KB，再超了就是你的代码有问题或者 spec 拆分有问题**」⇒ 此后**不许再抬阈值**，告警先自证不是代码膨胀、也不是 Spec 拆分不当；由 `scripts/check-size.mjs` 复算，软指标只告警）。
+> 🔴 **2026-10-12 追加痕（本行原文保留、无删改）**：导出预算门已从「只有 `wsl-shared`、**非递归**、硬编码 `../src/index.ts`」扩到**三个包**，并改为**递归**（`package.json#exports` 的全部声明入口）+ **逐包 `{runtime, types}` 上限 + 棘轮（只许降不许升）**；上限 SSoT = [`packages/wsl-shared/scripts/export-budgets.mjs`](../../packages/wsl-shared/scripts/export-budgets.mjs)（机器表 ↔ [REQ-6.4](./requirements.md) 文档表**逐字锁**）。复算 = `node packages/wsl-shared/scripts/check-exports.mjs`（三包一次性，含三个变异哨兵）。⚠️ 本行「**本包**目标代码体积 ≤ 40KB」的**范围限定不变**；增量落在 `terminal-profiles` 身上 = **31/45 存量欠账**（门 `packages/terminal-profiles/scripts/check-exports.mjs`，含 12 个「barrel 出口无入口级消费方」候选 + 31 条消费方登记表）。留痕见 changelog **#51**。
 
 ---
 
