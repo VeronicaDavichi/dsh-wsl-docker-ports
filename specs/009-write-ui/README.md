@@ -41,6 +41,7 @@ transitions:
 - 需求与**八条冻结契约**：见 [`requirements.md`](./requirements.md) §2 —— 🔴 那些契约在此**冻结**（依据 = 源码文件 + 主人 2026-10-10 / 2026-10-12 裁定），**下一轮不得重新发明**。
 - 设计（组件边界 / 状态流 / 接口契约 / 真机复核配方）：见 [`design.md`](./design.md)。
 - 任务与证据（含**逐字迁入**的 008 `T3.1` 记录）：见 [`tasks.md`](./tasks.md)。
+- **真机验收轮（2026-10-12）**：见 [`acceptance-round.md`](./acceptance-round.md) —— 前置铁律「真机验收前必须重建 `lib/`」的**可复算准出判据**（命令 + 期望值）、**B-3「清除凭据」真机落盘 PASS**、**三种鉴权态 401 文案逐字全文 + 判据错订正**；[`tasks.md`](./tasks.md) 的 **Phase 9** 是它的勾选与指针。
 - **服务端**事实（路由前缀、`planId` / 一次性票据、401 鉴权、审计不记拒绝、真机 19→20→19）：见 [`../008-write-transport/design.md`](../008-write-transport/design.md) 与它的 `tasks.md` 的 T2.8 / T2.9 / T2.10 真机 PASS 记录。
 - 宿主客户端契约（`remote.settings` 形状、`ctx.slots`、bundle 形态与 external 列表）：见 [`../../client-contract.md`](../../client-contract.md)。
 
@@ -60,4 +61,4 @@ transitions:
 - 本 Spec 属**需求驱动**（沿用 001–008 的既有体例：先 REQ-N + EARS，再派生 design）。
 - 🔴 **红线沿用 003 / 005 / 008**：不 `portproxy reset`、不碰所有权集合外的规则、不建通配符防火墙规则、卸载不删东西；真机只用**临时 / 一次性 profile**（AGENTS.md 白名单：**不得**用 `desktop` / `web`），跑完**逐字节还原**。
 - 🔴 **本 Spec 不新增任何执行能力**：客户端只回传 `planId` + `ticket`（+ `confirmed:true` / `origin:'user'`）与**声明式目标**，命令文本**没有入口**（见 `write-channel.ts` 的 `serializeTarget` / `serializeApplyBody`）。
-- 行数门：LeanSpec `warnLines` = 200（提示）/ `maxLines` = 400（硬门）；本 Spec 的 `requirements.md` / `design.md` / `tasks.md` **一律 < 200**，别一建出来就贴线。 🔴 **2026-10-12 关闭轮复算（原文保留）**：上句「一律 < 200」**作废** —— `requirements.md` **98** 行 / `design.md` **70** 行 / `tasks.md` **306** 行（`split('\n')` **307**）⇒ `tasks.md` **已超 warn 200**（提示性阈值，**不强制压缩**）；硬门 **400** 未触。
+- 行数门：LeanSpec `warnLines` = 200（提示）/ `maxLines` = 400（硬门）；本 Spec 的 `requirements.md` / `design.md` / `tasks.md` **一律 < 200**，别一建出来就贴线。 🔴 **2026-10-12 关闭轮复算（原文保留）**：上句「一律 < 200」**作废** —— `requirements.md` **98** 行 / `design.md` **70** 行 / `tasks.md` **306** 行（`split('\n')` **307**）⇒ `tasks.md` **已超 warn 200**（提示性阈值，**不强制压缩**）；硬门 **400** 未触。 🔴 **2026-10-12 真机验收轮复算**：`tasks.md` = **330** 行（`split('\n')` **331**）⇒ 硬门 **400** 仍未触。
