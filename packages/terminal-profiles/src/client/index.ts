@@ -22,6 +22,16 @@
  * ② **等待期零信号**：`ctx.inject` 登记后若回调迟迟不跑，原先**一行日志都没有**，真机无法区分
  *    「还在等」与「确证缺失」（这正是 003 真机那次 0 warning 的成因）；⇒ 登记后立即补一条
  *    `console.warn` 说明「已登记、服务到位即注册（不是失败）」，与 `report()` 的「确证缺失」文案可区分。
+ *
+ * ## ⚠️ 2026-10-12 订正（上文 ② 的「登记后**立即**补一条 `console.warn`」已作废；原文保留）
+ *
+ * 真机时序（2026-10-09 探针）是：宿主两个服务在 `apply` 之后约 **240 ms** 才到位、随后注册**成功**
+ * ⇒ 那条 warn 打在**正常路径**上，每次正常启动都响一条 = 训练人忽略真告警；当天它还被误当成
+ * 「`register()` 从未运行」的**证据**（那是**误读**——文案与事实一致，故这条**不是误报，是正常路径上的噪声**）。
+ * 修法（**不动注入语义**）：同步 warn → **排定一条宽限期后才响**的告警（`PENDING_WARN_GRACE_MS`，注入回调
+ * 一到就撤掉它）⇒ 正常启动 **0 warn**，回调真的不跑才在宽限期后响一条（可见性没丢）。同族写法：
+ * `packages/wsl-docker-ports/src/client/index.ts` 的 `schedulePendingWarn()`；回归门见
+ * `tests/unit/client-pending-warn.test.ts`（自带变异哨兵）。
  */
 
 import { ConfigPage, ConfigSummary } from './config-page.tsx';
@@ -44,6 +54,16 @@ export const name = 'dsh-terminal-profiles-client';
 const CLIENT_LOG_TAG = '[dsh-terminal-profiles]';
 /** 样式清理动作的 effect label（与 `tab.ts` 的 label 前缀同族，便于宿主诊断） */
 const STYLES_EFFECT_LABEL = 'dsh-terminal-profiles: styles';
+
+/**
+ * 「右栏页还没注册」那条告警的**宽限期**（ms）。
+ *
+ * 真机上宿主服务在 `apply` 之后数百 ms 才到位是**常态**（2026-10-09 探针实测 ~240 ms）⇒ 若在
+ * `apply` 末尾同步打 warn，正常启动每次都响一条，等于训练人忽略真告警。故改为**排定**一条超时才响的
+ * 告警：正常启动（服务随后到位）由 `register` 撤掉它；回调真的不跑才在宽限期后响一条。
+ * 同族写法：`packages/wsl-docker-ports/src/client/index.ts` 的 `DEFAULT_PENDING_WARN_MS` / `schedulePendingWarn()`。
+ */
+const PENDING_WARN_GRACE_MS = 2000;
 
 /** `remote.settings` 的服务名（contract §D13；客户端没有 `ctx.settings`，写回只走它） */
 const REMOTE_SETTINGS_SERVICE = 'remote.settings';
@@ -88,16 +108,33 @@ function boundConfigPage(scope: ClientContextLike): () => unknown {
  * 这里**不**靠返回值交还清理函数，免得与宿主对 `apply` 返回值的处理方式耦合。
  */
 export function apply(ctx: ClientContextLike): void {
+  /** 「等太久了」那条告警的定时器句柄（`undefined` = 没排 / 已撤） */
+  let pendingWarnTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 撤掉已排定的 pending 告警（注册到位 / 宿主卸载时各调一次；幂等） */
+  const cancelPendingWarn = (): void => {
+    if (pendingWarnTimer === undefined) return;
+    clearTimeout(pendingWarnTimer);
+    pendingWarnTimer = undefined;
+  };
+
   // ① 自有样式（`dtp-` 前缀 + `--dsw-*` token；disposer 交 ctx.effect）
   const styles: StyleInstallation = installTerminalStyles(resolveDocument());
   // 没有 `ctx.effect` 的宿主（老版本 / 测试替身）⇒ 样式**留着**（主动撤掉等于它永远不生效）
-  if (typeof ctx.effect === 'function') ctx.effect(() => styles.dispose, STYLES_EFFECT_LABEL);
+  if (typeof ctx.effect === 'function') {
+    ctx.effect(() => () => {
+      // 拆插件时连那条「等太久」的告警一起撤掉 —— 否则卸载后它还会冒一条**无主**的 warn
+      cancelPendingWarn();
+      styles.dispose();
+    }, STYLES_EFFECT_LABEL);
+  }
 
   // ② 页类型 + 两个 keyed seat（`sidebarRightTabs` / `sidebarRight` 是**版本相关**服务 ⇒ 惰性注入）
   /** 注入回调是否**已经**跑过（区分「还在等宿主服务」与「确证缺失」——真机缺陷 C 的可见性要求） */
   let injectFired = false;
   const register = (scope: ClientContextLike): void => {
     injectFired = true;
+    // 服务到位 ⇒ 那条「等待超时」告警作废（不留一条会误导的排定项；同族实现见 `wsl-docker-ports`）
+    cancelPendingWarn();
     report(registerTerminalTab(scope, { pane: TerminalPane, title: TerminalTitle }));
     // ③ 自绘配置页（T6.1）：注册进 `plugins.row.config`，并把宿主自动表单关掉（REQ-10.1）
     reportConfig(registerConfigSlot(scope, { page: boundConfigPage(scope), summary: ConfigSummary }));
@@ -110,12 +147,23 @@ export function apply(ctx: ClientContextLike): void {
       console.warn(`${CLIENT_LOG_TAG} inject 登记失败，退回直接注册：${String(error)}`);
       register(ctx);
     }
-    // 🔴 服务还没到 ≠ 缺失：这条 warn 是**唯一**能让真机分辨「还在等」与「确证缺失」的信号
-    // （2026-10-09 真机缺陷 C 的症状就是「bundle 已加载、CSS 已注入、右栏无页、控制台 0 error 0 warning」）
+    // 🔴 服务还没到 ≠ 缺失 —— 但**不许**在这里同步打 warn：真机上服务晚到数百 ms 是常态（2026-10-09
+    // 探针 ~240 ms），同步打 = 每次正常启动响一条 ⇒ 训练人忽略真告警（那条 warn 当天还被误当成
+    // 「register() 从未运行」的证据 ✗）。改为**排定**一条宽限期后才响的告警：
+    //   ① 正常启动（服务随后到位）⇒ `register` 撤掉它 ⇒ 控制台 **0 warn**；
+    //   ② 回调真的不跑（宿主确无这两个服务）⇒ 宽限期后仍有一条 warn（可见性没丢，
+    //      文案与 `report()` 的「确证缺失」可区分）。
     if (!injectFired) {
-      console.warn(
-        `${CLIENT_LOG_TAG} 右栏页尚未注册：已登记 ctx.inject([${TERMINAL_TAB_SERVICES.join(', ')}]) 等待宿主服务（不是失败）`,
-      );
+      const handle = setTimeout(() => {
+        pendingWarnTimer = undefined;
+        if (injectFired) return;
+        console.warn(
+          `${CLIENT_LOG_TAG} 右栏页等待超时（已等 ${PENDING_WARN_GRACE_MS}ms）：已登记 ctx.inject([${TERMINAL_TAB_SERVICES.join(', ')}]) 但宿主服务仍未到位 ⇒ 页不会出现。正常启动时服务在数百 ms 内到位、不会走到这里（这不是失败）`,
+        );
+      }, PENDING_WARN_GRACE_MS);
+      // Node 侧（单测）不许这条定时器拖住进程；浏览器侧的 `setTimeout` 没有 `unref`
+      (handle as unknown as { unref?: () => void }).unref?.();
+      pendingWarnTimer = handle;
     }
   } else {
     register(ctx);

@@ -34,7 +34,7 @@
   > `C2b-describe-with-overlay.raw.json` 34,554 字节、`host-settings-describe.raw.json` 34,388 字节 ⇒ 三者 **0 命中**），
   > 即宿主**真不提供**该字段（`dsh-settings` 内部有 `documentPath`，但唯一远端出口 `settings/openSettingsDocument` 只回 `{opened:true}`）。
   > ⇒ 口径**降级为**：「**宿主提供路径时显示路径；宿主未提供时如实说明**」（实现取后者：文案 `配置文件路径：宿主未提供`，**不伪造路径**）。
-  > 属**需求口径订正** ⇒ 按本仓规矩「追加订正痕 + 原文保留」处理，**列为「已订正 / 待主人复核」**；证据见 [`tasks.md`](./tasks.md) 的真机闭环段与 [`design.md`](./design.md) §5。
+  > 属**需求口径订正** ⇒ 按本仓规矩「追加订正痕 + 原文保留」处理，**列为「已订正 / 已确认」**（主人认可日 2026-10-12；依据：真机 `settings/describe` 对 `documentPath` **0 命中**）；证据见 [`tasks.md`](./tasks.md) 的真机闭环段与 [`design.md`](./design.md) §5。
 - **REQ-10.4** GIVEN 保存失败（revision 冲突 / 校验失败），THEN 系统 SHALL 显示原因并保留用户输入（不清空表单）。
 - **REQ-10.5** GIVEN 本行不满足宿主「唯一寻址且在 profile 根 Include 内」前提（**live 路径同样依赖它**：settings 按**条目 id** 寻址，源码 `row.options.id === ns`），THEN 表单 SHALL 展示该限制，SHALL NOT 让用户白填。
 

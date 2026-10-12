@@ -97,6 +97,7 @@
   - 内容：`ctx.webServer` 具名路由 + upgrade；注册返回 disposer
   - 验证：`vitest` + fake webServer —— 注册/卸载计数归零；卸载后不劫持未知路径
   - ✅ **2026-10-09 落地**：`src/ws/routes.ts` —— `register({kind:'prefix', path:'/dsh-managed-terminal/'})` + `registerUpgrade({path:'/dsh-managed-terminal/ws'})`（upgrade **只能 exact**，多终端靠协议层 `instanceId`），两个 disposer **都经 `ctx.effect` 登记**；缺服务走非严格 `ctx.get('webServer')` + 自判（不 `static inject`）⇒ 不注册任何路由并给出原因。判据在 `tests/unit/ws-routes.test.ts`：只注册一次（fake 的宿主同名重复注册会抛错，`duplicateAttempts === 0`）、`ctx.effect` 恰好 2 次、`unload()` 后生效注册数 **2 → 0**、卸载前后 `/api/unknown` 都回落到官方行为（`handlerCalls === 0`）、前缀内未知名路径答 404（只答自己那一条）、dispose 幂等不会把计数减成负数
+  - 🔴 **2026-10-12 追加（两条同族修复，都在 002 自己的代码面）**：① `src/ws/routes.ts` 的 `attach` 对二次注册**分情形收编** —— 同一个服务面再到达 ⇒ 保留第一次；**服务面被换掉**（宿主热重载 / 同一 ctx 重复 activate）⇒ 先 `releaseRoutes()` 收回旧注册再整组重挂（不留 disposer 泄漏、不撞「重复 `(kind, path)` 抛错」、也不把第一次的有效注册带走）；回归门 + 变异哨兵 `tests/unit/ws-routes-reregister.test.ts`（5 条；旧闸实测红、源码逐字节还原后 sha256 一致）。② `src/client/index.ts` 的 pending 告警**不许在 `apply` 末尾同步打**（真机服务 ~240 ms 后到位 = 正常路径）⇒ 改排定 `PENDING_WARN_GRACE_MS = 2000` 的宽限期告警、`register`/卸载各撤一次；回归门 + 变异哨兵 `tests/unit/client-pending-warn.test.ts`（4 条）。两条都**未改注入/注册语义**，本轮**未重建 `lib/`**。
 
 - [x] T3.2 [REQ-7.2][REQ-7.5] 握手校验
   - 内容：校验 `Origin` + 一次性短 TTL 令牌；list 路由同样校验

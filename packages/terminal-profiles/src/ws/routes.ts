@@ -19,8 +19,15 @@
  *
  * ## 三条硬约束（每条都有回归用例）
  *
- * 1. **`attach` 幂等**：重复 `(kind, path)` 宿主**直接抛错** ⇒ 注入回调多跑一次不能二次注册
- *    （`disposed` / `live > 0` 两道闸）。
+ * 1. **`attach` 幂等（2026-10-12 扩面：二次到达要**分辨**两种情形）**：重复 `(kind, path)` 宿主**直接抛错**
+ *    ⇒ 注入回调多跑一次不能二次注册。但「幂等」不等于「一律忽略第二次」—— 二次到达有**两条**真实触发路径：
+ *    ① **同一个服务面**再到达（`ctx.inject` 的通知不止一次 / 同一 ctx 上被重复 activate）⇒ 保留**第一次**
+ *       注册（已有的那两条仍然有效，什么都不做）；
+ *    ② **服务面被换掉**（宿主热重载 / 重启了提供 `webServer` 的那个插件）⇒ 旧面上的两条注册已随服务失效，
+ *       而挂在旧面上的 disposer 若不收回就是**泄漏**（`live` 还会谎报 2、端点静默不可达）⇒ 先
+ *       `releaseRoutes()` 收回，再整组重挂到新面 —— **安全收编**：不撞「重复 `(kind, path)` 抛错」，
+ *       也不会把**第一次**的有效注册一起带走。
+ *    回归门 + 变异哨兵：`tests/unit/ws-routes-reregister.test.ts`。
  * 2. **已 dispose 后到达的回调要被挡住**：卸载先置 `disposed`，后到的注入回调只记账、不注册。
  * 3. **disposer 无条件进 `ctx.effect`**：宿主**不会**自动回收 `register()` 的返回值。这里**恰好一条**
  *    effect 收编整条生命周期（HTTP + upgrade + 挡住后到回调），无论当时是否已经注册成功。
@@ -106,6 +113,8 @@ export function registerTerminalChannel(ctx: ChannelPluginContext, deps: Channel
   let state: ChannelRouteState = 'pending';
   let reason: string | undefined = PENDING_WEB_SERVER_REASON;
   let disposed = false;
+  /** 当前那两条注册挂在**哪个**宿主服务面上（同一个面重复到达 ⇒ 保留第一次；面换了 ⇒ 先收回再重挂） */
+  let attachedSurface: WebServerSurface | undefined;
 
   const fail = (why: string): void => {
     state = 'missing';
@@ -148,19 +157,46 @@ export function registerTerminalChannel(ctx: ChannelPluginContext, deps: Channel
   };
 
   /**
-   * 真正登记两条路由。**幂等**：已卸载 / 已注册 / 形状不对 ⇒ 直接返回（重复 `(kind, path)` 会抛错）。
-   * 若第二条（upgrade）抛错，把第一条撤回后再记 `missing` —— 不留半注册。
+   * 把**当前**这两条注册全部收回（幂等）。
+   *
+   * 二次 `attach` 的两条触发路径都要经过它（见文件头硬约束 1）：
+   * ① **服务面被换掉**（宿主热重载 / 重启了提供 `webServer` 的插件）⇒ 旧面上的注册已随服务失效，
+   *    挂在旧面上的 disposer 不收回就是**泄漏**（`live` 谎报 2、端点静默不可达）；
+   * ② **同面重挂 / 半注册回滚**⇒ 必须先摘干净再注册，否则撞「重复 `(kind, path)` 抛错」。
+   * 旧服务面可能已经失效（撤回本身会抛）⇒ 逐条 try/catch，撤回失败**不该**打断「换面重挂」。
+   */
+  const releaseRoutes = (): void => {
+    for (const undo of hostDisposers.splice(0, hostDisposers.length)) {
+      try {
+        undo();
+      } catch {
+        // 旧服务面已失效：撤回失败只影响它自己；`live` / `attachedSurface` 由下面统一归零
+      }
+    }
+    live = 0;
+    attachedSurface = undefined;
+  };
+
+  /**
+   * 真正登记两条路由。**幂等且能分辨二次到达**：
+   * - 同一个面重复到达 ⇒ 保留**第一次**注册（现有两条仍然有效）；
+   * - 面被换掉（或上一次只挂了一半 / 全部失败）⇒ 先收回再整组重挂（安全收编）；
+   * - 已卸载 ⇒ 直接返回。
+   * 若第二条（upgrade）抛错，把这一轮已登记的撤回后再记 `missing` —— 不留半注册。
    */
   const attach = (surface: WebServerSurface): void => {
-    if (disposed || live > 0) return;
+    if (disposed) return;
+    if (live > 0 && surface === attachedSurface) return;
+    if (live > 0) releaseRoutes();
     try {
       hostDisposers.push(surface.register({ kind: 'prefix', path: TERM_WS_HTTP_PREFIX, handler: listHandler }));
       hostDisposers.push(surface.registerUpgrade({ path: TERM_WS_UPGRADE_PATH, handler: upgradeRoute }));
     } catch (error) {
-      for (const undo of hostDisposers.splice(0, hostDisposers.length)) undo();
+      releaseRoutes();
       fail(`WS 路由注册失败（已回滚半注册）：${error instanceof Error ? error.message : String(error)}`);
       return;
     }
+    attachedSurface = surface;
     live = hostDisposers.length;
     state = 'registered';
     reason = undefined;
@@ -169,8 +205,7 @@ export function registerTerminalChannel(ctx: ChannelPluginContext, deps: Channel
   /** 卸载（幂等）：置 `disposed` 挡住后到的注入回调，再摘掉路由。 */
   const disposeOnce = (): void => {
     disposed = true;
-    for (const undo of hostDisposers.splice(0, hostDisposers.length)) undo();
-    live = 0;
+    releaseRoutes();
     if (state === 'registered') {
       state = 'missing';
       reason = '已卸载（dispose）⇒ 路由已摘除；后到的注入回调不会再注册。';

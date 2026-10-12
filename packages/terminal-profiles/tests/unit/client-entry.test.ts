@@ -14,6 +14,9 @@
  *      不伪造一个假的一致性断言。
  *   ⑦ 缺陷 C（2026-10-09）：注入回调**没跑**时必须 warn「已登记、服务到位即注册（不是失败）」，
  *      与「确证缺失」的文案可区分；服务只经 `ctx.get` 可读时也必须照常注册。
+ *      🔴 **2026-10-12 订正（原文保留）**：那条信号**不许同步打**（真机服务 ~240 ms 后到位 =
+ *      正常路径）⇒ 改为**排定**宽限期告警；本文件只钉「同步零 warn + 服务到位即注册」，
+ *      完整判据（宽限期 / 卸载撤除 / 变异哨兵）在 `client-pending-warn.test.ts`。
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -121,27 +124,26 @@ describe('T4.1 apply（记账替身）', () => {
 
   /**
    * 缺陷 C（2026-10-09 审计）：**等待期必须有信号**。
-   * 真机旧症状是「bundle 已加载、CSS 已注入、右栏无页、控制台 0 error 0 warning」——
-   * 0 warning 让「还在等服务」与「确证缺失」在真机上**无法区分**。这里把两条路径的可观测性钉住。
+   * 🔴 **2026-10-12 订正（原文保留）**：信号**不许**打在正常路径上 —— 真机实测宿主服务 ~240 ms 后就到位，
+   * 同步 warn 每次正常启动都响一条 = 训练人忽略真告警（当时它还被误当成「`register()` 从未运行」的证据）。
+   * 现行契约：`apply` 末尾**同步零 warn**，只**排定**一条宽限期后才响的告警；服务到位 ⇒ `register` 撤掉它、
+   * 注册照旧发生。宽限期 / 卸载撤除 / 变异哨兵的完整判据在 `client-pending-warn.test.ts`。
    */
-  it('注入回调还没跑 ⇒ warn「已登记、服务到位即注册（不是失败）」，且此刻确实不注册（不谎报）', () => {
+  it('注入回调还没跑 ⇒ **同步零 warn**（只排定宽限期告警）+ 此刻确实不注册（不谎报）；服务到位 ⇒ 注册真的发生', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
       const harness = createClientCtx({ inject: 'deferred' }); // 真机时序：服务后到
       entry.apply(harness.ctx);
       expect(harness.injectPending()).toBe(1);
       expect(harness.calls.tabDefinitions).toHaveLength(0);
-      expect(warn).toHaveBeenCalledTimes(1);
-      const line = String(warn.mock.calls[0]?.[0] ?? '');
-      expect(line).toContain('dsh-terminal-profiles');
-      expect(line).toContain('尚未注册');
-      expect(line).toContain('sidebarRightTabs');
-      expect(line).toContain('不是失败'); // 与 report() 的「确证缺失」文案可区分
+      expect(warn).not.toHaveBeenCalled(); // ← 旧写法（同步 warn）在这一行就已经响了
 
-      // 服务到位 ⇒ 注册真的发生（旧写法若在同步判空处早退，就永远到不了这一步）
+      // 服务到位 ⇒ 注册真的发生（旧写法若在同步判空处早退，就永远到不了这一步），且不再有警告
       harness.fireInject();
       expect(harness.calls.tabDefinitions).toHaveLength(1);
       expect(harness.calls.seats).toHaveLength(3);
+      expect(warn).not.toHaveBeenCalled();
+      harness.unload(); // 撤掉排定的宽限期告警（不留悬空定时器）
     } finally {
       warn.mockRestore();
     }
