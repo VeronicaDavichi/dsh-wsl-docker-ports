@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-10-08
 priority: medium
 tags:
@@ -12,17 +12,20 @@ tags:
 depends_on:
 - 001-wsl-shared
 created_at: 2026-10-08T09:44:35.215830Z
-updated_at: 2026-10-08T13:25:44.590630500Z
+updated_at: 2026-10-12T07:52:07.273297800Z
+completed_at: 2026-10-12T07:52:07.273297800Z
 transitions:
 - status: planned
   at: 2026-10-08T13:23:04.615453700Z
 - status: in-progress
   at: 2026-10-08T13:25:44.590630500Z
+- status: complete
+  at: 2026-10-12T07:52:07.273297800Z
 ---
 # WSL Docker 管理器 + 端口转发可视化
 
 **类型**: 需求驱动（requirements-first）
-**状态**: in-progress（2026-10-08 开工；Phase 0 的 T0.1 / T0.2 / T0.4 **已完成**）；**2026-10-12 关闭评估轮**：Phase 5 的 **T5.1–T5.8 八条已按离线判据逐条结清**（判据 / 命令 / 原始输出见 [closure-round.md](./closure-round.md)），仍余 **6** 条（2 条真机项 + 1 条待拍板 + 3 条 P1）⇒ **状态仍 `in-progress`**
+**状态**: in-progress（2026-10-08 开工；Phase 0 的 T0.1 / T0.2 / T0.4 **已完成**）；**2026-10-12 关闭评估轮**：Phase 5 的 **T5.1–T5.8 八条已按离线判据逐条结清**（判据 / 命令 / 原始输出见 [closure-round.md](./closure-round.md)），仍余 **6** 条（2 条真机项 + 1 条待拍板 + 3 条 P1）⇒ **状态仍 `in-progress`**。**2026-10-12 收口轮（本条追加，原文保留）**：`Phase 7`（`T7.1`–`T7.3`）**已迁出至 [010-docker-container-control](../010-docker-container-control/README.md)**（原地留「已迁出」空位，编号保持）；余下 **`T0.3` / `T0.5` / `T6.7` 三条按真机与收敛证据勾选** ⇒ **未勾项 = 0** ⇒ 状态经 CLI 流转 `in-progress → complete`（见 [tasks.md](./tasks.md) 末尾的「✅ 003 收口轮」块）
 **优先级**: medium（P0 为组件主体，P1 + 下一期另有边界，见「分期」）
 **包名**: `dsh-wsl-docker-ports`（**插件包**）
 **位置**: `packages/wsl-docker-ports/`
@@ -87,6 +90,7 @@ WSL 里的 docker 引擎（本机实测：WSL 内 `/usr/bin/docker`，server **2
 - 启停 / 重启容器
 - 容器日志（`docker logs --tail`）
 - 完整配置页 `plugins.row.config` + `configure({ auto: false })`（`scope` / `elevationPolicy`）；**`distro` 的目标发行版控件已在 P0**（D-4 → REQ-17 / T5.8）
+- ✅ **2026-10-12：以上三条（`Phase 7` 的 `T7.1` / `T7.2` / `T7.3`）已整体迁至 [010-docker-container-control](../010-docker-container-control/README.md)**（同包不拆包；只迁位置、不删内容）；🔴 **需求原文 `REQ-11` / `REQ-12` 仍留在本 Spec**（SSoT 未动）—— 是否连 REQ 一起移，见 010 的 `requirements.md` §5 的**待主人拍板项**
 
 ### 下一期（**不在本 Spec 实现**，但预留注入点）
 
@@ -105,6 +109,7 @@ WSL 里的 docker 引擎（本机实测：WSL 内 `/usr/bin/docker`，server **2
 | [tasks.md](./tasks.md) | 按阶段拆分的任务与真机验收清单（**不触发提权**，故无需人工点 UAC）|
 | [closure-round.md](./closure-round.md) | **2026-10-12 关闭评估轮**：14 条未勾项逐条判据与实测输出（T5.1–T5.8 结清；6 条留给真机批次 / 待拍板 / P1）|
 | [**005-elevation-write-path**](../005-elevation-write-path/README.md) | **提权写路径（2026-10-08 拆出）**：声明式所有权 · 作用域与防火墙最小放行 · UAC 辅助进程 · 来源约束 · 卸载清理 |
+| [**010-docker-container-control**](../010-docker-container-control/README.md) | **P1 容器控制（2026-10-12 拆出）**：容器启停 / 重启 · 容器日志（`--tail` 有界）· 完整配置页（`scope` / `elevationPolicy`）· 下一期 `exec` 只留注入点 —— 🔴 **闸门 = 本 Spec 的 P0 真机验收通过后再启**（未达）|
 
 > **拆分说明**：本 Spec 拆前四个文件为 **199 / 195 / 191 / 165** 行，`requirements.md` 与 `design.md` 双双贴 `leanspec` 的 warn 阈值（200）。拆的是**文档与验收边界**，**不是包边界** —— 003 与 005 的产物都在 `packages/wsl-docker-ports/`（003 拥有 `read/` `diff/` `ui/`，005 拥有 `write/` `elevate/`）。运行时是**同包内调用**：003 的按钮调 005 的写操作，因此**只有 005 → 003 的 `depends_on`**（反向不建边，避免成环）。
 
@@ -174,3 +179,13 @@ WSL 里的 docker 引擎（本机实测：WSL 内 `/usr/bin/docker`，server **2
    写路径的复核点（防火墙放行粒度、Agent 不得 `passby` 提权、卸载不自动清理）**已随内容迁至 [005 的下一步](../005-elevation-write-path/README.md)**（2026-10-08 拆分）。
 2. 001 落地后开工 P0；P1 在 P0 真机验收通过后再启。**005 与 003 同包，可并行开工**（005 的 write/elevate 不依赖 003 的 UI）。
    ✅ **2026-10-08 起 003 已 `in-progress`**：Phase 0 完成（真机 fixture 入库 + 两条新结论：`netsh` 是纯 ASCII、唤醒后首次 `docker ps` 会被硬超时砍掉），进 **Phase 1（只读事实层）**。
+
+
+## ✅ 003 收口轮留痕（2026-10-12；零真机、零 `pnpm`、零产品代码改动）
+
+- **本轮做了什么**：① `Phase 7`（`T7.1`–`T7.3`）**迁出至 [010-docker-container-control](../010-docker-container-control/README.md)**（编号与 `Phase` 号保持，原地只留「已迁出」空位）；② `T0.3` / `T0.5` / `T6.7` 三条按**已有真机 / 收敛证据**勾选（逐条证据路径写进 [tasks.md](./tasks.md)）；③ 未勾项 **6 → 0** ⇒ CLI 流转 `in-progress → complete`。
+- **证据批次**：`C:\Users\EDY\dsh-probe-artifacts\20261012-150641-batch\`（`A2-package.json.with-both-plugins` / `A2-pluginInventory-after-uninstall.json` / `A2-route-probe.txt` / `D-E-result.json` / `D-E-driver.mjs` / `F-baseline.log` / `MANIFEST.txt`）+ commit **`e1135d8`**（`T6.7⑤` 公开面收敛）。
+- 🔴 **判据只在 commit 与门里的一条**：`T6.7⑤` 的变异哨兵输出**未在 `C:\Users\EDY\dsh-probe-artifacts\` 留独立文件**（全量递归搜 `check:exports` / `check:exports.mjs` / `23 断言` 均无该轮记录）⇒ 该行**按「判据在 commit `e1135d8` 与门脚本 `packages/wsl-docker-ports/scripts/check-exports.mjs` 里」结清**，不编路径（本轮零 `pnpm` ⇒ 未重跑该门）。
+- **迁出裁决（`check:exports` 扩到两个插件包）**：**留在 003**（属 **001 口径变更**、触发点是 003 的 `T6.7⑤`；混进 010 会污染 P1 验收边界）—— 原登记行一字未删，**登记不修**，待主人拍板。
+- **状态**：`leanspec update 003-wsl-docker-ports --status complete`（CLI 追加 `transitions` + `completed_at`；**未手改 frontmatter**）。
+- **本 Spec 遗留的未验项（结清后仍如实留痕）**：真机验收清单的 7 行（页面渲染 / 端口表状态 / 端口声明表单 / UDP / 非 NAT / exec 控件 / 禁插件再启用）**仍未逐行走**；`iphlpsvcRunning` 恒 `null`、`elevationAvailable` 无注入时保守 `false` 两个占位未变；未勾项虽为 0，但这两类**未验项不随状态翻转而消失**。

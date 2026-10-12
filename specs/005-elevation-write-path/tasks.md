@@ -7,12 +7,14 @@
 
 ## Phase 0：前置（契约定案）
 
-- [ ] T0.1 [REQ-3.4][REQ-3.7] 真机核对提权链路一次
+- [x] T0.1 [REQ-3.4][REQ-3.7] 真机核对提权链路一次
   - 内容：生成临时 `.ps1` + `Start-Process -Verb RunAs`（**人工点一次 UAC**）→ 主机读到 out 文件 JSON、退出码正确、两个临时文件被删除；**本次不写任何系统规则**（用只读动作或 `-Action` 空转验证）
   - 验证：退出码 `0`；out JSON 可解析；`%TEMP%` 无残留；结论写入 design.md §4
   - ⚠️ 本项**必须人工点 UAC**（无法自动化）
   - 🔵 **只读前置已核（2026-10-09，零 UAC、零写入）**：`gsudo` **在 PATH**（`D:\Program Files\gsudo\Current\gsudo.exe`，v2.6.1）· `%SystemRoot%\System32\sudo.exe` **不存在** · `netsh.exe` 与 `New-NetFirewallRule` 均可调 · 当前进程**非管理员**（⇒「写路径必经 UAC」这条前提成立）· 既有 **19 条**规则**仍在**（写验收的比对对象完好）· `gsudo --help` 含 `gsudo { Write-Output … } -args` 的 **stdio 回传**示例。**仍欠**：真的点一次 UAC，验通 stdio 回传 + 退出码 + 临时文件清理 ⇒ **本项保持未完成**
   - 🔴 **2026-10-12 真机留痕（本行「用只读动作空转」这条口径的必要性）**：脚本动作白名单只有 `add｜remove｜fix`（`src/elevate/script.ts`）⇒ **没有 no-op 成功动作**，「临时脚本 `exit 0`」与「零规则写入」在产品自身链路里**不可兼得**；2026-10-12 的真机红/绿因此改用**对不存在端口 45999 做 `remove`**（`netsh delete` 必然找不到条目 ⇒ `exit 2`，既跑通全链路又零系统写入，且前后 portproxy 19 条 + sha 不变自证）。新增 no-op 动作要同步改白名单 + 脚本模板 + 三处用例 ⇒ **本轮不新增**，只留痕（design §4 同条）
+  - ✅ **2026-10-12 真机结清（证据 = 003 的 `T0.3` 同一条、同批；本代理当场读原件复算）**：批次 `C:\Users\EDY\dsh-probe-artifacts\20261012-150641-batch\` —— `D-E-result.json` 的 **`d1`**：`mechanism` = `Start-Process -FilePath powershell.exe -Verb RunAs -Wait -PassThru; exit $p.ExitCode`、`exitCode: 0`、`spawnError: null`、`elapsedMs: 1631`、`parsedFromOutFile.ok: true`（payload = `{ok:true, action:"probe-readonly", port:1, steps:[{name:"readonly-admin-check", ok:true}]}`）、`beforeRules: []` / `afterRules: []` ⇒ **本次不写任何系统规则**、**out JSON 可解析**；`cleanup: {scriptRemoved: true, outRemoved: true}` ⇒ **两个临时文件都删除**。驱动 `D-E-driver.mjs` 经**产品产物** `packages/wsl-docker-ports/lib/elevate/index.js` 的 `buildNativeCommand` 造载荷（`:19` 加载、`:102` 调用）⇒ 本行判据三项（**退出码 0 / out JSON 可解析 / `%TEMP%` 无残留**）全中，`F-baseline.log` 的 `TEMP dsh-ppp* = 0` 为收尾旁证。**UAC**：本机 `ConsentPromptBehaviorAdmin = 0`（stack-decision 已记录）⇒ 运行**未弹窗**，「人工点 UAC」在本机不适用（003 的 `T0.3` 记了同一条）。
+  - ⚠️ **口径注意（不改本行判据，只留痕）**：`d1` 的脚本动作 `probe-readonly` 是**驱动自造**、**不在产品动作白名单**（`src/elevate/script.ts` = `add|remove|fix`）⇒ 「产品自身链路跑出 `exit 0` 且零写入」这一形态**仍不可兼得**（与上面那条 2026-10-12 留痕一致）；同批 **`d2`（`exitCode: 1`）/ `e2`（`status: "cancelled"`）是该形态下的失败观测**，其缺陷已由 commit `482f697` 修复并带变异哨兵回归门 `tests/unit/elevate-defects.test.ts` ⇒ **两条不计入本条证据**。
 
 - [x] T0.2 [C-1/C-2] 继承 003 的前置结论（2026-10-09 完成）
   - 内容：`netsh` 的**输出编码与解析**（003 的 T0.1 —— 2026-10-08 实测是**纯 ASCII** + CRLF，原「OEM 代码页」假设**已推翻**）与 19 条规则 fixture（003 的 T0.2）**不重复做**
