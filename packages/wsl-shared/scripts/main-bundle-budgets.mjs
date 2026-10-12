@@ -58,7 +58,7 @@ export const MAIN_BUNDLE_BUDGETS = {
     nature: 'hard',
     recorded: '2026-10-12',
     trace: '#50',
-    note: '§P2 推导值（64 KiB）：实测主 53,014 B（余 12,522 B ≈ 最大单次交付增量 +6,148 B 的 2.04×）；重定条件见 client-contract-incremental.md §P2 追加变更记录',
+    note: '§P2 推导值（64 KiB）：实测主 53,756 B（余 11,780 B ≈ 最大单次交付增量 +6,148 B 的 1.92×）（原记 53,014 B / 12,522 B；2026-10-12 重建后实测订正）；重定条件见 client-contract-incremental.md §P2 追加变更记录',
   },
   'dsh-wsl-docker-ports': {
     limitBytes: 144149,
