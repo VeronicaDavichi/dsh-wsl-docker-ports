@@ -9,7 +9,8 @@
  * 4. **执行前**取实际集快照（REQ-1.5）；快照失败 ⇒ 中止（无法自证就不动手）
  * 5. 生成 `%TEMP%\dsh-ppp-<rand>.ps1` + out 路径（REQ-3.6）
  * 6. 经 001 执行器下发（**argv 数组、无 shell 拼接**，design §5）
- * 7. 回传：gsudo 读 stdout（stdio 回传）、native 读 out 文件
+ * 7. 回传：**两条通道都读** —— gsudo 优先 stdout（stdio 回传）、native/winsudo 优先 out 文件，
+ *    缺一条就用另一条兜底（真机缺陷 2：001 的失败对象不带 stdout，只认 stdout 就会把合法载荷丢掉）
  * 8. 解析 JSON + 退出码表 → 状态（含 `999` = 提权失败；拒绝 UAC ⇒ `cancelled`）
  * 9. **三条路径（成功 / 失败 / 超时）都删两个临时文件**（NFR-2；`finally` 保证）
  * 10. **执行后**再取一次快照 + 组装四项齐全的任务日志（NFR-1）
@@ -109,6 +110,21 @@ async function probeOf(deps: ElevationDeps, systemRoot: string): Promise<Backend
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * 非零退出时的 stdout。
+ *
+ * 🔴 事实（2026-10-12 真机 + X1 实验）：001 的 `createExecutor` 在 `NonZeroExit` 分支用
+ * `fail(code, message, { argv, exitCode, stderr })` 造失败对象 —— **不带 `stdout`**，
+ * 那一份 stdout 在 `exec.ts` 里就被丢掉了（**不是**只丢在 runner）。所以这里对 `stdout` 的读取是
+ * **防御性**的：执行器带了就取（注入的 fake / 将来 001 补上字段都受益），不带就为空字符串；
+ * 真正的兜底是紧随其后的 **out 文件回落**（脚本 `Complete()` 把同一份 JSON 既写 out 文件、也写 stdout）。
+ * 改 001 的失败模型不在本轮范围（005 只拥有 `elevate/**`）⇒ 见 tasks 的留痕。
+ */
+function failureStdout(outcome: unknown): string {
+  const value = (outcome as { readonly stdout?: unknown }).stdout;
+  return typeof value === 'string' ? value : '';
 }
 
 /**
@@ -249,18 +265,27 @@ export async function runElevate(request: ElevateRequest, deps: ElevationDeps): 
       } else {
         exitCode = outcome.exitCode ?? null;
         stderr = outcome.stderr ?? '';
+        // 🔴 真机缺陷 2（2026-10-12）：旧写法这里**只赋 exitCode/stderr**，`stdout` 恒空 ⇒
+        // 「退出码非 0 但 stdout 有合法载荷」被 `looksLikeUacRejection` 判成「用户拒绝 UAC」。
+        stdout = failureStdout(outcome);
       }
 
-      // ⑦ 回传：native/winsudo 先读 out 文件，gsudo 读 stdout；两个通道共用同一个解析器
+      // ⑦ 回传：**两条通道都读**，优先级按后端（gsudo 走 stdio；native/winsudo 走 out 文件），
+      // 两个通道共用同一个解析器。旧写法只在「非 gsudo」时读 out 文件 ⇒ gsudo 一旦非零退出就成了
+      // 「既没有 stdout（001 丢掉了）也没有 out（压根没读）」—— 真机缺陷 2 的另一半。
       let outText: string | null = null;
-      if (choice.backend !== 'gsudo') {
-        try {
-          outText = await read(outPath);
-        } catch {
-          outText = null;
-        }
+      try {
+        outText = await read(outPath);
+      } catch {
+        outText = null;
       }
-      const parsed = parseElevatedOut(outText ?? (stdout.trim().length > 0 ? stdout : null));
+      const fromStdout = stdout.trim().length > 0 ? stdout : null;
+      const parsed = parseElevatedOut(
+        choice.backend === 'gsudo' ? (fromStdout ?? outText) : (outText ?? fromStdout),
+      );
+      // 回传原文：脚本只序列化一次，out 文件与 stdout **逐字同源** ⇒ 执行器丢掉了 stdout 时用
+      // out 文件原文补上，免得日志/UI 出现「有载荷却 stdout 空」（NFR-1 的四项齐全里回传原文不是空串）
+      if (stdout.trim().length === 0 && outText !== null && outText.trim().length > 0) stdout = outText;
 
       if (parsed.ok) {
         payload = parsed.payload;

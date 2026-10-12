@@ -67,9 +67,16 @@ export function scriptCallFor(plan: {
 /**
  * native 后端的 `-Command` 载荷：`Start-Process -Verb RunAs -Wait -PassThru` 后把子进程退出码
  * 透传给主机（用户点「否」时 `Start-Process` 抛错 ⇒ 退出码非 0 且没有回传 ⇒ `cancelled`）。
+ *
+ * 🔴 `-File` 不能省（真机缺陷 1，2026-10-12 两次独立探针实测）：位置参数形态
+ * `powershell.exe <script.ps1> <args…>` 会把**脚本自己的退出码吞成 1**（脚本真跑过、out 文件有载荷：
+ * `exit 3` ⇒ 报 1、`exit 2` ⇒ 报 1），于是 `2`(partial) 与 `3`(precondition) 永远不可达。
+ * `-File` 才是「跑脚本并**透传**它的退出码」的形态（实测：未提权 ⇒ 3、经 RunAs ⇒ 2）。
+ * 顺序固定为 `-File` → 脚本路径 → 脚本自己的参数（与 `gsudo` / `winsudo` 的 `psArgs` 同序，
+ * 三后端只差一个外层包装）。token 全部来自 `assertScriptParams` 校验过的字段 ⇒ 注入面仍为零。
  */
 export function buildNativeCommand(scriptPath: string, args: readonly string[]): string {
-  const quoted = [scriptPath, ...args].map((token) => `'${token}'`).join(', ');
+  const quoted = ['-File', scriptPath, ...args].map((token) => `'${token}'`).join(', ');
   return (
     `$p = Start-Process -FilePath 'powershell.exe' ` +
     `-ArgumentList @(${quoted}) -Verb RunAs -Wait -PassThru; exit $p.ExitCode`
