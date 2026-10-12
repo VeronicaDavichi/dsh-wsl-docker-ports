@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-10-09
 priority: high
 tags:
@@ -15,14 +15,17 @@ depends_on:
 - 005-elevation-write-path
 - 003-wsl-docker-ports
 created_at: 2026-10-09T06:27:29.300072900Z
-updated_at: 2026-10-09T06:37:34.724527300Z
+updated_at: 2026-10-12T05:44:53.120629900Z
+completed_at: 2026-10-12T05:44:53.120629900Z
 transitions:
 - status: in-progress
   at: 2026-10-09T06:37:34.724527300Z
+- status: complete
+  at: 2026-10-12T05:44:53.120629900Z
 ---
 # 写入通道：动作计划 → 变更预览 → 提权执行 → 审计留痕
 
-> **Status**: planned · **Priority**: high · **Created**: 2026-10-09
+> **Status**: ~~planned~~ **complete**（**2026-10-12 就地订正**：旧值 `planned` 是建 Spec 时的模板残留，frontmatter 早已是 `in-progress`；关闭轮 7 条未勾项结清 ⇒ 见 [closure-round.md](./closure-round.md)） · **Priority**: high · **Created**: 2026-10-09
 
 ## Overview
 
@@ -43,9 +46,11 @@ transitions:
 
 见 [tasks.md](./tasks.md)：Phase 0 契约核对 → **P1 只读通道**（先拿 G1/G3/G4）→ **P2 执行**（G2/G5/G6）→ **P3 界面** → Phase 4 收口。
 
-- [ ] P1 只读：`plan` + `audit` + 路由骨架（零写入）
-- [ ] P2 执行：`apply` + 确认票据 + 幂等 + 回滚
-- [ ] P3 界面：确认对话框 + 逐步结果反馈
+- [x] P1 只读：`plan` + `audit` + 路由骨架（零写入）
+- [x] P2 执行：`apply` + 确认票据 + 幂等 + 回滚
+- [x] P3 界面：确认对话框 + 逐步结果反馈 **（2026-10-12 已迁出 → [009-write-ui](../009-write-ui/README.md)；该 Spec 已 `complete`）**
+>
+> **2026-10-12 关闭轮**：P1 / P2 的判据 = `tasks.md` 的 `T1.x` / `T2.x` **全 `[x]`**（含真机 V1–V5 回填）；P3 已整段迁出到 009；本 Spec 的 **7** 条未勾项逐条结清记录见 [closure-round.md](./closure-round.md)（判据只留一份）。
 
 > **2026-10-12 拆出 [009-write-ui](../009-write-ui/README.md)**（**同包不拆包**；008 侧 `T3.2` 与清单里的 `V6` **编号保留为空位**并注明「已迁至 009」）：`T3.1` 的施工明细与八条客户端契约、结果四态（原 `T3.2`）、真机 UI 复核（原 `V6`）、007 配置页的「生成并保存写通道凭据」按钮，都归 009；008 保留服务端写通道、`T3.3` 的 V1–V5 与收口。依据：本 Spec 的 `tasks.md` 已达 **394/400**，触发它自己写下的「接近 400 ⇒ **必须拆 Spec**，不得删已验证结论 / 未验项 / 裁定依据 / 命令原文证据」。
 
