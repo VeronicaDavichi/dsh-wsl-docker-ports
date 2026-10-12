@@ -62,6 +62,51 @@
 | 被拒 ⇒ **零落盘** | `cordis.patch.yml` sha 前后**都是** `4a2c0a4a…`（553 B） | `C2b-patch-first.log` |
 | revision 冲突 ⇒ 提示 + 保留输入 + 零落盘 | 外部推进 `revBefore=0 → revAfter=1`（`ok=True`）；保存报冲突、输入 `c3-conflict-row` / `pwsh.exe` / `-NoLogo` 全保留、sha C == sha B | `C3-external-advance.txt` + `RESULT.txt` §3 |
 | **路径不可得（订正痕）** | `documentPath` 在 `settings/describe` 真机载荷里 **0 次** ⇒ 页面按设计显示 `配置文件路径：宿主未提供` ⇒ REQ-10.3 降级为「宿主未提供时如实说明」 | `C1-settings-describe.raw.json`（**35,168 B**，我当场复算 0 命中）/ `host-settings-describe.raw.json`（34,388 B，0 命中） |
+| **判据 1（打开即只读）·第二轮真机** | 带覆盖层 ⇒ 根 `data-readonly="true"`、`cfg-row-0` 行级只读、6 个 input 全 `disabled`、「新增/删除」置灰、`cfg-readonly` 显示**零写入推断**原因；`settings/update` **0**（只有 1 次 `describe`）；**fresh reload 后的第二次采样同样只读** ✅ | 第二轮证据目录（见 §5.1）：`RESULT.txt` 28,190 B / sha256 `8FDFB106…` |
+| **判据 3（零落盘）·第二轮真机** | reload + 重开配置页 + **点保存**后，patch **sha 与 mtime 双证未动**（基线 343 B / mtime `17:30:52.1671984` / sha `cdc61a08…`）✅ ⚠️ 测量窗口**只限配置页交互路径**（**宿主自己也会写 patch**，见 §5.1 的 F1） | 同上 |
+| **判据 4（兜底端到端）·第二轮真机** | 覆盖层取 schema 默认值（`config:{profiles:[]}`）⇒ **已知假阴性现场复现**（`value={profiles:[]}` / `base={profiles:[]}` / `user={}` ⇒ 推断不出）⇒ 页面**可编辑** ✓；真点保存 ⇒ **1 次** `settings/update`（`expectedRevision:0`）⇒ 宿主拒绝原文同本表首行 ⇒ **转锁定 + 显示真实宿主原因 + `cfg-error[data-notice-kind=readonly]` + 用户输入逐字保留 + patch sha/mtime 未变** ✅ | 同上 |
+| **判据 5（流量计数）·第二轮真机** | 打开配置页只 **1 次 `describe`、0 次 `update`**；**锁定态**点保存只补发 1 次 `describe`、**仍 0 次 `update`** ✅ | 同上 |
 
 🔴 **未踩实的假设（不许含糊）**：① `read-only provider` 分支**仍无真机样本**；② 「volatile live 写入 152ms 不重挂载」是 **002 的 2026-10-08 事实**，
 本 Spec 本次**未复现**（本批只证了 `settings/update` 的**返回形状**与拒绝路径）；③ `auto:false` 是否真生效**仍无直接断言**（`934da46` 的自绘页渲染是必要证据，未单独断言「宿主默认表单未接管」）。
+
+## 5.1 只读判据的**取值口径** + 第二轮真机闭环（2026-10-12-172155）
+
+> 证据目录：`C:\Users\EDY\dsh-probe-artifacts\20261012-172155-auto-readonly\`（**只读**，未改一字）；`RESULT.txt` 28,190 B / sha256 `8FDFB1064FDE1AE229F3D0A8CB03D99978FA37671A69201C594B7D411BD6664D`。
+> 与 §5 是**两轮不同批次**的真机产物 ⇒ 结论**并列**、不互相覆盖；本节**只追加**，§5 原文一字未删。
+
+### (1) 判据口径订正：`data-readonly` **恒存在** ⇒ 判**取值**，**不是**判存在性 ✗
+
+- 源码依据：`packages/terminal-profiles/src/client/config-page.tsx:238` 逐字为 `data-readonly={locked ? 'true' : 'false'}` ⇒ 该属性在**两种状态都在**（React 渲染成字符串 `"true"` / `"false"`）⇒「属性在不在」**恒真**、**不能**当判据。
+- ⇒ 正确判据 = **取值**：只读 ⇒ `data-readonly="true"`；可写 ⇒ `data-readonly="false"`。
+- **旁证一（结构）**：只读态**有** `cfg-readonly` 节点；可写态**无**该节点（真机可写态 = `data-readonly="false"` + **无** `cfg-readonly` 节点 + 「新增」`enabled`）。
+- **旁证二（可交互性）**：可写态点「新增」后 **6 个 input 的 `disabled=false`**，且真实 CDP `fill` **写入成功**、`settings/update` **0**；只读态 6 个 input 全 `disabled`、「新增/删除」置灰。
+- ⇒ 本 Spec 此后判定只读，**三条同时成立**才算通过：① `data-readonly` **取值**为 `"true"` / `"false"`；② `cfg-readonly` 节点有无；③ input 可编辑 / `disabled`（可写态再补 CDP `fill` 真写入 + `update` 计数 **0**）。
+
+### (2) 🔴 零落盘的**测量边界**（F1 / F4）—— 跨整个浏览器会话测会误报
+
+- **F1：宿主自己也会写 profile patch** —— 点 GUI 的「继续」关掉**预览版说明弹窗** ⇒ 宿主把 `ui-settings-general` / `welcomeNoticeVersion` 写进 `~/.dsh/profiles/<name>/cordis.patch.yml`（**218 B → 343 B**，mtime `17:30:52`）。
+  ⇒ 零落盘类判据**必须限定在「打开配置页 → 编辑 → 保存」这条插件交互路径**上取前后快照；把窗口开成**整个浏览器会话**会把**宿主的写**误记成**插件的写** ✗。
+- **F4：`cordis.yml` 启动时被重写但内容逐字节不变**（sha `c300dcf2…`）⇒ **只看 mtime 会误报**；零落盘判据一律 **sha + mtime 双证、以 sha 为准**。
+- 同一事实的另两处落点：`AGENTS.md`「配置存活」行（**就地补**）与 [`../009-write-ui/acceptance-round.md`](../009-write-ui/acceptance-round.md) §10.1/§10.2。
+
+### (3) 流量计数口径（F5）：`describe` / `update` 可当**可二值判定**的旁证
+
+- 打开配置页 ⇒ **1 次 `describe`、0 次 `update`**；**锁定态**点保存 ⇒ 只补发 **1 次 `describe`**、**仍 0 次 `update`**（= 「不写盘」的证据面）。
+- ⇒ 对表写法：`update` 计数**必须为 0**；`describe` 计数按「打开 1 次 / 锁定态保存再 +1 次」核对，超出一律视为**新证据需要解释**。
+
+### (4) 路径订正（F2）被第二轮真机**再次钉死**
+
+- `documentPath` 在真机 `settings/describe` **0 命中**（本轮**两次独立采样**：**35,246 B** / **34,474 B**、**21 命名空间**）⇒ 与 §5 的订正痕、`REQ-10.3` 的降级口径（「宿主提供时显示路径 / 未提供时如实说明」）**一致**；页面文案 `配置文件路径：宿主未提供` **不伪造路径** ✅。
+
+### (5) 同代性（本轮产物 vs 实例）与**残留错配登记**
+
+- **同代双证** ✅：`lib/` 最新 mtime **`17:23:14`**（**6 步构建全 `exitCode=0`**）、三实例起始 `17:28:17` / `17:33:21` / `17:35:14` ⇒ 产物**早于**实例 **275 s**；产物 sha：`lib/client.js` `c7cfbd23…` / **53,014 B** 等。
+- 🔴 **残留错配（只登记，不改代码、不重建 `lib/`）**：`packages/terminal-profiles/src/client/index.ts` 于 **`17:27:21`** 被**并行提交 `ae9f74b`** 改动，而 `lib/`（`17:23:14`）**未重建** ⇒ **该轮真机结论不受影响** ✓（`ae9f74b` = pending-warn 宽限 + WS 重注册，自述**不触及**配置页与只读推断），但**要完全消解须在重建 `lib/` 后重跑同门**；全文见 [`tasks.md`](./tasks.md) 的「同代性错配登记」。
+
+### (6) 本节未验（**不许勾** ✗）
+
+- **home 层 patch**（`~/.dsh/cordis.patch.yml`）真机**仍无样本** —— 本批触发手段只有 `--patch` 覆盖层；拒绝文案同时覆盖两源，但 home 层**本身未创建**（红线范围外）。
+- **混合行**（同一次写入里 ordinary + volatile 同时变）、**锁定态下的真实写入成功路径**、**`read-only provider` 分支**：三者本轮**都没有样本**。
+- `revision 冲突` 本轮**无新样本**（上一轮 `C3-external-advance.txt` 的样本仍在盘上、**原样保留**；本节不新增、也不删）。
+- `auto:false` 是否真生效**仍无直接断言**（§5 末尾的 ③ 原样保留）。

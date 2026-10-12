@@ -347,3 +347,43 @@ Get-FileHash B3-portproxy.before.txt,B3-portproxy.after.txt,portproxy.baseline.t
 2. 🔴 **解析口径错**：`a3-describe-after.txt` 我第一版脚本按「整文件 JSON」解析 ⇒ `SyntaxError: Unexpected non-whitespace character after JSON`；真相是该 dump 是**裸数组体**（`{..},{..}`，**没有**外层 `[]`）⇒ 补 `[]` 后解析成功。**错的是我的脚本，不是产物。**
 3. 🔴 **窗口混淆（本次订正的核心）**：我上次把 `140444` 当唯一产物目录 ⇒ 现在订正为三目录并**明确标注 `135023` = 陈旧产物窗口**（9.1 第 3 条）。**`135023` 的 `b3-describe-after-clear.json` = `set:true`**，若不当心，会被误引成「修后仍 `set:true`」的反证 —— 这条**必须先讲清窗口**。
 4. 🟡 **未复现的仍写未复现**：`77afca6c…`（771 B）与上一轮的 `72a135c8…` 一样，**盘上无文件 ⇒ 不硬凑**（9.7）。
+
+## 10. 另一轮真机结论：只读判据**取值口径** · 零落盘的**测量边界**（2026-10-12 第二轮）
+
+> 证据目录：`C:\Users\EDY\dsh-probe-artifacts\20261012-172155-auto-readonly\`（**只读**，未改一字）；`RESULT.txt` 28,190 B / sha256 `8FDFB1064FDE1AE229F3D0A8CB03D99978FA37671A69201C594B7D411BD6664D`。
+> 与 §1–§9 是**两轮不同批次**的真机产物 ⇒ 结论**并列**、不互相覆盖；本节**只追加**。
+
+### 10.1 F1 🔴 **宿主自己也会写 profile patch** ⇒「零落盘」必须限定在**插件交互路径**上测量
+
+- 实测：点 GUI 的「继续」关掉**预览版说明弹窗** ⇒ 宿主把 `ui-settings-general` / `welcomeNoticeVersion` 写进 `~/.dsh/profiles/<name>/cordis.patch.yml`（**218 B → 343 B**，mtime `17:30:52`）。
+- ⇒ 若把测量窗口开成**整个浏览器会话**，会把**宿主自己的写盘**误记成**插件写盘** ✗。
+- ⇒ 正确口径：零落盘类判据一律**限定在「打开配置页 → 编辑 → 保存」这条插件交互路径**上取 before / after 快照。
+- 同一事实的另两处落点：`AGENTS.md`「配置存活」行（**就地补**）、[`../007-terminal-config-page/design.md`](../007-terminal-config-page/design.md) §5.1(2)。
+
+### 10.2 F4 `cordis.yml` 启动时被重写但**内容逐字节不变** ⇒ 只看 mtime 会误报
+
+- 实测：启动时 `cordis.yml` 被**重写**，内容 sha 仍 `c300dcf2…`（逐字节不变）⇒ **mtime 变了 ≠ 内容变了**。
+- ⇒ 零落盘判据必须 **sha + mtime 双证**，并**以 sha 为准**；单看 mtime 会报假阳性。
+
+### 10.3 F5 `describe` / `update` 计数（配置页的最小流量面）
+
+- 打开配置页 ⇒ **1 次 `describe`、0 次 `update`**；**锁定态**下点保存 ⇒ 只补发 **1 次 `describe`**、**仍 0 次 `update`**（=「不写盘」的证据面）。
+- ⇒ 计数可当**可二值判定**的旁证：`update` 计数**必须为 0**；`describe` 计数按「打开 1 次 / 锁定态保存 +1 次」对表。
+
+### 10.4 F6 已知**假阴性**形态被兜底接住（真机证据；对应 007 的判据 4）
+
+- 覆盖层取 schema 默认值（`config:{profiles:[]}`）⇒ `value={profiles:[]}` / `base={profiles:[]}` / `user={}` ⇒ **推断不出** ⇒ 零写入推断如实降级为**可写**（保守口径 ✓）。
+- 真点保存 ⇒ **1 次 `settings/update`**（`expectedRevision:0`）⇒ 宿主拒绝原文 `{"ok":false,"error":{"code":"settings/rejected","message":"Configuration for \"dsh-terminal-profiles\" is overridden by a home patch or command-line overlay",…}}` ⇒ 页面**转锁定 + 显示真实宿主原因 + `cfg-error[data-notice-kind=readonly]` + 用户输入逐字保留 + patch sha/mtime 未变** ✅。
+- ⇒ 007 的保守设计「**不确定 ⇒ 可写；被拒 ⇒ 锁定**」**获真机证实**：假阴性（少锁一次）由「被拒 ⇒ 锁定」这一路接住，**不是缺口**。
+
+### 10.5 本节未验（**不许勾** ✗）
+
+- **home 层 patch**（`~/.dsh/cordis.patch.yml`）真机**仍无样本** —— 本批触发手段只有 `--patch` 覆盖层（拒绝文案同覆盖两源，但 home 层**本身未创建**，属红线范围外）。
+- **混合行**（同一次写入里 ordinary + volatile）、**锁定态下真实写入成功路径**、`read-only provider` 分支：三者本轮**都没有样本**。
+- `revision 冲突` 本轮**无新样本**（上一轮样本仍在盘上、原样保留，本节不新增也不删）。
+- 🔴 **同代性错配（只登记，不改代码）**：`packages/terminal-profiles/src/client/index.ts` 于 `17:27:21` 被并行提交 `ae9f74b` 改动，而 `lib/` 未重建（`lib/` 最新 mtime `17:23:14`）⇒ 本轮真机结论**不受影响**（改动 = pending-warn 宽限 + WS 重注册，不触及配置页/只读推断），**要完全消解须在重建 `lib/` 后重跑同门**；全文见 [`../007-terminal-config-page/tasks.md`](../007-terminal-config-page/tasks.md) 的「同代性错配登记」。
+
+### 10.6 本节字节级自检 + **我自己的错**
+
+- 本文件在本节追加后仍 **< 400** 行 ✓（实测行数 / 字节 / `loneCR` 在本轮报告给出）；行尾**保持 LF**（本文件全 LF，**不引入 loneCR**）；`BOM = False`；控制字符（TAB 外）= 0；写盘走 `[IO.File]::ReadAllBytes` / `WriteAllBytes` + `UTF8Encoding($false)`（**不用 `edit` 工具**），锚点**先断言恰 1 次**、不命中就整批拒绝。
+- **我的错（如实）**：派单把 `revision 冲突` 也列入「仍无样本」，但**盘上上一轮已有样本**（`C3-external-advance.txt`）⇒ 我按**盘上事实**记为「本轮**无新样本**」，旧样本**原样保留**，既不新勾也不删（§10.5）。
