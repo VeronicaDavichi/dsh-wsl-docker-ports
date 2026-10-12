@@ -1,7 +1,7 @@
 # 008 写入通道 —— 任务
 
 > 每行一个任务；`[REQ-N]` 指向 [requirements.md](./requirements.md)。**「判据」必须是可二值判定的**（跑得出来、看得见）。分期见 design §9。
-> **行数门口径（2026-10-10 主人裁定）**：warn **200 只是提示、不强制压缩**；硬门 = **LeanSpec max 400 行**（本文件当前 **333**，余量 **67**）；🔴 一旦**接近 / 超过 400** ⇒ **必须拆 Spec（新增一篇）**，**不得**删已验证结论 / 未验项 / 裁定依据 / 命令原文证据。
+> **行数门口径（2026-10-10 主人裁定）**：warn **200 只是提示、不强制压缩**；硬门 = **LeanSpec max 400 行**（本文件当前 **356**，余量 **44**）；🔴 一旦**接近 / 超过 400** ⇒ **必须拆 Spec（新增一篇）**，**不得**删已验证结论 / 未验项 / 裁定依据 / 命令原文证据。**本条已当场兑现一次**：2026-10-12 拆出 [009-write-ui](../009-write-ui/tasks.md)（UI 面：结果四态 / V6 真机 UI 复核 / 配置页凭据按钮），008 保留服务端写路径与收口。
 
 ## Phase 0：契约核对（不写产品代码）
 
@@ -46,6 +46,7 @@
   - ⚠️ 订正留痕：原文字「每次 `apply`（含拒绝/超时/失败/回滚）落一条审计」「成功与拒绝各留一条」**已作废**（裁定：拒绝 = 没发生）⇒ `disabled` / `no-actions` / 全部拒绝路径**不写**。真机佐证：`confirmed:false` ⇒ 403 且**不留**审计记录（T2.8）；401 不记账（T2.9/T2.10）。
 - [ ] T2.7 [REQ-6.2] 红线单测：无 `portproxy reset`、无通配符防火墙规则、集合外零动作。
   - 判据：对生成的命令**逐条断言**（正则白名单）：不含 `reset`；每条 `New-NetFirewallRule` 都带具体 `-LocalPort`。
+- [ ] T2.7b [REQ-6.2] 红线单测（**008 自己的执行层专属判据**，2026-10-12 补；未勾选 = 未跑）：本包测试内断言无 `portproxy reset`、无通配符防火墙（`-LocalPort` 具体端口）、集合外零动作，且断言对象是 **008 自己的执行层**（003 的 `redline-guards` / 005 的 `elevate-script` 的既有用例**不能替 008 记账**）。
 - [x] T2.8 [REQ-6.1] 真机复验 P2（**需主人在场**；本机 UAC 不弹窗 ⇒ 无需点 UAC，但会真改系统状态）：
   - 判据：① 写一轮 `add` 后「他人 19 条**逐字节不变**」（`ReadAllBytes` 全字节比对 + sha256）（G5）；② 再跑一次同目标 ⇒ 条数不增（幂等）；③ 用 `action:'remove'` 回滚到写前状态，`netsh` 与写前**逐字节相同**；④ 审计里能读出实际后端（`gsudo`/`native`）（G6）。
 
@@ -53,8 +54,8 @@
 
 - [x] T3.1 [REQ-3.1] 客户端：写动作前弹**确认对话框**，逐条展示命令原文与影响面；未确认不发 `apply`。
   - 判据：单测断言「未点确认 ⇒ 零网络请求」；对话框文本含每条命令原文（不是「即将执行」这种空话）。
-- [ ] T3.2 [REQ-4.1] 结果逐步反馈：成功/失败/跳过/回滚分色展示，失败给出可读原因。
-  - 判据：四种结果的渲染分支各有单测用例；失败态一定带原因文本。
+- [ ] T3.2（**已迁出**）结果逐步反馈：成功 / 失败 / 跳过 / 回滚分色展示 + 失败给出可读原因
+  - 内容与验收**已迁至 [009-write-ui](../009-write-ui/tasks.md) 的 T1.1–T1.3**（2026-10-12 拆分；**只迁位置、不删内容**）。**编号 3.2 保留为空位**，以免 `T3.1` / `T3.3` 错位。
 - [x] T3.3 主人环境自验清单（与 002 的 V1–V3 同格式：安装命令 + 判据 + 回归信号）。
   - 判据：清单写进本文件；当前状态标注「未通过（未验）」。
 
@@ -179,9 +180,7 @@
 **配置读取（T3 的可知部分）**：`plugin.ts:PortsPluginConfigLike` 增 `elevationPolicy?: string`（**同线编辑、零行增长**：
 `plugin.ts` 仍 **399/400 行**），并把它传进 `createPluginFacts`；`real-facts.ts` 校验只认 `none`/`ask`/`passby`，
 **认不出（含空串/大小写不符）⇒ 事实面 `unknown`**（不原样透传，免得非法值显示得像真选过）。
-⚠️ **未证的部分（如实标注，不猜 API）**：客户端 `settings-pipe.ts` 的 `remote.settings.update('dsh-wsl-docker-ports', {elevationPolicy})`
-是否投递到 bundle 条目的 `config:`（宿主 settings/`remote.settings` 实现不在本地可读范围：只有打包的 `app.asar`）
-⇒ 配置页接线前，生产缺省仍是 `unknown` ⇒ **不写**（绝不为了「能写」而放宽默认值）。
+⚠️ **未证的部分（如实标注，不猜 API）——「客户端 / 配置页」那一半已迁至 [009-write-ui](../009-write-ui/tasks.md) 的 T2.2 / V7**：客户端 `settings-pipe.ts` 的 `remote.settings.update('dsh-wsl-docker-ports', {elevationPolicy})` 是否投递到 bundle 条目的 `config:`（宿主 settings/`remote.settings` 实现不在本地可读范围：只有打包的 `app.asar`）⇒ 配置页接线前，生产缺省仍是 `unknown` ⇒ **不写**（绝不为了「能写」而放宽默认值）。
 
 **判据**：`tsc -p tsconfig.json` exit 0；全包 `node --test --test-concurrency=1 "tests/**/*.test.ts"` **381/381 绿**
 （基线 369 + 新增 12：`tests/unit/firewall-probe.test.ts` 6 条 + `transport-apply` 4 条（④ 改判 + ⑪/⑪b/⑪c/⑫）+
@@ -276,8 +275,7 @@
 
 🔴 **未验**：① 真机的 401 行为（需起实例/探针 profile；本轮**未装插件、未起实例、未跑任何写命令**）；
 ② 「patch 里 `config.writeToken` 真被读到」的**投递链路**（T2.8 已用 `elevationPolicy: ask` 间接证明同一处
-config 真送达，但 `writeToken` 本身未在真机验过）；③ 客户端拿到 401 时的 UX（客户端确认对话框属 T3.1，
-当前客户端**根本不调**写端点 ⇒ 401 不会影响现有页面）。
+config 真送达，但 `writeToken` 本身未在真机验过）；③ 客户端拿到 401 时的 UX **属 UI 面 ⇒ 已迁至 [009-write-ui](../009-write-ui/tasks.md)**（008 只负责服务端 401 本身，客户端行为在 009 的清单里）。
 
 ## ✅ T2.9 写通道鉴权 · 真机验证：PASS（2026-10-10，`volatile-probe` / 43311 / HEAD 37ed40e）
 
@@ -328,28 +326,17 @@ profile 内 ReparsePoint **0**、`node_modules` 无本包软链；`portproxy` **
 node **14**、43311 空闲、profile 内 ReparsePoint **0**、`~/.dsh` 与仓库 `node_modules` 搜我方包名 **0** 命中；
 `cordis.patch.yml` 回到基线 `[]`（hash `8C2D1F55…`）；`pnpm install --frozen-lockfile` exit **0**；`git status` 空。
 
-**⚠️ 未验（如实）**：① `writeToken` **未配置** ⇒ 401 的 fail-safe 分支未上真机（仅离线单测）；② `origin:"agent"` + `passby` 的**降级为 ask** 未验（本次 policy 本就是 `ask`，无法区分）；
-③ 本次为**直接 HTTP 调用**，未经过 008 T3.1 的客户端确认对话框（该期未接线）⇒ 现阶段「人在回路」的证据**只有票据门**（一次性 + 绑 `planId` + TTL 120s），**不是** UI 确认。
+**⚠️ 未验（如实）**：① `writeToken` **未配置** ⇒ 401 的 fail-safe 分支未上真机（仅离线单测）；② `origin:"agent"` + `passby` 的**降级为 ask** 未验（本次 policy 本就是 `ask`，无法区分）；③ 本次为**直接 HTTP 调用**，未经过客户端确认对话框（该期未接线）⇒ 现阶段「人在回路」的证据**只有票据门**（一次性 + 绑 `planId` + TTL 120s），**不是** UI 确认 —— **该 UI 面（含真机复核）已迁至 [009-write-ui](../009-write-ui/tasks.md)**。
 
 ## 📋 T3.3 主人环境自验清单（2026-10-10；**当前状态：未通过（未验）**）
 
-> **为什么本轮只做 T3.3**（Phase 3 未勾选者：T3.1 / T3.2 / T3.3）：T3.1（确认对话框）与 T3.2（结果四态分色）都要求客户端先接上写通道，
-> 而 `plugin.ts:324` 明记「仍未接线 ⇒ **页面上点不到写入口**」，且客户端侧连 `ElevationInvoker` 都还是 gap（`plugin.ts:321`）
-> ⇒ 两者**不能独立完成**（还要先定客户端如何拿写通道凭据：T2.9 后无 `writeToken` 一律 401）。T3.3 不依赖它们，故为**最小且可独立完成**的一个。
+> **V6（真机 UI 复核）+ 结果四态分色 + 配置页凭据按钮的真机投递已迁至 [009-write-ui](../009-write-ui/tasks.md)**（2026-10-12 拆分；**编号 V6 保留为空位**）—— 本表只留**后端写路径**的 V1–V5。
 > 格式与 002 的 V1–V3 同构：**安装命令 + 判据 + 回归信号**。代理**不碰任何 profile** ⇒ 安装/卸载由主人自己跑。
 > 🔴 **CLI 不能操作 `desktop`**（002 已证：`rejectElectronProfile` ⇒ `error: profile "desktop" is managed exclusively by the Electron application`）
 > ⇒ 桌面实例请在**应用内**安装；命令行的 `<profile>` 只能填非 `desktop` 的 profile。
 > 判据来源 = T2.8 / T2.10 的真机记录（**等价断言已验过**），本节把它固化成**可重复跑**的清单 ⇒ 但**清单本身尚未按此格式整份跑过**，故状态记「未通过（未验）」。
 
-**安装（主人自己跑）**：
-
-    dsh plugin --profile <profile> add "dsh-wsl-docker-ports@link:E:\NodeProjects\dsh-wsl-toolkit\packages\wsl-docker-ports"
-
-**配置（`profiles/<profile>/cordis.patch.yml` 里 `- id: dsh-wsl-docker-ports` 的 `config:`）** —— 两道闸门都得给值，缺任一即进 fail-safe（写通道 401 / 策略认不出 ⇒ `none` ⇒ 不写）：
-
-    config: { elevationPolicy: ask, writeToken: "<随机长串>" }
-
-**端点基址**：`http://127.0.0.1:<GUI端口>/dsh-wsl-docker-ports/write/{plan,apply,audit}`；凭据走 `?token=<writeToken>`（或 `Authorization: Bearer`）。
+> **配方（安装命令 / `config:` 两道闸门 / 端点基址）与收尾复算只留一份 —— 已迁至 [009-write-ui 的 Phase 3 与迁入记录](../009-write-ui/tasks.md)**（同一份，避免两处漂移）：本表的 V1–V5 按那份配方跑。
 
 | # | 判据（可二值判定） | 通过 | 回归信号 |
 | --- | --- | --- | --- |
@@ -358,36 +345,11 @@ node **14**、43311 空闲、profile 内 ReparsePoint **0**、`~/.dsh` 与仓库
 | V3 | `apply(add)`（`confirmed:true` + 票据）⇒ `status:"ok"`、`executed` 含 `portproxy-add`+`firewall-add`；`portproxy` **19→20**、我方防火墙 **0→1**（规则为 `-LocalPort <port>`，**非通配符**） | 三处同时变化 | 建出通配符规则 / 他人 19 条被动过 |
 | V4 | 同端口 `apply(remove)` ⇒ `portproxy` **20→19**、我方防火墙 **1→0**、该端口规则行 **0**，且 `netsh … show v4tov4` 全文 SHA-256 回到 V2 之前 | 逐字节回到写前 | 残留规则 / 条数不回落 |
 | V5 | `apply` 不带 `confirmed:true` ⇒ **403**；随后 `GET …/write/audit?token=…` 的 `size` **不变**（拒绝不记账） | 403 + size 不变 | 被拒绝的 apply 也进审计环 |
-| V6 | 🟡 **T3.1 已离线接线（2026-10-12）；真机 UI 复核未做**：客户端确认对话框（逐条命令原文）已接到页面上（预演 → 确认两段式），离线判据 44 条全绿；T3.2 结果四态分色**未接线** | 见左（离线层已验） | 页面上**点得到**写入口却**没有**对话框 ⇒ 回归 |
+| V6 | 🟡 **已迁出**（判据原文在 [009 的迁入记录 §3](../009-write-ui/tasks.md)）：客户端确认对话框的真机 UI 复核 + 结果四态分色 ⇒ **见 [009-write-ui 的 V6–V8](../009-write-ui/tasks.md)**；**编号 V6 保留为空位** | 见 009 | 页面上**点得到**写入口却**没有**对话框 ⇒ 回归 |
 
-**收尾复算（每次必查）**：`portproxy` 严格 IPv4 行数回 **19**（⚠️ 朴素 4-token 正则会数进表头/分隔行 ⇒ 误报 **21**；口径见 T2.8 留痕）；
-我方防火墙规则 **0**；规则名与听端口的残留 **0**；node 进程回 **14**；探针端口空闲；`pnpm install --frozen-lockfile` exit **0**；`git status --porcelain` 空。
+⚠️ **未验（如实）**：① 本节（V1–V5）**尚未整份跑过**（V1–V5 的等价断言由 T2.8/T2.10 当场验过，但**不是**在「按本清单逐条」的形式下）；②③④（V6 的离线/真机、`writeToken` 未配置时的 401 fail-safe、`passby` 降级为 `ask`）**原文已迁至 [009 的迁入记录 §5](../009-write-ui/tasks.md)**。
 
-⚠️ **未验（如实）**：① 本节**尚未整份跑过**（V1–V5 的等价断言由 T2.8/T2.10 当场验过，但**不是**在「按本清单逐条」的形式下）；② V6 的**离线**部分已由 T3.1 接线并验（44 条 vitest 判据全绿），但**真机 UI 复核仍未做**（该轮代理人未开浏览器）；T3.2 结果四态分色未接线；③ `writeToken` **未配置**时 401 的 fail-safe 分支只有离线单测（未上真机）；④ `origin:"agent"` + `passby` 的降级为 `ask` 未验。
+## ✅ T3.1 客户端写前确认对话框：离线完成（2026-10-12）—— **施工清单 / 八条契约 / 真机未验项已整体迁至 [009-write-ui](../009-write-ui/tasks.md) 的「迁入记录」§1（只迁位置、不删内容）**
 
-## ✅ T3.1 客户端写前确认对话框：离线完成（2026-10-12，零真机、零提权、零写入）
-
-**施工**（新增 5 文件 / 改动 6 文件，全在 `src/client/**`；🔴 `src/elevate/**`、`src/write/**`、`package.json`、`pnpm-lock.yaml` 一行未改）：
-`write-token.ts`（凭据仓库：sessionStorage 命名空间键 + 32B 随机十六进制 + **一次性**显示）、
-`write-channel.ts`（`/write/plan`+`/write/apply` 客户端 + 白名单序列化 + 失败四分类 + 声明读取器）、
-`write-dto.ts`（响应解读：`commandText` **逐字搬运**）、`write-confirm.tsx`（确认对话框 + 提权档置灰）、
-`write-panel.tsx`（预演 → 确认 → 执行状态机）；改动：`wire.ts`（`init.body` 可选字段）、`settings-pipe.ts`（+`writeWriteToken`）、
-`host.ts`（`ClientRuntime.write`）、`index.ts`（组装 wiring）、`pane.tsx` / `pane-settings.tsx`（挂载凭据块 + 写通道块，**挂载期零 IPC**）。
-
-**契约落地（逐条）**：① 凭据默认仍空，由配置页「生成并保存写通道凭据」经 `remote.settings.update('dsh-wsl-docker-ports', {writeToken})` 写入并一次性显示；
-② 客户端存 **sessionStorage**（刷新不丢、不落盘、绝不进日志/审计/错误文案 —— 静态扫描 `console.` 与 `localStorage` 用法 **0 处**）；③ 401 ⇒ 指路 + **不重试**（请求数停在该次）；
-④ 对话框逐条渲染服务端 `steps[].commandText` **原文** + 影响面（`lan` 逐字含「会新增 1 条 portproxy 规则 + 1 条防火墙规则」）+ notes；
-⑤ **未点确认 ⇒ 零请求**（对话框零副作用；apply 只在确认回调里发一次）；⑥ `policy` 为 `none`/`unknown` ⇒ 按钮置灰 + 写明原因；
-⑦ 409/403 ⇒ **重新 plan + 重新要求确认**（不静默重试）；⑧ 客户端只回传 `planId`+`ticket`（+`confirmed:true`/`origin:'user'`）与声明式 target，**命令文本没有入口**。
-
-**判据**：`tsc -p tsconfig.json` **exit 0**；全包 `node --test --test-concurrency=1 "tests/**/*.test.ts"` **386/386（0 fail）**
-（其中 T5.7 由「5 个方法」订正为 **6**：新增的 `writeWriteToken` 是**配置写入**、不是执行/提权入口，`forbidden` 断言未动）；
-`vitest run` **75/75**（7 文件；新增四份共 **44** 条：`write-token` 10 / `write-channel` 11 / `write-confirm` 12 / `write-panel` 11）；
-`lib/client.js` 由既有 esbuild 脚本重建（**123,207 B**，首行自注册形态未变）。
-
-**顺带对齐复选框**：T2.4（订正后判据 + 用例⑦）、T2.5（判据本就是假后端快照断言 + 用例⑤）、T2.6（T2.8 的 `audit` 恰 2 条 + 403 不留审计；T2.9/T2.10 的 401 不记账）、T2.8（本节 PASS 表）改为 `[x]`；
-**T2.7 留空** —— 正文**无任何** PASS 记录提及它的三条红线单测（`redline-guards` / `elevate-script` 里的 `reset` 白名单属 003/005 既有测试，不能拿来勾 008 的 T2.7）。
-
-🔴 **未验（如实）**：**真机 UI（V6）未跑** —— 本轮代理人未开浏览器、未装插件、未起实例、未跑任何 `netsh`/`New-NetFirewallRule`
-⇒「页面上真能点出对话框并弹命令原文」只有**离线渲染证据**；另「配置页按钮写入 → 插件 config 投递」这条链路在真机**未验证**
-（服务端真读到 `writeToken` 已由 T2.9 证实，但把值**写进去**的这步未上真机；UI 文案已明写「若无效应重载插件行」）。
+- **判据（留痕）**：`tsc -p tsconfig.json` **exit 0**；全包 `node --test --test-concurrency=1 "tests/**/*.test.ts"` **386/386（0 fail）**；`vitest run` **75/75**（7 文件；新增四份共 **44** 条：`write-token` 10 / `write-channel` 11 / `write-confirm` 12 / `write-panel` 11）；`lib/client.js` 由既有 esbuild 脚本重建 **123,207 B**（首行自注册形态未变）。
+- **顺带对齐复选框**：T2.4 / T2.5 / T2.6 / T2.8 已按真机 PASS 记录勾选；**T2.7 留空**（正文无任何 PASS 记录 ⇒ 其**专属**判据见上面的 **T2.7b**）。**UI 面（原 T3.2 / V6 / 配置页凭据按钮）归 [009-write-ui](../009-write-ui/README.md)**。
