@@ -33,10 +33,27 @@
 - **反向核对（集成方独立扫描）**：`src/` 下 `writeFile` / `cordis.patch.yml` / `configEditor` **0 命中**；**0 个文件 > 400 行**（最大 `src/plugin.ts` 394）；`peerDependencies.react = ^18.2.0` 且不在 `dependencies`。
 - 🔴 **事故留痕（代理自报，原文已核实于 `scripts/verify-client-loader.mjs` L75–79）**：压 `417 → 327` 行时**搬迁脚本锚点写坏**，连带删掉 `runCanaries` / `checkManifest` / `checkMainBundle` 与一个 `export` 块；**当时未提交、git 无副本**（代理直读 `.git` 对象自证），故按契约**逐条重写** ⇒ `check:client` 判据 **59 → 60**，**文案不可能逐字复原**。⚠️ 这是本轮**唯一真实损失**；我复核后判定**判据有效性不受影响**（重写以 `.d.mts` 复用面 + 消费者断言为据，60/60 与 4 条反控齐全），但**「搬迁/重构脚本必须先备份或先提交」应升级为本仓规矩**。
 - 🔵 **有意偏差（代理声明，我认同）**：`dsh.client.inject: []` / `external: []` 保持真实声明（确认框走原生 HTML 元素，不用 `@deepseek-ai/*` UI 原语 ⇒ §P4 的 external 供应商问题不触发）。
+## 关闭轮复算（2026-10-12；离线复跑，零真机）
+
+- **未勾项口径**：`Select-String -Path 'specs\007-terminal-config-page\tasks.md' -Pattern '^\s*-\s*\[ \]'` ⇒ **0 条**（`T6.1`–`T6.4` 四条均为 `[x]`，原文一字未删）⇒ 关闭前置满足；状态经 **CLI** `leanspec update 007-terminal-config-page --status complete` 由 `in-progress` 转 `complete`（`completed_at` = `2026-10-12T06:54:35.382343900Z`，`transitions` 追加一条；改完逐字节复核：README 行尾仍 LF、本文件行尾仍 CRLF、`loneCR` 0）。
+- **本轮复跑读数（与上文 2026-10-09 读数并列，不覆盖）**：`vitest`（包内 cwd）**35 文件 / 430 passed | 1 skipped（431）· exit 0**（含 T6.1 回归门 `client-config-slot-render` **11 条断言**）· `check-size` **exit 0**（扩面 **266** 文件；最大 `wsl-docker-ports/tests/client/write-result.test.tsx` **396 行** < 400 SHALL）· `check-exports` **exit 0**（运行时 **8/12**、类型 17、合计 25 = 软阈值）· `verify-client-loader` **exit 0**（**60 条判据含 4 条反控**）⇒ 主 bundle **44,317 B**、懒加载 chunk **447,255 B**（`lib/client.js` SHA256 **63663408…** = `934da46` 重建后；上文 **43,537 B** 是 2026-10-09 的冻结值）。
+- **T6.1 反向断言补口径（判据不变）**：**剥注释后**扫 `packages/terminal-profiles/src/**`（47 文件 / 182,249 字节）⇒ `writeFile` **0** / `cordis.patch.yml` **0** / `configEditor` **0**。⚠️ 不剥注释时三词各有命中、**全在注释里**（逐条写「不用它」）⇒ 上文「0 命中」的口径是**代码面**，此处补明，免得被读成「全文件 0 命中」。
+- **真机侧补证（`934da46`，非本轮执行；本轮零真机）**：插件行「配置」按钮 ⇒ 锚点 `innerHTML` **0 → 554 B**、`innerText` **109 字**、`.dtp-*` 节点 **0 → 7** ⇒ **`plugins.row.config` 槽确被宿主提供、自绘页确渲染**。
+- **未验项边界（不许含糊）**：`remote.settings` 的逐字形状、home patch ⇒ 只读、revision 冲突 ⇒ 保留输入、`auto:false` 是否真生效 —— 四者**仍只有离线覆盖**；**002 右栏页**能否在真机直接打开**仍未被直接确认**（只间接证过 `register()` 跑过），本 Spec 的复选框**不依赖**它。
+
+### 可复用教训（各一行留痕）
+
+- **槽位分派函数必须返回「元素」，返回「组件本身」在生产构建下静默空白**：旧写法 `return view === 'summary' ? components.summary : components.page` 让宿主 `entry.component(props)` 拿到一个**函数** ⇒ React 不报错、直接渲染成空面板（真机 `[data-slot="plugins.row.config"]` 的 `innerHTML` 恒为 `""`）；修法 = **调用**选中的组件拿元素（`chosen(ownerProps)`），见 `src/client/config-slot.ts` L89–L107。
+- **回归门必须自带「变异哨兵」（当场证明它能杀掉旧实现），否则是假绿**：`tests/unit/client-config-slot-render.test.tsx` 渲染旧写法并断言 `textContent.length === 0` —— 旧离线用例只断言「分派函数返回了哪个对象」，所以真机空白时它**全绿**。⚠️ 实测 dev/JSDOM 下另可见逐字警告 `Functions are not valid as a React child…`（stderr 1 条），**但它没有被断言**，只是观测输出（生产构建 0 warning）。
+
+### 待办指针（不在本 Spec 修 —— 002 的事）
+
+- 002 的**假告警**：`packages/terminal-profiles/src/client/index.ts` L115–119 在 `apply` 末尾**同步**打「右栏页尚未注册…（不是失败）」⇒ 建议照 `schedulePendingWarn()` 的 **2 s 宽限期**收窄；🔴 **不许**把「warn 消失」当验收判据（正确判据 = 插件行「配置」按钮在锚点有内容）。
+
 ## 真机待办（主人场；与 002/003 同批）
 
-- `remote.settings` 的真机形状核对（§D13 逐字：`{ ok, value, error }`）与 **volatile live 写入 152ms 不重挂载**的现场复现。
-- **home patch 覆盖 ⇒ 只读 + 原因 + 路径**的真机复现（离线只有 `writable:false` / `readOnly:true` 的注入态）。
-- **revision 冲突 ⇒ 保留输入**的真机复现（需并发写触发）。
-- T0.5 装载链路：`plugins.row.config` 槽位是否真被宿主提供、`auto:false` 是否真生效。
+- `remote.settings` 的真机形状核对（§D13 逐字：`{ ok, value, error }`）与 **volatile live 写入 152ms 不重挂载**的现场复现。 ⏳ **仍待真机轮**（本轮的 007 真机复验只证「页面有内容」，**未**读 `remote.settings`；152ms 不重挂载是 002 的 2026-10-08 真机事实，不是本 Spec 的复现）。
+- **home patch 覆盖 ⇒ 只读 + 原因 + 路径**的真机复现（离线只有 `writable:false` / `readOnly:true` 的注入态）。 ⏳ **仍待真机轮**（判据：真机写被拒 ⇒ 表单显示只读原因 + 文件路径，且点保存**不写盘**）。
+- **revision 冲突 ⇒ 保留输入**的真机复现（需并发写触发）。 ⏳ **仍待真机轮**（判据：冲突提示 + 表单**保留**输入，不清空）。
+- T0.5 装载链路：`plugins.row.config` 槽位是否真被宿主提供、`auto:false` 是否真生效。 ✅ **前半句已由 `934da46` 真机关闭**（槽位确被提供、自绘页确渲染：锚点 `innerHTML` **0 → 554 B**、`.dtp-*` **0 → 7**）；⏳ **后半句（`auto:false` 是否真生效）仍待真机轮**。
 
