@@ -36,6 +36,27 @@ export const TERMINAL_TAB_TITLE = '受管终端';
 export const TERMINAL_TAB_SERVICES = ['sidebarRightTabs', 'sidebarRight'] as const;
 
 /**
+ * 空态入口（guide chip）—— **缺陷 B 的最小修复点**（2026-10-12 真机）。
+ *
+ * 🔴 真机症状：页类型注册成功、`openTab('managedTerminal')` 也能真加出标签（`term-title` +
+ * 真面板 `term-pane`），但**用户点不到** —— 右栏开始页只列「工作区文件 / 新建终端 / 端口转发」。
+ * 根因：页类型定义里**没有 `guide`**。对照姊妹包 003（`packages/wsl-docker-ports/src/client/rows.ts:38-69`
+ * 与 `:120-136`）—— 它按官方形状补了 `guide`，本轮 002 侧照抄同一口径。
+ *
+ * 官方形状（离线实物 `0.1.7-rc.2`，逐字，与 003 的注释同源）：
+ *   `deepseek-ai-dsh-client-ui-sidebar-files-0.1.7-rc.2.tgz` → `package/lib/client.js:22-38`：
+ *     guide: [{ id: "workspace", commandId: "workspace.files", order: 10,
+ *               title: () => t("guide.title"), description: () => t("guide.description"), icon: … }]
+ * 位次全集：`files`=10 / `terminal`=20 / `browser`=30 ⇒ 第三方位次取 **40**（不去挤官方的档）。
+ * `icon` **不写**：官方类型只要求 `id`/`order`/`title`，无 `icon` 时 guide 自绘立方体占位符。
+ */
+export const TERMINAL_GUIDE_ENTRY_ID = 'managed-terminal';
+export const TERMINAL_GUIDE_ENTRY_ORDER = 40;
+export const TERMINAL_GUIDE_ENTRY_TITLE = TERMINAL_TAB_TITLE;
+export const TERMINAL_GUIDE_ENTRY_DESCRIPTION =
+  '按 profile 起真 PTY 终端：配置名称、命令、参数与 cwd；开页零副作用';
+
+/**
  * 官方 `0.1.7-rc.2` 已占用的 **9 个** kind（`client-contract.md` §P1 逐个带出处）。
  * 保留在此是为了让「不与官方重名」这条判据**可二值断言**（并附官方 `terminal` 与我们的差异）。
  */
@@ -51,6 +72,18 @@ export const OFFICIAL_TAB_KINDS = [
   'subagentchat',
 ] as const;
 
+/**
+ * 空态入口（guide chip）的窄接口。官方类型只要求 `id` / `order` / `title`
+ * （`package/lib/types/client/tab-registry.d.ts`，003 的注释已逐字引过；`icon` 可选、本包不写
+ * —— 无 `icon` 时 guide 自绘立方体占位符）。
+ */
+export interface SidebarRightGuideEntryLike {
+  readonly id: string;
+  readonly order: number;
+  readonly title: () => string;
+  readonly description?: (() => string) | undefined;
+}
+
 /** `SidebarRightTabDefinition` 的窄接口（§C9 原文：`id`/`kind` 必填，`title` 是函数） */
 export interface SidebarRightTabDefinitionLike {
   readonly id: string;
@@ -58,6 +91,11 @@ export interface SidebarRightTabDefinitionLike {
   readonly multiple: boolean;
   readonly keepMounted: boolean;
   readonly title: (address: string) => string;
+  /**
+   * 空态入口（右栏「开始页」里可点的胶囊）。🔴 **不写它 ⇒ 用户无可发现入口**（缺陷 B 的真机症状）：
+   * 页只在程序化 `openTab` 之后才出现在页签上。形状与位次依据见上方 `TERMINAL_GUIDE_ENTRY_*`。
+   */
+  readonly guide?: readonly SidebarRightGuideEntryLike[] | undefined;
 }
 
 /** 槽位注册的 options（keyed 槽：`name` + `key`） */
@@ -166,6 +204,18 @@ export function buildTabDefinition(): SidebarRightTabDefinitionLike {
     /** 关 tab ≠ 杀实例：保留挂载态，重开时走快照恢复（REQ-12.3） */
     keepMounted: true,
     title: (address: string) => (address === '' ? TERMINAL_TAB_TITLE : `${TERMINAL_TAB_TITLE} · ${address}`),
+    /**
+     * 🔴 缺陷 B 的最小修复点：空态入口。文案一律写成 thunk（官方每次使用都重读，见 003 的注释）。
+     * 少了这一项，右栏「开始页」里就**没有**「受管终端」这一颗胶囊 ⇒ 用户只能靠程序化 `openTab` 开页。
+     */
+    guide: [
+      {
+        id: TERMINAL_GUIDE_ENTRY_ID,
+        order: TERMINAL_GUIDE_ENTRY_ORDER,
+        title: () => TERMINAL_GUIDE_ENTRY_TITLE,
+        description: () => TERMINAL_GUIDE_ENTRY_DESCRIPTION,
+      },
+    ],
   };
 }
 

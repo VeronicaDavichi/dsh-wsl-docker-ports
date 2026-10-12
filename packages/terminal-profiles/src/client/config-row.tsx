@@ -19,6 +19,12 @@ export interface ConfigRowProps {
   readonly index: number;
   /** 该行的错误（结构 / 转换；空数组 = 这一行没问题） */
   readonly problems: readonly string[];
+  /**
+   * 只读态（REQ-10.3）：`true` ⇒ 本行**不可编辑**（输入框与行内删除按钮都 `disabled`）。
+   * 🔴 2026-10-12 缺陷 A：旧实现即使页面已判定只读，**表单看起来仍然完全可编辑**
+   * （真机上用户先看到的是一张能随便填的表单）；锁住编辑控件才是「只读态」的一半。
+   */
+  readonly readOnly?: boolean | undefined;
   onChange(index: number, row: EditableRow): void;
   onRemove(index: number): void;
 }
@@ -33,9 +39,9 @@ const FIELD_LABEL: Readonly<Record<EditableField, string>> = {
   env: 'env',
 };
 
-export function ConfigRow({ row, index, problems, onChange, onRemove }: ConfigRowProps): ReactElement {
+export function ConfigRow({ row, index, problems, readOnly = false, onChange, onRemove }: ConfigRowProps): ReactElement {
   return (
-    <div className="dtp-config-row" data-testid={`cfg-row-${index}`} data-row-index={index}>
+    <div className="dtp-config-row" data-testid={`cfg-row-${index}`} data-row-index={index} data-readonly={readOnly ? 'true' : 'false'}>
       <div className="dtp-config-row-head">
         <span className="dtp-config-row-title">
           第 {index + 1} 条 profile
@@ -46,6 +52,7 @@ export function ConfigRow({ row, index, problems, onChange, onRemove }: ConfigRo
           className="dtp-config-remove"
           data-testid="btn-profile-remove"
           data-row-index={index}
+          disabled={readOnly}
           onClick={() => {
             onRemove(index);
           }}
@@ -62,6 +69,7 @@ export function ConfigRow({ row, index, problems, onChange, onRemove }: ConfigRo
             data-row-index={index}
             placeholder={FIELD_PLACEHOLDER[field]}
             value={row[field]}
+            disabled={readOnly}
             onChange={(event) => {
               onChange(index, withField(row, field, event.target.value));
             }}

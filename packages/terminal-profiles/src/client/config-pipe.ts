@@ -3,26 +3,23 @@
  *
  * ## 唯一管道
  *
- * 客户端**没有** `ctx.settings` / `ctx.configEditor`；写配置只走宿主服务
- * `ctx.get('remote.settings')` 的 `describe()` + `update(ns, patch, expectedRevision)`
- * （**首选服务**，零新路由、零鉴权面）。本文件**没有**任何 YAML 字符串拼接 —— patch 是结构化对象，
- * 落盘由宿主负责（REQ-10.2：本包 SHALL NOT 自行读写/拼接/重写 YAML）。
+ * 客户端**没有** `ctx.settings` / `ctx.configEditor`；写配置只走宿主服务 `ctx.get('remote.settings')`
+ * 的 `describe()` + `update(ns, patch, expectedRevision)`（零新路由、零鉴权面）。本文件**没有**任何 YAML
+ * 字符串拼接 —— patch 是结构化对象、落盘由宿主负责（REQ-10.2：本包 SHALL NOT 自行读写/拼接/重写 YAML）。
  *
  * ## 三个可断言的理由（都是二值判据，别当风格）
  *
  * 1. **不重挂载**：绝不碰 `ctx.configEditor.edit()`（那是**完整配置**路径，官方原文
  *    `ordinary fields retain Loader's normal lifecycle` ⇒ 会重挂载、杀光正在跑的终端）。
- * 2. **零提权/零路由**：本模块不 import `./TerminalPane` / 不 fetch / 不碰 `node:*`
- *    ⇒ 「保存配置」这条路径上不可能顺带做别的动作。
- * 3. **失败是结果不是抛**：`update` 的失败、只读、revision 冲突全部变成**判别联合**，
- *    由页面决定怎么显示（REQ-10.3 / REQ-10.4），不靠异常穿过 React 渲染。
+ * 2. **零提权/零路由**：本模块不 import `./TerminalPane` / 不 fetch / 不碰 `node:*`。
+ * 3. **失败是结果不是抛**：`update` 的失败、只读、revision 冲突全部变成**判别联合**（REQ-10.3/10.4）。
  *
- * ## 形状未验证 ⇒ 处处多重候选读取
+ * ## 形状未验证 ⇒ 处处多重候选读取；🔴 缺陷 A（查证原文见 `tests/unit/client-config-readonly.test.tsx` 头）
  *
- * `describe()` 除 `{ namespaces: [{ ns, value }] }` 之外的形状**没有实物证据**（contract §D13 只给了
- * 这一层）。故：revision / 可写性 / 文件路径 / 唯一寻址标记全部**按候选名逐个试**，一处都没有就
- * **明说「宿主未提供」**，绝不伪造一个值。`tests/unit/client-config-pipe.test.ts` 把每个候选形状都
- * 喂一遍（并打印扫过的候选数）。
+ * `describe()` 除 `{ namespaces: [{ ns, value }] }` 之外的形状**没有实物证据** ⇒ revision / 可写性 /
+ * 路径 / 唯一寻址标记全部**按候选名逐个试**，一处都没有就**明说「宿主未提供」**，绝不伪造。
+ * 真机载荷 = `{writable:true, hasDocument:true, namespaces:[…21 条…]}`：21/21 条**不带**可写性字段、
+ * **无路径**，而写入**确实被拒** ⇒ **唯一可得信号 = 拒绝原文**（`isReadOnlyRefusal`）、路径如实降级。
  */
 
 import { parseRowStructure } from '../config/row-rules.ts';
@@ -96,6 +93,34 @@ export interface ReadOnlyNotice {
   readonly path: string;
 }
 
+/**
+ * 「宿主未提供配置文件路径」的**唯一**字面量（真机降级，绝不伪造路径）。宿主**有**路径
+ * （`dsh-settings/lib/index.js:399-408` 的 `documentPath`），但唯一的远端出口
+ * `settings/openSettingsDocument` 只回 `{opened:true}`（`dsh-api-settings-controller/lib/index.js:441-459`，
+ * 且副作用是打开系统编辑器），`configEditor` 也不在远端命名空间里 ⇒ **客户端取不到**。两个可选口径：
+ * ① 改 REQ-10.3 措辞 ② 只回显可得字段（原因 + `details.ns`）—— 本实现取 ②，**不擅自改 requirements**。
+ */
+export const READONLY_PATH_UNKNOWN = '（宿主未提供配置文件路径）';
+
+/**
+ * 「写入被拒」里属于**只读**（本行被上层 patch 覆盖）的那一类，判据用**宿主自己的词汇**：
+ * `dsh-config-editor/lib/index.js:122` 逐字原文 `… is overridden by a home patch or command-line overlay`
+ * （真机实测同句）。⚠️ **故意不匹配裸的「只读 / read-only」**（`磁盘只读` 是存储故障，误判会锁死表单）。
+ */
+export const READ_ONLY_REFUSAL_PATTERN =
+  /overridden by a home patch|command-line overlay|read[-\s]?only provider|provider is read[-\s]?only/i;
+
+/** 这个拒绝是不是「只读」那一类（字符串 / 对象两种错误形态都认；认不出 = false，绝不猜） */
+export function isReadOnlyRefusal(error: unknown): boolean {
+  const text = typeof error === 'string' ? error : firstString(asRecord(error) ?? {}, [...REASON_CANDIDATES, 'code', 'name']);
+  return text === undefined ? false : READ_ONLY_REFUSAL_PATTERN.test(text);
+}
+
+/** 把「只读拒绝」变成给页面显示的提示：**原因取宿主原文**，路径如实降级（不伪造） */
+export function readOnlyNoticeFrom(error: unknown): ReadOnlyNotice {
+  return { reason: describeError(error), path: READONLY_PATH_UNKNOWN };
+}
+
 /** 宿主对「本行是否满足唯一寻址」的说法（REQ-10.5；`undefined` = 宿主没说 ⇒ 不展示限制） */
 export interface AddressabilityNotice {
   readonly reason: string;
@@ -136,6 +161,10 @@ export type SaveOutcome =
       readonly skipped: readonly RowProblem[];
       readonly revisionPassed: boolean;
     }
+  /**
+   * 只读 ⇒ **未写入**。两条来源：① 读配置时宿主就说了不可写；② 写入**被拒**且拒绝原文属于
+   * 「本行被上层 patch 覆盖」（缺陷 A 的真机路径）。页面收到后**粘性**进入只读态（不被后续读取解除）。
+   */
   | { readonly kind: 'readonly'; readonly notice: ReadOnlyNotice; readonly skipped: readonly RowProblem[] }
   /** 校验失败（**全部**行都有问题 ⇒ 一个字节都不写，免得更坏地清空既有配置） */
   | { readonly kind: 'invalid'; readonly message: string; readonly skipped: readonly RowProblem[] }
@@ -240,7 +269,7 @@ export function readNamespaceState(described: SettingsResponse): NamespaceState 
     if (writable === false || flagged === true) {
       readOnly = {
         reason: firstString(source, REASON_CANDIDATES) ?? '宿主拒绝写入（本行被上层 patch 覆盖或当前为只读）',
-        path: firstString(source, PATH_CANDIDATES) ?? firstString(outer ?? {}, PATH_CANDIDATES) ?? '（宿主未提供配置文件路径）',
+        path: firstString(source, PATH_CANDIDATES) ?? firstString(outer ?? {}, PATH_CANDIDATES) ?? READONLY_PATH_UNKNOWN,
       };
       break;
     }
@@ -343,6 +372,8 @@ export function createConfigPipe(getSettings: () => RemoteSettingsLike | undefin
       // 007 是本缺陷的**同款**（009 已在 `settings-pipe.ts` 修过同一处），此处只对齐写法、不改语义。
       result = await service.update(SETTINGS_NAMESPACE, { [CONFIG_PATCH_FIELD]: valid }, expectedRevision);
     } catch (error) {
+      // 抛出来的拒绝同样要认（真机走的是 `{ok:false, error}` 那一支，但宿主也可能直接抛）
+      if (isReadOnlyRefusal(error)) return { kind: 'readonly', notice: readOnlyNoticeFrom(error), skipped };
       return { kind: 'failed', message: `写入配置失败：${describeError(error)}`, skipped };
     }
     if (result.ok === true) {
@@ -355,6 +386,12 @@ export function createConfigPipe(getSettings: () => RemoteSettingsLike | undefin
         skipped,
       };
     }
+    /**
+     * 🔴 **缺陷 A 的最小修复点**：旧实现把这句拒绝归成 `failed` ⇒ 页面只说「写入配置失败：…」、不进只读态、
+     * 不锁表单（真机症状）；现在归成 `readonly`（页面据此**粘性**只读）。⚠️ 这一支确实调过一次 `update`
+     * （拒绝就是信号本身），但**零字节落盘**（宿主拒绝 ⇒ patch sha 不变，真机已证）。
+     */
+    if (isReadOnlyRefusal(result.error)) return { kind: 'readonly', notice: readOnlyNoticeFrom(result.error), skipped };
     return { kind: 'failed', message: `写入配置失败：${describeError(result.error)}`, skipped };
   }
 

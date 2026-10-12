@@ -2,8 +2,9 @@
  * T4.1 右栏页类型 + 两个 keyed seat（REQ-4.1/4.2/4.4/4.5）—— **纯函数 + 记账替身**，零 DOM。
  *
  * 判据（每条都能被一处改动打红）：
- *   ① `buildTabDefinition()` 的形状 = `{id, kind, multiple, keepMounted, title}`，**没有 `priority`**
- *      （留空落宿主默认 `extension` 档，不抢官方 `builtin`）；
+ *   ① `buildTabDefinition()` 的形状 = `{id, kind, multiple, keepMounted, title, guide}`，**没有 `priority`**
+ *      （留空落宿主默认 `extension` 档，不抢官方 `builtin`）；🔴 `guide` 由缺陷 B 轮补入（2026-10-12 真机：
+ *      没有它用户点不到本页），其**形状与位次的专门判据**在 `client-tab-guide.test.ts`；
  *   ② `kind = managedTerminal` 且**不与官方 9 个 kind 重名**（空集比较不算 ⇒ 同时断言官方名单长度与内容）；
  *   ③ `title(address)` 两个分支（空地址 / 带地址）；
  *   ④ 两个 seat 的 `name` + `key`（key = `definition.id`），且**注册顺序**是「页类型在前」；
@@ -31,15 +32,16 @@ import { createClientCtx } from '../helpers/client-fixtures.ts';
 const COMPONENTS = { pane: 'PANE', title: 'TITLE' } as const;
 
 describe('T4.1 页类型定义（纯函数）', () => {
-  it('形状恰好 {id, kind, multiple, keepMounted, title} —— priority 必须缺省（extension 档）', () => {
+  it('形状恰好 {id, kind, multiple, keepMounted, title, guide} —— priority 必须缺省（extension 档）', () => {
     const definition = buildTabDefinition();
-    expect(Object.keys(definition).sort()).toEqual(['id', 'keepMounted', 'kind', 'multiple', 'title']);
+    expect(Object.keys(definition).sort()).toEqual(['guide', 'id', 'keepMounted', 'kind', 'multiple', 'title']);
     expect('priority' in definition).toBe(false);
     expect(definition.id).toBe(TERMINAL_TAB_ID);
     expect(definition.kind).toBe(MANAGED_TERMINAL_KIND);
     expect(definition.multiple).toBe(true);
     expect(definition.keepMounted).toBe(true);
     expect(typeof definition.title).toBe('function');
+    expect(Array.isArray(definition.guide)).toBe(true);
   });
 
   it('kind 不与官方 9 个 kind 重名（先证官方名单非空含 terminal，避免空集比较）', () => {

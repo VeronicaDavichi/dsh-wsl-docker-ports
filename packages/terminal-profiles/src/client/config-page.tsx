@@ -12,6 +12,21 @@
  * 4. **容错**（T6.4）：有问题的行**只**标红并排除出 patch，其余行照常保存；
  *    文案明示「改 cwd 只影响新建实例」。
  *
+ * ## 🔴 2026-10-12 缺陷 A：只读态的真机可达路径（本轮修复）
+ *
+ * 真机上 `describe()` **给不出**逐命名空间可写性（外层 `writable` 是恒真桩、namespace 不带任何
+ * 可写性字段、全载荷无路径 —— 查证见 `config-pipe.ts` 文件头）⇒ 只读态**只能**由「写入被拒」触发。
+ * 修复前那条拒绝落在 `failed` 分支：页面只说「写入配置失败：…」，**不**进只读态；而且**即使**
+ * 已判定只读，编辑控件也没有 `disabled` ⇒ 真机上渲染成**完全可编辑**的表单（正是缺陷症状）。
+ *
+ * 现在两条都补上：① `saveProfiles` 把「被上层 patch 覆盖」的拒绝归成 `readonly`（见 `config-pipe.ts`）
+ * ⇒ 本组件第 179 行那一支**粘性**设置 `readOnly`（只设不清）；② `readOnly !== undefined` ⇒ 编辑控件
+ * 全锁（`ConfigRow` 的 `disabled`、「新增 profile」`disabled`），并在根节点留 `data-readonly` 给门断言。
+ *
+ * ⚠️ **保留「保存」按钮可点**（故意）：只读态下点它正是 REQ-10.3 的「**不写盘**」证据面（`commit()`
+ * 早退 ⇒ `updateCount` 不增长），也是既有关（`client-config-page.test.tsx` T6.3）逐字断言的行为。
+ * 锁住的是**编辑面**（输入框 / 删除 / 新增），不是「问一句为什么不能存」。
+ *
  * ## 状态全在本组件（行编辑器是受控子件）
  *
  * `rows` / `notice` / `readOnly` / `limitation` / `confirming` 五个 state 就是全部；没有第二个真相源，
@@ -23,7 +38,7 @@ import type { ReactElement } from 'react';
 
 import { parseRowStructure } from '../config/row-rules.ts';
 import { ConfigRow } from './config-row.tsx';
-import { CONFIG_PATCH_FIELD, DEFAULT_LIVENESS } from './config-pipe.ts';
+import { CONFIG_PATCH_FIELD, DEFAULT_LIVENESS, READONLY_PATH_UNKNOWN } from './config-pipe.ts';
 import type { ConfigPipe, FieldLiveness, ReadOnlyNotice } from './config-pipe.ts';
 import { draftRow, emptyRow, fromRawRow } from './config-row-model.ts';
 import type { EditableRow } from './config-row-model.ts';
@@ -57,8 +72,20 @@ export interface ConfigPageProps {
   readonly initialRows?: readonly EditableRow[] | undefined;
 }
 
-/** 逐行问题：转换层（`draftRow().problems`）与结构层（`parseRowStructure`）合成一份 */
-export function collectRowProblems(
+/**
+ * 只读提示文案（REQ-10.3）：**原因一定要有**（宿主拒绝原文）；路径**宿主给得出才写**，
+ * 给不出就如实写「宿主未提供」—— 为什么不伪造路径见 `config-pipe.ts` 的 `READONLY_PATH_UNKNOWN`
+ * 源码查证（线上 `describe` 载荷无路径、唯一远端出口只回 `{opened:true}`）。
+ *
+ * 本函数**故意不导出**：它是页面内部的文案口径，不进包的运行时导出面（导出预算见 001 REQ-6.4）。
+ */
+function readOnlyNoticeText(notice: ReadOnlyNotice): string {
+  return notice.path === READONLY_PATH_UNKNOWN
+    ? `未写入：${notice.reason}（配置文件路径：宿主未提供）`
+    : `未写入：${notice.reason}（配置文件：${notice.path}）`;
+}
+
+/** 逐行问题：转换层（`draftRow().problems`）与结构层（`parseRowStructure`）合成一份 */export function collectRowProblems(
   rows: readonly EditableRow[],
 ): { readonly problems: ReadonlyMap<number, readonly string[]>; readonly drafts: readonly ReturnType<typeof draftRow>[] } {
   const collected = new Map<number, string[]>();
@@ -142,7 +169,7 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
     setConfirming(undefined);
     if (readOnly !== undefined) {
       // 只读已判定 ⇒ **一个字节都不写**（`pipe.updateCount()` 保持不动）
-      setNotice({ kind: 'readonly', message: `未写入：${readOnly.reason}（${readOnly.path}）` });
+      setNotice({ kind: 'readonly', message: readOnlyNoticeText(readOnly) });
       return;
     }
     const collected = collectRowProblems(rows);
@@ -178,7 +205,7 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
     }
     if (outcome.kind === 'readonly') {
       setReadOnly(outcome.notice);
-      setNotice({ kind: 'readonly', message: `未写入：${outcome.notice.reason}（${outcome.notice.path}）` });
+      setNotice({ kind: 'readonly', message: readOnlyNoticeText(outcome.notice) });
       return;
     }
     if (outcome.kind === 'conflict') setNotice({ kind: 'conflict', message: outcome.message });
@@ -197,14 +224,26 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
     void commit();
   }
 
+  /**
+   * 只读态 ⇒ **编辑面全锁**（缺陷 A 的「不可编辑」半边）。
+   * 判据来源有两处且都汇到同一个状态：读配置时宿主说不可写（`:110`），或写入被拒（`:180`）。
+   */
+  const locked = readOnly !== undefined;
+
   return (
-    <div className="dtp-config" data-testid="cfg-page" data-loading={loading ? 'true' : 'false'}>
+    <div
+      className="dtp-config"
+      data-testid="cfg-page"
+      data-loading={loading ? 'true' : 'false'}
+      data-readonly={locked ? 'true' : 'false'}
+    >
       <div className="dtp-config-head">
         <span className="dtp-config-title">终端 profile 配置</span>
         <button
           type="button"
           className="dtp-config-add"
           data-testid="btn-profile-add"
+          disabled={locked}
           onClick={() => {
             touched.current = true;
             setRows((current) => [...current, emptyRow()]);
@@ -226,7 +265,9 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
       {readOnly === undefined ? null : (
         <div className="dtp-config-readonly" data-testid="cfg-readonly">
           <span>只读：{readOnly.reason}</span>
-          <span className="dtp-config-path">配置文件：{readOnly.path}</span>
+          <span className="dtp-config-path">
+            {readOnly.path === READONLY_PATH_UNKNOWN ? '配置文件路径：宿主未提供' : `配置文件：${readOnly.path}`}
+          </span>
         </div>
       )}
 
@@ -282,6 +323,7 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
             row={row}
             index={index}
             problems={problems.get(index) ?? []}
+            readOnly={locked}
             onChange={updateRow}
             onRemove={removeRow}
           />

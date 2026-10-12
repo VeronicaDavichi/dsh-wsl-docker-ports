@@ -57,3 +57,12 @@
 - **revision 冲突 ⇒ 保留输入**的真机复现（需并发写触发）。 ⏳ **仍待真机轮**（判据：冲突提示 + 表单**保留**输入，不清空）。
 - T0.5 装载链路：`plugins.row.config` 槽位是否真被宿主提供、`auto:false` 是否真生效。 ✅ **前半句已由 `934da46` 真机关闭**（槽位确被提供、自绘页确渲染：锚点 `innerHTML` **0 → 554 B**、`.dtp-*` **0 → 7**）；⏳ **后半句（`auto:false` 是否真生效）仍待真机轮**。
 
+## 缺陷 A 离线修复轮（2026-10-12；🔴 **零真机** —— 真机复验已延后到下一批）
+
+- **根因（真机症状 + 宿主源码双向确定）**：`settings/describe` 的线上载荷 = `{writable,hasDocument,namespaces}`；外层 `writable` 是**恒真桩**（`dsh-settings/lib/index.js:395-398`，真机实测恒 `true`）、`SettingsNamespaceView` 字段表**没有**可写性/路径、`hasDocument` 注释逐字 *"without exposing its Host path"* ⇒「本行被 home patch / `--patch` 覆盖」在**载荷里读不出来**。旧实现把拒绝（宿主原文 `dsh-config-editor/lib/index.js:122`：`Configuration for "dsh-terminal-profiles" is overridden by a home patch or command-line overlay`）归进 `failed` ⇒ 页面只说「写入配置失败：…」，**表单仍完全可编辑**（= 条款 REQ-10.3 的真机反例）。
+- **最小修复**：`src/client/config-pipe.ts` 新增 `isReadOnlyRefusal()` —— **只认宿主自己的词汇**（`overridden by a home patch` / `command-line overlay` / `read-only provider`；**故意不认裸的「只读 / read-only」**，免得把 `磁盘只读` 这类存储故障误锁成永久只读）⇒ 该拒绝归成 `readonly`；`config-page.tsx` 据此**粘性**只读 + 根节点 `data-readonly`；`config-row.tsx` 新增 `readOnly` ⇒ 输入框 / 行内删除 / 「新增 profile」全 `disabled`（「保存」**故意保留可点** —— 它是「不写盘」的证据面：第二次点击零 `update`）。⚠️ 语义边界：判定**必须**靠第一次被拒（载荷无线索），该次 `update` **零字节落盘**（宿主拒绝 ⇒ patch 文件 sha 不变，真机已证）。
+- **路径**：宿主**有** `documentPath`（`dsh-settings/lib/index.js:399-408`）但**客户端取不到**（唯一远端出口 `settings/openSettingsDocument` 只回 `{opened:true}` 且副作用是打开系统编辑器，`configEditor` 不在远端命名空间）⇒ 文案用 `（宿主未提供配置文件路径）` **如实降级、不伪造路径**。两个**可选口径**（本轮**未改 requirements**，等主人拍板）：① 改 REQ-10.3 措辞（路径降为「若宿主提供」）② 只回显可得字段（原因 + `details.ns`）；本实现取 ②。
+- **回归门 + 变异哨兵**：`tests/unit/client-config-readonly.test.tsx`（6 例 / **33 断言**）用**真机载荷逐字夹具**（`B2-…-with-overlay.raw.json`，34,521 B / sha256 `BE00EE3D…`）断言「载荷无线索 ⇒ 只认拒绝」+「页面不可编辑 + 原因显示」；哨兵逐字复刻旧行为（`failed`）并打印 `cfg-readonly=缺失 data-readonly=false input.disabled=false` ⇒ 旧实现**当场判错**。
+- **离线门（cwd = `packages/terminal-profiles`，实测）**：`tsc` **exit 0** · `vitest` **37 文件 / 440 passed | 1 skipped（441）· exit 0**（= 基线 35/430|1 **加上本缺陷两个新门文件**）· `check-size` **exit 0**（`config-pipe.ts` **399 行 / 400** —— 仅 1 行余量，**下次改动必须先拆模块**）· `verify-client-loader` **exit 0**（60 条判据；⚠️ 校验对象是**未重建**的 `lib/`，**不含**本轮源码改动，按派单「不重建 lib/」）。
+- ⏳ **未验（全部延后到下一批真机轮）**：真机被拒 ⇒ 表单只读 + 原因的**现场**渲染（DOM/a11y 前后对照）、本轮 patch sha 不变的复跑、revision 冲突真机复现。
+

@@ -271,3 +271,13 @@ T5.1–T5.4 **已整体迁至 [004-terminal-agent-surface](../004-terminal-agent
 **处置**：
 - V1 / V3 ⇒ 状态改为「**仅应用内可验**（CLI 侧永久不可验）」；**不记为通过**；将来在应用内正式装上本仓插件时再顺手确认。
 - V2 ⇒ 正向分支（服务准时到达 ⇒ **零** warn）**同因不可验**；**已验的是降级分支**：真机 0 error + 恰 1 条我们自己写明「不是失败」的提示、不崩不静默 ⇒ 注册路径由单测（假 sidebar 服务）覆盖。
+
+### 🔴 缺陷 B 离线修复轮（2026-10-12；**零真机** —— 真机复验延后到下一批）+ 对上文 L141 判据的**订正痕（原文保留）**
+
+- **缺陷（真机症状）**：`openTab('managedTerminal')` 能真加出本页（`term-title` + 真面板 `term-pane`），但右栏**开始页**里只有「工作区文件 / 新建终端」，用户**在 UI 里点不到**本页。
+- **根因（file:line）**：`packages/terminal-profiles/src/client/tab.ts` 的 `buildTabDefinition()` **没有 `guide`** —— 页类型注册成功 ≠ 有可发现入口；同形对照 = `packages/wsl-docker-ports/src/client/rows.ts:120-136` 的 `portsTabDefinition()`（**有** `guide:[{id:'ports',order:40,…}]`，官方形状引文见同文件 L38-69）。
+- **最小修复**：`buildTabDefinition()` 补 `guide:[{id:'managed-terminal',order:40,title:()=>…,description:()=>…}]`。文案一律 **thunk**（官方每次使用都重读）；`order=40` **大于**官方 files=10 / terminal=20 / browser=30，不挤官方档位；**不写 `icon`**（官方类型只要求 `id`/`order`/`title`，缺 `icon` 时 guide 自绘占位符）。
+- 🔴 **订正痕（原文保留）**：上文 L141 记的 T4.1 判据「形状恰 `{id,kind,multiple,keepMounted,title}`」**自本轮起已不完整** —— 现为 `{id,kind,multiple,keepMounted,title,guide}`；`tests/unit/client-tab.test.ts` 的对应断言已同步。**不删原文**，以本行为准。
+- **回归门 + 变异哨兵**：`tests/unit/client-tab-guide.test.ts`（4 例 / **14 断言**）用**同一份判据函数**同时判「定义对象里那一份」与「真注册给宿主的那一份」（防只在纯函数里好看）；哨兵逐字复刻修复前的定义（无 `guide`）并打印 `旧实现（无 guide）⇒ 违反 1 条：页类型没有 guide ⇒ 右栏开始页里没有入口，用户点不到（缺陷 B 的真机症状）；修好后 ⇒ 违反 0 条`。
+- **离线门（cwd = `packages/terminal-profiles`，实测）**：`tsc` **exit 0** · `vitest` **37 文件 / 440 passed | 1 skipped（441）· exit 0** · `check-size` **exit 0** · `verify-client-loader` **exit 0**（60 条判据；⚠️ 校验对象是**未重建**的 `lib/`）。
+- ⏳ **未验，且本修复不关闭上文 V1**（「胶囊出现 + 点得进去」）—— V1 按上面三条证据（E1–E3）**只能在应用内验**，本轮**零真机** ⇒ 真机点开对照（DOM/a11y 前后）**延后到下一批**。先例诚实标注：003 的 `680a445` 用**同一形状**修过同款缺陷，但其「点了能开」**同样尚无真机取证**；本轮依据 = 官方 bundle 的 guide 形状引文 + 同一条注册路径。
