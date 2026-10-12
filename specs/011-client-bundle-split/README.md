@@ -1,0 +1,103 @@
+---
+status: planned
+created: 2026-10-12
+priority: medium
+tags:
+- dsh-plugin
+- wsl
+- docker
+- client-bundle
+- lazy-loading
+- performance
+depends_on:
+- 003-wsl-docker-ports
+created_at: 2026-10-12T09:39:07.692106800Z
+updated_at: 2026-10-12T09:40:15.595877700Z
+---
+# 客户端主包瘦身：渲染面 + 写路径内核移入 `require.async` 懒加载 chunk（≤ 64 KiB 硬门）
+
+**类型**: 需求驱动（requirements-first）
+**状态**: planned（**2026-10-12 立项**）；🔴 **本轮只立项、不实现** —— 零产品代码、零实例、零 `pnpm`、零 `lib/` 重建
+**优先级**: medium（与母 Spec 同档：本 Spec 的对象是 003 面的**交付形态**，不是新功能面）
+**包名**: `dsh-wsl-docker-ports`（与 003 / 005 / 008 / 009 / 010 **同一个包**；本 Spec 只占「客户端半的**打包形态**」这一面）
+**位置（预期，未落地）**: `packages/wsl-docker-ports/` —— 构建入口的懒加载切分点（`src/client/**`）· 产物字节断言 · 取块失败时的降级态
+**依赖**: [003-wsl-docker-ports](../003-wsl-docker-ports/README.md)（`depends_on`，**建 Spec 时由 CLI 写入** —— 事后无工具路径）；本包 client 半属 **003 面**
+
+## 1. 为什么单独立项
+
+- 🔴 **越门事实（实测，直接引用）**：本包 `lib/client.js` = **144,149 B**、**无 chunk**（`require.async` **0 处**）⇒ 越 §P2 的 **64 KiB** 上限共 **78,613 B = 2.20×**。
+- **不是打包配置的错**：§P2 的 ① 不含 xterm ✓、② **不含内联 React** ✓（`require` 仅 `react` / `react/jsx-runtime`；`node_modules` 输入 **0** ✓）⇒ **打包配置无缺陷**，纯**体积**问题。
+- **越线不是任何单个 Spec 的缺陷**（逐提交重建实测，方法自证）：初始 client 半 `8bfb6fb` = **83,709 B**（**第一天即 > 64 KiB** ✗）、`003 面` +3,365、`008 面` +36,133（**25.1%**）、`009 面` +20,942（**14.5%**）⇒ 四段**逐字节闭合**为 144,149 B ✓、**越线早于 008/009** ✓。
+- ⇒ 需要一份**跨面**的瘦身立项（把「渲染面 + 写路径内核」一起移出），而不是让 008 / 009 各自背账。
+
+## 2. 范围
+
+把**渲染面 + 写路径内核**移入 `require.async` chunk；**保持** tab 注册常驻、**保持** 009 的 a11y 加固与 002 的会话语义不变 ✓；目标 = 主包 ≤ **64 KiB**（**先做到 ≤ 64 KiB**，若余量不足再谈上限，**禁止**先塞后抬 ✗）。
+
+### 2.1 做
+
+- **切出（渲染面 7 个模块，72,126 B）**：`pane.tsx` 15,315 · `pane-settings.tsx` 14,387 · `pane-tables.tsx` 10,680 · `page.ts` 8,782 · `write-panel.tsx` 8,753 · `write-confirm.tsx` 8,342 · `write-result.tsx` 5,867
+- **切出（写路径内核，与渲染面合计 98,501 B）**：`write/plan.ts` 13,321 · `ownership` 3,359 · `diff/managed-ports-parse` 2,778 · `write/scope-note` 2,523 · `write/firewall` 2,001 · `wire` 1,135 · `diff/port-presets` · `transport/constants`
+- **常驻主包（tab 注册面，27,783 B）**：`rows.ts` 9,643 + `write-channel` / `write-token` / `settings-pipe` 18,140
+- **产物断言**：主包字节 ≤ 65,536、`require.async` 命中 ≥ 1、上述常驻模块仍在主包
+- **降级设计**：取块失败 / 离线时**可解释降级**（不白屏、不静默）
+
+### 2.2 非目标（明示不做）
+
+不重构 UI、不改交互、不动 §P2 的 ①②（已绿 ✓）、不引入新依赖、不做 `terminal-profiles` 的拆分（那是**另一份账** ✓）。
+
+- **不做**：016/009 的 UI 结构重排、组件拆分、样式改写（切块**只搬字节，不改行为**）
+- **不做**：`packages/terminal-profiles/` 的 bundle 拆分 —— 本 Spec 只谈 `dsh-wsl-docker-ports`；跨包复用口径属**另一份账**
+- **不做**：抬 §P2 上限、把直接判据换回比例代理（口径 SSoT = [client-contract.md §P2](../../client-contract.md)）
+- **不做**：`xterm` / React 相关的构建配置改动（①② 已验证为绿，**无缺陷可修**）
+
+## 3. 切割账（据给定事实推算，**非真构建**）
+
+| 方案 | 切出 | 主包（给定值） | 余量 | 判定 |
+| --- | --- | --- | --- | --- |
+| 只切渲染面（7 模块） | 72,126 B | ≈ **70,246 B** | **−4,710 B** | ✗ **不达门** |
+| 渲染面 + 写路径内核（98,501 B） | 98,501 B | ≈ 43,871 B | — | 中间态 |
+| ↑ 再计入被**同步 import** 拉回主包的 5,171 B | — | ≈ **49,042 B** | **+16,494 B（≈16.5 KB）** | ✅ **达门**，chunk ≈ **90–99 KB** |
+
+- **4 条「留主包的模块同步 import」边（合计 5,171 B）**：`managed-ports-parse` ← `rows.ts` / `write-channel`（2,778）· `port-presets` ← `rows.ts` · `wire` ← `route-source`（1,135）· `transport/constants` ← `write-channel` ⇒ 这 4 个模块**即使切出也会被主包模块同步 require**，故主包 = 43,871 + 5,171 = **49,042 B**。
+- ⚠️ **算术待核（非新测量）**：按给定数字直减得 144,149 − 72,126 = **72,023**、144,149 − 98,501 = **45,648**，与给定的 70,246 / 43,871 各差 **1,777 B**（两处偏移一致）⇒ 差异来源未说明，**登记为待核项**（见 [requirements.md](./requirements.md) §6 `N-1`），**实现前必须用真构建复算**。
+
+## 4. 判据（可二值判定）
+
+| # | 判据 |
+| --- | --- |
+| C1 | 主包 **≤ 64 KiB**（65,536 B，去注释前按**原始产物字节**） |
+| C2 | chunk 数 **≥ 1** 且 **tab 注册所需模块仍在主包**（产物断言，非人眼观察） |
+| C3 | 首开页面的**功能等价**：右栏页能用、009 的**凭据 a11y 判据仍全绿**、008 的**四态与 401 文案不变** |
+| C4 | **失败 / 离线时**异步取块失败必须**可解释降级**（不得白屏 / 不得静默） |
+
+## 5. 验收方法
+
+- **chrome-devtools MCP 真机**（🔴 **不用 Playwright**、不用 `harness/verify-e2e.sh`、不做视觉对照）
+- **产物字节断言**（对 `lib/client.js` 与 chunk 产物直接量字节 + 静态扫 `require.async` 命中数 + 常驻模块存在性）
+- **变异哨兵**：人为把某个已切出模块**塞回主包** ⇒ 门**必须变红**（防「断言恒真」）
+
+## 6. 闸门（准入 / 准出）
+
+| # | 闸门 | 判据 | 当前 |
+| --- | --- | --- | --- |
+| G-1 | **`require.async` 语义真机验证**（`Phase 0`） | 0.2.0-rc.2 上跑通「异步取块 → 执行 → 注册页」链路（含失败 / 离线行为），有可查证据 | ❌ **未达**（§Z5 残留未验项） |
+| G-2 | **未过门只许动文档** | G-1 未达时本 Spec 的改动**只允许** `.md`；出现任何 `packages/**` 改动 ⇒ 违规 | ✅ 本轮（2026-10-12）**零代码** |
+
+🔴 **`Phase 0` 未通过不得进实现**（见 [tasks.md](./tasks.md)）。
+
+## 7. 文档导航
+
+| 文档 | 内容 |
+| --- | --- |
+| [requirements.md](./requirements.md) | `REQ-BS-1`–`REQ-BS-9`（本 Spec 本地编号，**不占用** 003 的 `REQ-1`–`REQ-17` 段）+ 验收门 + 假设 + 未验项 |
+| [design.md](./design.md) | 现状与判据、两级切割方案、常驻面与 4 条共享 import 边、懒加载契约、失败降级、产物断言与变异哨兵、测试策略、权衡 |
+| [tasks.md](./tasks.md) | `Phase 0` 真机语义门（**未通过不得进实现**）+ `Phase 1`–`Phase 3` + 真机清单（V 表）+ 未验项 |
+| [003-wsl-docker-ports](../003-wsl-docker-ports/README.md) | 母 Spec：本包 client 半属它的面（SSoT） |
+| [client-contract.md §P2](../../client-contract.md) | **尺寸上限的 SSoT**：64 KiB 直接判据 + 判据实现落点 |
+
+## 8. 本轮留痕（2026-10-12；零代码、零实例、零 `pnpm`）
+
+- **只立项**：本 Spec 三份子文档 + README 均为**文档**；`git status` 在 `packages/**` 上**零改动**。
+- **避让在飞轮**（本轮**未碰**）：`packages/wsl-docker-ports/scripts/**`、`client-contract-incremental.md`、`stack-decision*.md`、`specs/009/**`、`specs/001/**`。
+- **未验项**：本 Spec 所有体积数字**未由本轮复测**（遵「直接引用、别重新考古」）—— 见 [tasks.md](./tasks.md) 末节。
