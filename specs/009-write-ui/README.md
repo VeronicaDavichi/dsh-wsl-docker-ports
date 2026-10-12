@@ -1,5 +1,5 @@
 ---
-status: planned
+status: in-progress
 created: 2026-10-12
 priority: high
 tags:
@@ -12,9 +12,11 @@ tags:
 depends_on:
 - 008-write-transport
 created_at: 2026-10-12T00:43:44.591776577Z
-updated_at: 2026-10-12T00:43:44.591776577Z
+updated_at: 2026-10-12T00:53:18.098715800Z
+transitions:
+- status: in-progress
+  at: 2026-10-12T00:53:18.098715800Z
 ---
-
 # 写入口 UI：凭据生成 · 客户端确认 · 结果四态反馈
 
 **类型**: 需求驱动（requirements-first）
