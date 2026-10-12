@@ -27,19 +27,24 @@ describe('T1.1 类型化错误模型', () => {
     expect('argv' in error).toBe(false);
     expect('exitCode' in error).toBe(false);
     expect('stderr' in error).toBe(false);
+    expect('stdout' in error).toBe(false);
     expect('path' in error).toBe(false);
     expect('distros' in error).toBe(false);
   });
 
-  it('提供的 extra 字段按 code 出现（argv / exitCode / stderr / path / distros）', () => {
+  it('提供的 extra 字段按 code 出现（argv / exitCode / stderr / stdout / path / distros）', () => {
     const nonZero = fail('NonZeroExit', '退出码非 0', {
       argv: ['wsl.exe', '-l', '-v'],
       exitCode: 1,
+      stdout: '{"payload":"PAYLOAD"}',
       stderr: 'boom',
     });
     expect(nonZero.argv).toEqual(['wsl.exe', '-l', '-v']);
     expect(nonZero.exitCode).toBe(1);
+    expect(nonZero.stdout).toBe('{"payload":"PAYLOAD"}');
     expect(nonZero.stderr).toBe('boom');
+    // 空串是**有值**：不能被条件展开当缺省裁掉（下游据此区分「没回传」与「回传是空」）
+    expect(fail('NonZeroExit', '空回传', { stdout: '' }).stdout).toBe('');
 
     const missing = fail('DistroNotFound', '不存在', { distros: ['Ubuntu2204'] });
     expect(missing.distros).toEqual(['Ubuntu2204']);

@@ -216,6 +216,11 @@ export function createExecutor(
           finish({ ok: true, exitCode: 0, stdout, stderr });
           return;
         }
+        // 🔴 2026-10-12 跨 Spec 欠账修复（005 真机挖掘，主人裁定「现在补」）：这里原先**只带 `stderr`**
+        // ⇒「退出码非 0，但 stdout 里有合法载荷」（提权脚本把同一份 JSON **既写 out 文件、也写 stdout**）
+        // 在执行器这一层就被丢掉，005 只能靠 out 文件兜底。`stdout` 在上方**同一作用域已解码**（不是
+        // 「值已被丢弃 ⇒ 要去更早处保留」），故只需把它带进失败对象；**成功路径一字未动**（仍由 `code === 0`
+        // 那支返回 `{ ok: true, exitCode: 0, stdout, stderr }`），且 `stdout` 是**可选**字段 ⇒ 向后兼容。
         finish(
           fail(
             'NonZeroExit',
@@ -224,7 +229,7 @@ export function createExecutor(
             code === null
               ? `命令被外部终止（无退出码）：${file}`
               : `命令以退出码 ${String(code)} 结束：${file}`,
-            { argv: command, exitCode: code ?? -1, stderr },
+            { argv: command, exitCode: code ?? -1, stdout, stderr },
           ),
         );
       });

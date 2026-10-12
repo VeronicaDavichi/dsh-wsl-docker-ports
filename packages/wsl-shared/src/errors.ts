@@ -64,6 +64,14 @@ export interface WslSharedError {
   readonly argv?: readonly string[];
   readonly exitCode?: number;
   readonly stderr?: string;
+  /**
+   * 非零退出（`NonZeroExit`）时的**原始 stdout**（按调用方声明编码解码后的原文）。
+   *
+   * 🔴 2026-10-12 跨 Spec 欠账修复：此前失败路径**只有 `stderr`**，「退出码非 0 但 stdout 带合法载荷」
+   * 的形态（005 的提权脚本把同一份 JSON 既写 out 文件、也写 stdout）在执行器层就被丢掉 ⇒ 005 只能
+   * 靠 out 文件兜底。字段**可选**且只在有值时出现 ⇒ 对既有消费方向后兼容（成功态 `ExecResult` 一字未改）。
+   */
+  readonly stdout?: string;
   /** 与文件相关的失败（`.wslconfig` 等）带上完整路径 */
   readonly path?: string;
   /** `DistroNotFound` 时列出可用发行版名 */
@@ -75,6 +83,8 @@ export interface FailureExtra {
   readonly argv?: readonly string[];
   readonly exitCode?: number;
   readonly stderr?: string;
+  /** 见 `WslSharedError.stdout`（非零退出的原始回传） */
+  readonly stdout?: string;
   readonly path?: string;
   readonly distros?: readonly string[];
 }
@@ -92,6 +102,7 @@ export function fail(code: ErrorCode, message: string, extra: FailureExtra = {})
     ...(extra.argv === undefined ? {} : { argv: extra.argv }),
     ...(extra.exitCode === undefined ? {} : { exitCode: extra.exitCode }),
     ...(extra.stderr === undefined ? {} : { stderr: extra.stderr }),
+    ...(extra.stdout === undefined ? {} : { stdout: extra.stdout }),
     ...(extra.path === undefined ? {} : { path: extra.path }),
     ...(extra.distros === undefined ? {} : { distros: extra.distros }),
   };

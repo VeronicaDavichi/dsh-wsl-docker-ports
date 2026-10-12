@@ -6,66 +6,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createExecutor, type Executor, type SpawnLike, type TreeKillLike } from '../../src/exec.ts';
 import { listDistros } from '../../src/distros.ts';
-
-type StreamListener = (chunk: Uint8Array | string) => void;
-
-interface FakeHandle {
-  readonly spawn: SpawnLike;
-  readonly calls: { file: string; argv: readonly string[]; options: Record<string, unknown> }[];
-  readonly killed: () => boolean;
-  readonly emitBytes: (bytes: Uint8Array, stream?: 'stdout' | 'stderr') => void;
-  readonly emitText: (text: string, stream?: 'stdout' | 'stderr') => void;
-  readonly emitError: (code: string) => void;
-  readonly emitClose: (code: number | null) => void;
-}
-
-/** 造一个可控的 fake 子进程：事件由测试显式触发 */
-function fakeSpawn(pid: number | undefined = 4242): FakeHandle {
-  const out: StreamListener[] = [];
-  const err: StreamListener[] = [];
-  const onError: ((error: Error) => void)[] = [];
-  const onClose: ((code: number | null) => void)[] = [];
-  const calls: FakeHandle['calls'] = [];
-  let killed = false;
-
-  const spawn = ((file: string, argv: readonly string[], options: Record<string, unknown>) => {
-    calls.push({ file, argv, options });
-    return {
-      pid,
-      stdout: { on: (_event: string, listener: StreamListener) => void out.push(listener) },
-      stderr: { on: (_event: string, listener: StreamListener) => void err.push(listener) },
-      on: (event: string, listener: (...args: never[]) => void) => {
-        if (event === 'error') onError.push(listener as (error: Error) => void);
-        if (event === 'close') onClose.push(listener as (code: number | null) => void);
-      },
-      kill: () => {
-        killed = true;
-        return true;
-      },
-    } as unknown as ReturnType<SpawnLike>;
-  }) as SpawnLike;
-
-  const emitBytes: FakeHandle['emitBytes'] = (bytes, stream = 'stdout') => {
-    for (const listener of stream === 'stdout' ? out : err) listener(bytes);
-  };
-
-  return {
-    spawn,
-    calls,
-    killed: () => killed,
-    emitBytes,
-    emitText: (text, stream = 'stdout') => emitBytes(Buffer.from(text, 'utf8'), stream),
-    emitError: (code) => {
-      const error = Object.assign(new Error(`${code}: fake`), { code });
-      for (const listener of onError) listener(error);
-    },
-    emitClose: (code) => {
-      for (const listener of onClose) listener(code);
-    },
-  };
-}
-
-const neverKill: TreeKillLike = async () => undefined;
+// 台架（`fakeSpawn` / `neverKill` / `FakeHandle`）2026-10-12 抽出到 `exec-rig.ts`：
+// T7.1 加完 4 条断言后本文件会超 NFR-5 的 400 行 SHALL ⇒ 抽台架，**用例一条不删不改名**。
+import { fakeSpawn, neverKill } from './exec-rig.ts';
 
 describe('T1.2 基础执行路径', () => {
   it('退出码 0 → ok:true，stdout 按声明编码解码', async () => {
@@ -101,10 +44,11 @@ describe('T1.2 基础执行路径', () => {
     expect(fake.calls[0]?.argv).toEqual(['-d', 'Ubuntu 22.04', '--', 'echo', 'a b']);
   });
 
-  it('退出码非 0 → NonZeroExit（带 exitCode / stderr / argv）', async () => {
+  it('退出码非 0 → NonZeroExit（带 exitCode / stderr / **stdout 原文** / argv）', async () => {
     const fake = fakeSpawn();
     const exec = createExecutor(fake.spawn, neverKill);
     const pending = exec('wsl.exe', ['-l', '-v'], { encoding: 'utf8', timeoutMs: 1000 });
+    fake.emitText('PAYLOAD-151B', 'stdout');
     fake.emitText('bad things', 'stderr');
     fake.emitClose(1);
     const result = await pending;
@@ -113,6 +57,7 @@ describe('T1.2 基础执行路径', () => {
     if (result.ok) return;
     expect(result.code).toBe('NonZeroExit');
     expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('PAYLOAD-151B');
     expect(result.stderr).toBe('bad things');
     expect(result.argv).toEqual(['wsl.exe', '-l', '-v']);
   });
@@ -170,6 +115,82 @@ describe('T1.2 基础执行路径', () => {
     const source = readFileSync(new URL('../../src/exec.ts', import.meta.url), 'utf8');
     expect(/\bshell\s*:\s*true/.test(source)).toBe(false);
     expect(/\b(?:exec|execSync|execFileSync)\s*\(/.test(source)).toBe(false);
+  });
+});
+
+describe('T7.1 跨 Spec 欠账：非零退出的结果必须携带 stdout 原文（005 真机缺陷 2）', () => {
+  it('🔴 非零退出 ⇒ 带 stdout 原文；字段集 = 真机 keys（ok/code/message/argv/exitCode/stderr）+ stdout', async () => {
+    const fake = fakeSpawn();
+    const exec = createExecutor(fake.spawn, neverKill);
+    const pending = exec('powershell.exe', ['-NoProfile', '-File', 'elevate.ps1'], {
+      encoding: 'utf8',
+      timeoutMs: 1000,
+    });
+    // 真机形态（2026-10-12）：提权脚本把**同一份 JSON** 既写 out 文件、也写 stdout，退出码非 0
+    fake.emitText('{"ok":true,"payload":"PAYLOAD"}', 'stdout');
+    fake.emitClose(1);
+    const result = await pending;
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('NonZeroExit');
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('{"ok":true,"payload":"PAYLOAD"}');
+    // 字段集**不多不少**：真机实测 keys 是 [ok,code,message,argv,exitCode,stderr]，缺陷即「少了 stdout」
+    expect(Object.keys(result).sort()).toEqual([
+      'argv',
+      'code',
+      'exitCode',
+      'message',
+      'ok',
+      'stderr',
+      'stdout',
+    ]);
+  });
+
+  it('非零退出但 stdout 确实零输出 ⇒ 字段仍在且为空串（「没这个字段」与「值为空」不得混为一谈）', async () => {
+    const fake = fakeSpawn();
+    const exec = createExecutor(fake.spawn, neverKill);
+    const pending = exec('wsl.exe', ['-l'], { encoding: 'utf8', timeoutMs: 1000 });
+    fake.emitClose(3);
+    const result = await pending;
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect('stdout' in result).toBe(true);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('');
+  });
+
+  it('成功路径字段集逐字未变（防回归：新增失败字段不得碰成功态）', async () => {
+    const fake = fakeSpawn();
+    const exec = createExecutor(fake.spawn, neverKill);
+    const pending = exec('wsl.exe', ['-l', '-v'], { encoding: 'utf8', timeoutMs: 1000 });
+    fake.emitText('NAME STATE', 'stdout');
+    fake.emitText('warn', 'stderr');
+    fake.emitClose(0);
+    const result = await pending;
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(Object.keys(result).sort()).toEqual(['exitCode', 'ok', 'stderr', 'stdout']);
+    expect(result.stdout).toBe('NAME STATE');
+    expect(result.stderr).toBe('warn');
+  });
+
+  it('启动前就失败的路径（非法 timeoutMs / 非法编码）不带 stdout：没进程就没回传，字段必须**缺席**而非空串', async () => {
+    const fake = fakeSpawn();
+    const exec = createExecutor(fake.spawn, neverKill);
+    const badTimeout = await exec('wsl.exe', ['-l'], { encoding: 'utf8', timeoutMs: 0 });
+    const badEncoding = await exec('wsl.exe', ['-l'], { encoding: 'no-such-encoding', timeoutMs: 1000 });
+
+    for (const result of [badTimeout, badEncoding]) {
+      expect(result.ok).toBe(false);
+      if (result.ok) continue;
+      expect('stdout' in result).toBe(false);
+      expect('stderr' in result).toBe(false);
+    }
+    expect(fake.calls).toHaveLength(0);
   });
 });
 
