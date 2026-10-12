@@ -29,7 +29,8 @@
     "build": "tsc -p tsconfig.build.json && tsc -p tsconfig.client.json && node scripts/build-client.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "check:client": "node scripts/verify-client-loader.mjs"
+    "check:client": "node scripts/verify-client-loader.mjs",
+    "check:size": "node ../wsl-shared/scripts/check-size.mjs"
   },
   "dependencies": {
     "@xterm/addon-serialize": "0.14.0",
