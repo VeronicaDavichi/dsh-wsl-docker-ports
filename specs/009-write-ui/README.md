@@ -20,7 +20,7 @@ transitions:
 # 写入口 UI：凭据生成 · 客户端确认 · 结果四态反馈
 
 **类型**: 需求驱动（requirements-first）
-**状态**: **planned**（**2026-10-12 从 `008-write-transport` 拆出**；离线实现已由 008 的 `T3.1` 交付于工作区，**真机 UI 复核未做** —— 勾选状态与迁入记录见 [`tasks.md`](./tasks.md)）
+**状态**: **in-progress**（**2026-10-12 从 `008-write-transport` 拆出**；离线实现已由 008 的 `T3.1` 交付于工作区，**真机 UI 复核未做** —— 勾选状态与迁入记录见 [`tasks.md`](./tasks.md)）
 **优先级**: high
 **包名**: `dsh-wsl-docker-ports`（与 008 **同一个包**，本 Spec 只占「写入口的 UI 面」）
 **位置**: `packages/wsl-docker-ports/src/client/{write-token.ts,write-channel.ts,write-dto.ts,write-confirm.tsx,write-panel.tsx,pane-settings.tsx,settings-pipe.ts}` + `tests/client/{write-token,write-channel,write-confirm,write-panel}.test.tsx` + `tests/client/write-fixtures.ts` + `tests/unit/client-settings.test.ts`

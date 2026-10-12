@@ -19,6 +19,15 @@
  * `sha256` 两侧都定长 ⇒ 服务端的常量时间比较对长度不敏感。十六进制只含 `[0-9a-f]`：
  * 放进 `Authorization` 头、URL 查询串、YAML 双引号里都不需要转义。
  *
+ * ## 清除 / 轮换（009 T2.1 的留白，本轮补齐）
+ *
+ * - **轮换** = 再点一次「生成并保存」（新值覆盖旧值）——不需要额外入口。
+ * - **清除** = `clearWriteToken()`：先往配置写**空串**（回到 fail-safe 401），成功才清本会话。
+ *   二次确认在 UI 层（纯函数层只保证「被调用时恰好写一次空串」）。
+ * - 🔴 **绝不回显既有值**：本模块只有 `present()` 这个**布尔**；「服务端配置里有没有值」由
+ *   `settings-pipe.ts` 的 `readConfig()` 化成 `writeTokenConfigured: boolean` 给出，
+ *   值本体在那一层就被丢弃 ⇒ 既有凭据**没有**进入 UI 的数据通路。
+ *
  * ## 可测性
  *
  * `randomBytes` 可注入（缺省 `crypto.getRandomValues`）⇒ 「生成了什么」在测试里是确定的；
@@ -183,6 +192,50 @@ export async function issueWriteToken(input: {
     token,
     message:
       '已写入插件配置，并保存在本会话（sessionStorage：刷新不丢、不落盘、不进日志/审计）。' +
-      '这串**只显示这一次**，请立即复制。',
+      '这串**只显示这一次 —— 离开后将不再显示，请立即复制**（页面不提供「再显示一次」的入口）。',
+  };
+}
+
+/** 一次「清除凭据」的结果：`cleared` = 本会话那一格**真的**被清掉了（不是「试过」） */
+export interface ClearWriteTokenResult {
+  readonly ok: boolean;
+  readonly cleared: boolean;
+  readonly message: string;
+}
+
+/**
+ * 清除 → 回 fail-safe（009 REQ-1.1 的「回到未配置态」）。
+ *
+ * 🔴 顺序与失败语义（与颁发刻意对称）：
+ * 1. 先往服务端配置写**空串**（`writeWriteToken('')` ⇒ patch `{ writeToken: '' }`）；
+ * 2. **只有**服务端写入成功才清本会话 —— 反过来（先清本地）会造出「服务端仍认旧串、本会话却没有」
+ *    的两边不一致，那正是 008 记下的「最难查的一类故障」；
+ * 3. 无论成败都返回可读文案（失败**不静默**），异常也归成失败结果（不穿过 UI）。
+ *
+ * ⚠️ 本函数**不自带二次确认**：确认是 UI 的职责（`WriteTokenBlock` 的两段式按钮）——
+ * 纯函数层的判据因此是「被调用时恰好写一次空串」。
+ */
+export async function clearWriteToken(input: {
+  readonly store: WriteTokenStore;
+  readonly save: (token: string) => Promise<{ readonly ok: boolean; readonly message: string }>;
+}): Promise<ClearWriteTokenResult> {
+  let saved: { readonly ok: boolean; readonly message: string };
+  try {
+    saved = await input.save('');
+  } catch (error) {
+    saved = { ok: false, message: `写入插件配置时抛出异常：${error instanceof Error ? error.message : String(error)}` };
+  }
+  if (!saved.ok) {
+    return {
+      ok: false,
+      cleared: false,
+      message: `${saved.message}（本会话凭据**保留**：服务端仍认旧串，只清本地会让两边不一致。写入口是否 401 取决于服务端配置）`,
+    };
+  }
+  input.store.clear();
+  return {
+    ok: true,
+    cleared: true,
+    message: '已清除：配置里的 writeToken 写成空串 ⇒ 服务端回到 fail-safe（plan / apply / audit 一律 401），本会话凭据同时清掉（本地拦下、零请求）。',
   };
 }

@@ -59,6 +59,9 @@ test('T5.7 写回：每个写方法只产出恰好一个键的 patch（「只改
     { name: 'distro', run: (pipe) => pipe.writeDistro('Ubuntu2204'), key: 'distro' },
     { name: 'elevationPolicy', run: (pipe) => pipe.writeElevationPolicy('ask'), key: 'elevationPolicy' },
     { name: 'scopes', run: (pipe) => pipe.writeScope(3306, 'lan'), key: 'scopes' },
+    // 008 T3.1 追加、009 T2.3 补进本表：写通道凭据走**同一个** `write()` 单键 patch 路径
+    // （它不是执行/提权入口；`forbidden` 那条断言与「写配置零提权调用」都**未**被削弱）。
+    { name: 'writeToken', run: (pipe) => pipe.writeWriteToken('t'), key: 'writeToken' },
   ];
   for (const item of cases) {
     const fake = fakeSettings();
@@ -96,7 +99,7 @@ test('T5.7 写回：remote.settings 缺失 ⇒ ok:false + 文案，不抛异常'
   assert.match(result.message, /remote\.settings/u);
   assert.equal(pipe.updateCount(), 0, '服务缺失时不得计入 update');
   const read = await pipe.readConfig();
-  assert.deepEqual(read, { managedPorts: [], distro: undefined, elevationPolicy: undefined, scopes: {} });
+  assert.deepEqual(read, { managedPorts: [], distro: undefined, elevationPolicy: undefined, scopes: {}, writeTokenConfigured: false });
   console.log(`  · 扫了 2 个调用（写/读），均降级返回，updateCount=${String(pipe.updateCount())}`);
 });
 
@@ -119,6 +122,23 @@ test('T5.7 读回：managedPorts / distro / elevationPolicy / scopes 都能解�
   assert.equal(config.elevationPolicy, 'passby');
   assert.deepEqual(config.scopes, { '3306': 'lan' }, '非法 scope 值必须被丢掉');
   console.log(`  · 扫了 ${String(Object.keys(config.scopes).length)} 个 scope / ${String(config.managedPorts.length)} 条声明（原始 3 条，非法 1 条被剔）`);
+});
+
+test('T2.3 读回：writeToken **只**化成布尔（值本体不出管道，页面无从回显）', async () => {
+  const TOKEN = 'f'.repeat(64);
+  const configured = fakeSettings({ writeToken: TOKEN });
+  const view = await createSettingsPipe(() => configured.service).readConfig();
+  assert.equal(view.writeTokenConfigured, true, '非空 writeToken ⇒ 已配置');
+  assert.equal(JSON.stringify(view).includes(TOKEN), false, '读回结果里不得出现凭据本体');
+  assert.equal(Object.keys(view).includes('writeToken'), false, '键名只能是 writeTokenConfigured，不得是 writeToken');
+
+  const blank = fakeSettings({ writeToken: '   ' });
+  assert.equal((await createSettingsPipe(() => blank.service).readConfig()).writeTokenConfigured, false, '空白串算「未配置」（与 write-auth 的 trim 口径一致）');
+  const absent = fakeSettings({});
+  assert.equal((await createSettingsPipe(() => absent.service).readConfig()).writeTokenConfigured, false, '字段缺失 ⇒ 未配置');
+  const wrongType = fakeSettings({ writeToken: 42 });
+  assert.equal((await createSettingsPipe(() => wrongType.service).readConfig()).writeTokenConfigured, false, '非字符串 ⇒ 未配置（不猜）');
+  console.log('  · 扫了 4 种配置形态：true / 空白 false / 缺失 false / 非字符串 false；凭据本体 0 次出现在读回结果里');
 });
 
 test('T5.7 读回：命名空间与 revision 的形状兼容三种写法', () => {

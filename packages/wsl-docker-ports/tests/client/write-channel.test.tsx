@@ -186,7 +186,7 @@ describe('T3.1 响应解析：命令原文原样搬运', () => {
 
 describe('T3.1 所有权声明读取器：复用宿主的解析器', () => {
   const settingsWith = (managedPorts: readonly string[], ok = true) => ({
-    readConfig: async () => ({ managedPorts, distro: undefined, elevationPolicy: undefined, scopes: {} }),
+    readConfig: async () => ({ managedPorts, distro: undefined, elevationPolicy: undefined, scopes: {}, writeTokenConfigured: false }),
     updateCount: () => 0,
     writeManagedPorts: async () => ({ ok, message: '', patch: {}, revisionPassed: false }),
     writeDistro: async () => ({ ok, message: '', patch: {}, revisionPassed: false }),

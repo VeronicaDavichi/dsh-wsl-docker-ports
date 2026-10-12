@@ -27,7 +27,7 @@ import { ElevationBlock, ManagedPortsBlock, NextPhaseBlock, RawOutputBlock, Writ
 import { mergeManagedPortsDecl, TESTID } from './rows.ts';
 import type { NatGatePanelView, PortRowView, PortsPageView, PortsSnapshot } from './types.ts';
 import { WriteChannelBlock } from './write-panel.tsx';
-import { issueWriteToken } from './write-token.ts';
+import { clearWriteToken, issueWriteToken } from './write-token.ts';
 
 export interface PortsPaneProps {
   readonly runtime: ClientRuntime;
@@ -135,12 +135,25 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
    * 写通道凭据的**本地**状态（T3.1 契约 1/2）：
    * - `tokenPresent` 的初值直接读 sessionStorage（**零 IPC**：挂载期不许 `describe()`，
    *   否则 T5.1 的「开页 0 次配置读」判据立刻红）；
-   * - `issuedToken` 只在刚生成后非空 ⇒ 明文**只显示一次**，刷新即不再出现。
+   * - `issuedToken` 只在刚生成后非空 ⇒ 明文**只显示一次**，刷新即不再出现；
+   * - `configConfigured` 是**服务端配置的布尔态**（`null` = 未检查）：由用户点「检查服务端配置状态」
+   *   经 `readConfig()` 得到（`writeTokenConfigured`，值本体在管道层就被丢弃），
+   *   或由一次**成功**的写入推出（生成 ⇒ true / 清除 ⇒ false）——两者都是布尔，页面拿不到值本体。
    */
   const [tokenPresent, setTokenPresent] = useState(() => runtime.write?.tokenStore.present() === true);
+  const [configConfigured, setConfigConfigured] = useState<boolean | null>(null);
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
   const [tokenBusy, setTokenBusy] = useState(false);
   const [tokenNote, setTokenNote] = useState<string | null>(null);
+  const [confirmingClear, setConfirmingClear] = useState(false);
+
+  /** 写服务端配置的唯一入口（`settings.writeWriteToken` ⇒ 既有 live 写入管道；不复制 patch/revision 逻辑） */
+  const saveWriteToken = async (token: string): Promise<{ readonly ok: boolean; readonly message: string }> => {
+    const settings = runtime.settings;
+    if (settings === undefined) return { ok: false, message: '配置写回管道未接线（remote.settings 缺失）：凭据没有写进服务端' };
+    const saved = await settings.writeWriteToken(token);
+    return { ok: saved.ok, message: saved.message };
+  };
 
   const generateToken = async (): Promise<void> => {
     const write = runtime.write;
@@ -148,20 +161,58 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
       setTokenNote('写通道未接线：没有凭据仓库可写（只读面不受影响）。');
       return;
     }
+    setConfirmingClear(false);
     setTokenBusy(true);
-    const result = await issueWriteToken({
-      store: write.tokenStore,
-      save: async (token) => {
-        const saved = await runtime.settings?.writeWriteToken(token);
-        return saved === undefined
-          ? { ok: false, message: '配置写回管道未接线（remote.settings 缺失）：凭据没有写进服务端' }
-          : { ok: saved.ok, message: saved.message };
-      },
-    });
+    const result = await issueWriteToken({ store: write.tokenStore, save: saveWriteToken });
     setTokenBusy(false);
     setIssuedToken(result.token);
     setTokenNote(result.message);
     setTokenPresent(write.tokenStore.present());
+    if (result.ok) setConfigConfigured(true);
+  };
+
+  /** 「检查服务端配置状态」：**只**拿布尔；值本体不进本组件（REQ-1.3） */
+  const checkTokenConfig = async (): Promise<void> => {
+    const settings = runtime.settings;
+    if (settings === undefined) {
+      setConfigConfigured(null);
+      setTokenNote('配置读取管道未接线（remote.settings 缺失）：判断不了服务端是否已配置 writeToken。');
+      return;
+    }
+    setTokenBusy(true);
+    try {
+      const config = await settings.readConfig();
+      setConfigConfigured(config.writeTokenConfigured);
+      setTokenNote(
+        config.writeTokenConfigured
+          ? '服务端配置里**已配置** writeToken（只报布尔，不回显本体）。'
+          : '服务端配置里**未配置** writeToken ⇒ 写入口一律 401（fail-safe，未放宽）。',
+      );
+    } catch (error) {
+      setConfigConfigured(null);
+      setTokenNote(`读取服务端配置失败：${error instanceof Error ? error.message : String(error)}（未静默：写入口仍按 fail-safe 一律 401 对待）`);
+    } finally {
+      setTokenBusy(false);
+    }
+  };
+
+  /** 清除（二次确认在 `WriteTokenBlock` 的两段式按钮里；这里只在「确认」后被调用） */
+  const clearToken = async (): Promise<void> => {
+    const write = runtime.write;
+    setConfirmingClear(false);
+    if (write === undefined) {
+      setTokenNote('清除不可用：写通道未接线（没有凭据仓库）——零写入。');
+      return;
+    }
+    setTokenBusy(true);
+    const result = await clearWriteToken({ store: write.tokenStore, save: saveWriteToken });
+    setTokenBusy(false);
+    setTokenNote(result.message);
+    setTokenPresent(write.tokenStore.present());
+    if (result.cleared) {
+      setConfigConfigured(false);
+      setIssuedToken(null);
+    }
   };
 
   const refresh = useCallback(
@@ -277,11 +328,20 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
         onChange={(policy) => void writeSettings(async () => runtime.settings?.writeElevationPolicy(policy))}
       />
       <WriteTokenBlock
-        present={tokenPresent}
+        sessionPresent={tokenPresent}
+        configured={configConfigured}
         issued={issuedToken}
         busy={tokenBusy}
         note={tokenNote}
+        confirmingClear={confirmingClear}
         onGenerate={() => void generateToken()}
+        onCheck={() => void checkTokenConfig()}
+        onClearRequest={() => setConfirmingClear(true)}
+        onClearConfirm={() => void clearToken()}
+        onClearCancel={() => {
+          setConfirmingClear(false);
+          setTokenNote('已取消清除：零写入（凭据仍留在原处）。');
+        }}
       />
       <WriteChannelBlock write={runtime.write} enabled={view.nat.open} disabledReason={view.nat.reason} />
       <NextPhaseBlock exec={view.exec} />

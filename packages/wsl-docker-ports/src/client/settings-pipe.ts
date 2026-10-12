@@ -67,6 +67,14 @@ export interface SettingsConfigView {
   readonly distro: string | undefined;
   readonly elevationPolicy: ElevationPolicyValue | undefined;
   readonly scopes: Readonly<Record<string, ScopeValue>>;
+  /**
+   * 服务端 config 里 `writeToken` **是否已配置**（009 REQ-1.3 的「绝不回显既有值」）。
+   *
+   * 🔴 这是一个**布尔**，不是字符串：值本体在下面 `readConfig()` 里被就地化成 `true/false` 后**丢弃**，
+   * 结构上不存在「把既有凭据交给 UI」的路径 ⇒ 页面无法回显它（不是「记得别渲染」的自觉，而是没有入口）。
+   * 空串（含纯空白）一律算「未配置」，与 `../transport/write-auth.ts` 的 `trim` 口径一致。
+   */
+  readonly writeTokenConfigured: boolean;
 }
 
 export interface SettingsPipe {
@@ -160,15 +168,18 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
   return {
     async readConfig(): Promise<SettingsConfigView> {
       const service = getSettings();
-      if (service === undefined) return { managedPorts: [], distro: undefined, elevationPolicy: undefined, scopes: {} };
+      if (service === undefined) return { managedPorts: [], distro: undefined, elevationPolicy: undefined, scopes: {}, writeTokenConfigured: false };
       const value = asRecord(namespaceValue(await service.describe()));
       const distro = value?.['distro'];
       const policy = value?.['elevationPolicy'];
+      // 🔴 既有凭据**只**被化成布尔，`raw` 不参与返回值构造（REQ-1.3：绝不回显既有值）
+      const writeToken = value?.['writeToken'];
       return {
         managedPorts: readStringArray(value?.['managedPorts']),
         distro: typeof distro === 'string' ? distro : undefined,
         elevationPolicy: policy === 'none' || policy === 'ask' || policy === 'passby' ? policy : undefined,
         scopes: readScopes(value?.['scopes']),
+        writeTokenConfigured: typeof writeToken === 'string' && writeToken.trim() !== '',
       };
     },
     writeManagedPorts: (decls) => write({ managedPorts: [...decls] }),

@@ -27,7 +27,7 @@
   - 判据（**离线已完成，由 008 `T3.1` 交付**）：见文末「迁入记录」§1 的 44 条 `vitest`（其中 `write-token` 10 条含「配置写失败 ⇒ 不入本会话」与「四个客户端文件零 `console`、零持久存储」）。
 - [ ] T2.2 [REQ-1.1 / 1.2] **真机投递链复核**（需主人 / 探针 profile；**本轮未跑**）：页面按钮点得动 ⇒ 写进 `profiles/<profile>/cordis.patch.yml` 的 `config.writeToken` ⇒ **重载插件行** ⇒ 服务端真读到。
   - 判据：写前 `POST …/write/plan?token=…` ⇒ **401**；点按钮 + 重载插件行后再打 ⇒ **200**；配置文件里的值与页面**一次性显示**的串**逐字相同**；跑完逐字节还原（`git status --porcelain` 空 + `portproxy` 19）。
-- [ ] T2.3 [REQ-1.2] **补一条离线判据**（本轮核对 T5.7 时发现的覆盖缺口）：`tests/unit/client-settings.test.ts` 的「每个写方法只产出恰好一个键的 patch」用例表目前只有 **4** 个写方法，`writeWriteToken` 只出现在导出面断言里 ⇒ 把它补进用例表。
+- [x] T2.3 [REQ-1.2] **补一条离线判据**（本轮核对 T5.7 时发现的覆盖缺口）：`tests/unit/client-settings.test.ts` 的「每个写方法只产出恰好一个键的 patch」用例表目前只有 **4** 个写方法，`writeWriteToken` 只出现在导出面断言里 ⇒ 把它补进用例表。
   - 判据：用例表含 **5** 个写方法；`writeWriteToken('t')` ⇒ patch 键集合恰 `['writeToken']`、命名空间 = 包名、有能力时带 revision。**不得**改动 `forbidden`（`run/invoke/exec/elevate/spawn`）与「写配置零提权调用」两条断言（2026-10-12 已逐字核对**未被削弱**）。
 
 ## Phase 3：真机 UI 复核清单（V6 迁自 008 `T3.3`；V7 / V8 为本 Spec 新增）

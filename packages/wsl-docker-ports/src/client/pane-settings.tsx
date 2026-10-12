@@ -23,6 +23,12 @@ export const WRITE_TOKEN_TESTID = {
   state: 'write-token-state',
   generate: 'btn-write-token-generate',
   once: 'write-token-once',
+  note: 'write-token-note',
+  consequence: 'write-token-consequence',
+  check: 'btn-write-token-check',
+  clear: 'btn-write-token-clear',
+  clearConfirm: 'btn-write-token-clear-confirm',
+  clearCancel: 'btn-write-token-clear-cancel',
 } as const;
 
 export function ManagedPortsBlock(props: {
@@ -116,7 +122,7 @@ export function ElevationBlock(props: {
 }
 
 /**
- * 写通道凭据（008 T3.1 契约 1）：**唯一的凭据生成入口**。
+ * 写通道凭据（008 T3.1 契约 1 / 009 REQ-1.3）：**唯一的凭据生成入口**。
  *
  * - 契约要求「由**配置页**提供生成并保存动作」+「一次性显示」⇒ 这里只有一枚按钮与一段
  *   **生成后才有**的明文（`issued`）。刷新后 `issued` 为空 ⇒ 明文不再出现（凭据仍活在本会话的
@@ -124,23 +130,47 @@ export function ElevationBlock(props: {
  * - 本块**不携带 `data-write-control`**：它不是提权写控件，非 NAT 时也必须可用
  *   （与 `sel-elevation` 同一口径 —— 否则「没凭据」与「非 NAT」两把锁会互相锁死）。
  * - 生成后要写服务端配置，故 `onGenerate` 是异步的；`busy` 期间按钮不可点（避免连点生成两串）。
+ * - 🔴 **只显示布尔，不回显既有值**：本组件能拿到的凭据事实只有
+ *   `sessionPresent: boolean`（本会话仓库）与 `configured: boolean | null`（服务端配置**是否**已配置，
+ *   `null` = 还没检查）——`writeToken` 的值根本没有进 props 的**通路**（唯一例外是 `issued`，
+ *   即刚生成的那一次）。
+ * - **清除 / 轮换**：轮换 = 再点一次生成（覆盖）；清除 = 两段式按钮（先「清除凭据」、
+ *   再「确认清除」/「取消」）⇒ 二次确认在 UI 层、可被断言。
  */
 export function WriteTokenBlock(props: {
-  readonly present: boolean;
+  readonly sessionPresent: boolean;
+  readonly configured: boolean | null;
   readonly issued: string | null;
   readonly busy: boolean;
   readonly note: string | null;
+  readonly confirmingClear: boolean;
   readonly onGenerate: () => void;
+  readonly onCheck: () => void;
+  readonly onClearRequest: () => void;
+  readonly onClearConfirm: () => void;
+  readonly onClearCancel: () => void;
 }): ReactElement {
-  const { present, issued, busy, note, onGenerate } = props;
+  const { sessionPresent, configured, issued, busy, note, confirmingClear, onGenerate, onCheck, onClearRequest, onClearConfirm, onClearCancel } = props;
+  const configuredText = configured === null ? '未检查' : configured ? '已配置' : '未配置（写通道一律 401，fail-safe）';
   return (
     <section className="wdp-card" data-testid={WRITE_TOKEN_TESTID.block}>
       <h3>写通道凭据</h3>
-      <p className="wdp-muted" data-testid={WRITE_TOKEN_TESTID.state}>
-        {present
-          ? '本会话已持有凭据（sessionStorage：刷新不丢、不落盘、不进日志/审计）。'
-          : '本会话尚无凭据 ⇒ 写通道一律 401（服务端未配 writeToken 时同样 401，fail-safe）。'}
+      <p
+        className="wdp-muted"
+        data-testid={WRITE_TOKEN_TESTID.state}
+        data-session-credential={sessionPresent ? '1' : '0'}
+        data-config-configured={configured === null ? 'unknown' : configured ? '1' : '0'}
+      >
+        本会话持有凭据：{sessionPresent ? '是' : '否'}；服务端配置 writeToken：{configuredText}（这里**只报布尔**，不回显凭据本体）
       </p>
+      <p className="wdp-muted">
+        写操作会改动本机 `netsh portproxy` 与 Windows 防火墙规则；本凭据用于阻止本机其它用户进程调用写通道（它不是加密、不是账号体系）。
+      </p>
+      {sessionPresent && configured !== false ? null : (
+        <p className="wdp-error" data-testid={WRITE_TOKEN_TESTID.consequence}>
+          后果：写入口会 401（凭据缺失 ⇒ `plan` / `apply` / `audit` 一律 unauthorized，零执行零写入）⇒ 请先「生成并保存写通道凭据」，再重载插件行使服务端读到新值。
+        </p>
+      )}
       <button
         type="button"
         className="wdp-btn wdp-btn-primary"
@@ -151,13 +181,48 @@ export function WriteTokenBlock(props: {
       >
         生成并保存写通道凭据
       </button>
-      {note === null ? null : <p className="wdp-secondary">{note}</p>}
-      {issued === null ? null : (
-        <p>
-          <code className="wdp-pre" data-testid={WRITE_TOKEN_TESTID.once}>
-            {issued}
-          </code>
+      <p className="wdp-muted">再点一次 = **轮换**（新值覆盖旧值）；服务端要读到新值需要重载插件行。</p>
+      <div className="wdp-grid">
+        <button
+          type="button"
+          className="wdp-btn"
+          data-testid={WRITE_TOKEN_TESTID.check}
+          data-settings-control="1"
+          disabled={busy}
+          onClick={onCheck}
+        >
+          检查服务端配置状态（只报布尔）
+        </button>
+        {confirmingClear ? (
+          <>
+            <span className="wdp-error">确认清除？清除后服务端 writeToken 写成空串 ⇒ 写入口回到一律 401（fail-safe），本会话凭据同时清掉。</span>
+            <button type="button" className="wdp-btn wdp-btn-primary" data-testid={WRITE_TOKEN_TESTID.clearConfirm} data-settings-control="1" disabled={busy} onClick={onClearConfirm}>
+              确认清除
+            </button>
+            <button type="button" className="wdp-btn" data-testid={WRITE_TOKEN_TESTID.clearCancel} data-settings-control="1" disabled={busy} onClick={onClearCancel}>
+              取消
+            </button>
+          </>
+        ) : (
+          <button type="button" className="wdp-btn" data-testid={WRITE_TOKEN_TESTID.clear} data-settings-control="1" disabled={busy} onClick={onClearRequest}>
+            清除凭据（二次确认）
+          </button>
+        )}
+      </div>
+      {note === null ? null : (
+        <p className="wdp-secondary" data-testid={WRITE_TOKEN_TESTID.note}>
+          {note}
         </p>
+      )}
+      {issued === null ? null : (
+        <div>
+          <p className="wdp-error">⚠️ 这串**离开后将不再显示，请立即复制**（页面不提供「再显示一次」的入口）。</p>
+          <p>
+            <code className="wdp-pre" data-testid={WRITE_TOKEN_TESTID.once}>
+              {issued}
+            </code>
+          </p>
+        </div>
       )}
       <p className="wdp-muted">
         ⚠️ 服务端要读到新值需要重载插件行；settings 到插件 config 的投递链在真机**未验证**
