@@ -256,7 +256,7 @@
 **第一步侦察（只读；🔴 全程未读 `app.asar`）⇒ 结论：宿主没有可用的鉴权/凭据 API，走方案 (B)**
 - 证据①（本仓的注册契约）：`src/route.ts:57-65` 的 `WebServerRoute` **只有** `kind` / `path` / `handler`；
   `WebServerSurfaceLike` **只有** `register(route)` ⇒ 没有 auth / token / guard / authorize 字段
-  （该对象式签名已由 `client-contract.md:408` 的真机实测钉住，不是我猜的）。
+  （该对象式签名已由 **`client-contract-incremental.md` 的 §P9 第 1 条**（「传输 = 自建 `ctx.webServer` 具名路由、HTTP-only … `register({ kind: 'prefix', path, handler })`」）的真机实测钉住，不是我猜的）。🔧 **坐标订正 2026-10-12**：原文用的是裸行号 `client-contract.md:408`，而 `client-contract.md` 按 ≤400 行拆分后该行号已失效（该条现不在该文件里），故改为「文件 + 小节 + 条目序号」的稳定坐标；旧写法**保留**于此、不删。
 - 证据②（可读依赖面）：`node_modules/.pnpm` 共 **154** 个包，`@deepseek-ai/*` **23** 个；对其中
   **1,816** 个 js/d.ts/json 产物跑 `Select-String -Pattern webServer` ⇒ **零命中**
   ⇒ 宿主的 web-server 插件**不在可读依赖面内**，它的 `.d.ts` 读不到。
