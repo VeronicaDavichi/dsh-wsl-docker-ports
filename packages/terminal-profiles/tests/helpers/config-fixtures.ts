@@ -250,3 +250,100 @@ export function createFakeConfigPipe(options: {
     updateCount: () => calls.saves.length,
   };
 }
+
+/* ────────────────── 007 只读态的真机载荷夹具（2026-10-12 自动触发轮；从用例文件搬来共用） ────────────────── */
+
+/** 真机拒绝原文（`dsh-config-editor/lib/index.js:122` 的模板串，真机实测同一句） */
+export const HOST_REFUSAL =
+  'Configuration for "dsh-terminal-profiles" is overridden by a home patch or command-line overlay';
+
+/** 宿主被拒时的线上错误形态（`settings/rejected`；`dsh-api-settings-controller/lib/index.js:500-508` 保留 message） */
+export const REFUSAL_RESPONSE: SettingsResponse = {
+  ok: false,
+  error: { code: 'settings/rejected', message: HOST_REFUSAL, details: { ns: 'dsh-terminal-profiles' } },
+};
+
+/**
+ * 本包 schema 的三段 refs —— **逐字**取自真机载荷（uid 每次启动不同，这里用 B2 的取值）。
+ * ⚠️ 三段都要给：少了 `…8`（`meta.default: []`）这条，判据里「差异能否由 schema 默认值解释」
+ * 就失去输入 ⇒ 用例会在**错误的理由**上通过。
+ */
+export const OVERLAY_REFS = {
+  '5017': { type: 'any', meta: {} },
+  '5018': { type: 'array', meta: { default: [] }, inner: 5017 },
+  '5019': { type: 'object', meta: { default: {} }, dict: { profiles: 5018 } },
+};
+
+/**
+ * 真机载荷 **B2**（`--patch` 覆盖层生效）里 `dsh-terminal-profiles` 那一条，逐字照抄。
+ * 出处：`B2-remote-settings-describe-with-overlay.raw.json`（34521 B / sha256 `BE00EE3D…`）的 `result`。
+ */
+export const REAL_OVERLAY_DESCRIBE: SettingsResponse = {
+  ok: true,
+  value: {
+    writable: true,
+    hasDocument: true,
+    namespaces: [
+      {
+        ns: 'dsh-terminal-profiles',
+        autoGenerate: true,
+        schema: { uid: 5019, refs: OVERLAY_REFS },
+        value: { profiles: [{ name: 'overlay-row', command: 'pwsh' }] },
+        base: { profiles: [] },
+        user: { profiles: [] },
+        applies: 'live',
+        secrets: [],
+        revision: 0,
+      },
+    ],
+  },
+};
+
+/**
+ * 真机载荷 **B1**（**无**覆盖层；`user` 为空、`value == base == {profiles: []}`），逐字照抄。
+ * 出处：`B1-remote-settings-describe.raw.json`（35198 B / sha256 `BD802FDA…`）的 `result`。
+ * 两份载荷的差别**只有** `user`/`value` 两个值（结构完全同形）⇒ 是判据的**正样本**（不许锁）。
+ */
+export const REAL_WRITABLE_DESCRIBE: SettingsResponse = {
+  ok: true,
+  value: {
+    writable: true,
+    hasDocument: true,
+    namespaces: [
+      {
+        ns: 'dsh-terminal-profiles',
+        autoGenerate: true,
+        schema: {
+          uid: 15235,
+          refs: {
+            '15233': { type: 'any', meta: {} },
+            '15234': { type: 'array', meta: { default: [] }, inner: 15233 },
+            '15235': { type: 'object', meta: { default: {} }, dict: { profiles: 15234 } },
+          },
+        },
+        value: { profiles: [] },
+        base: { profiles: [] },
+        user: {},
+        applies: 'live',
+        secrets: [],
+        revision: 0,
+      },
+    ],
+  },
+};
+
+/** 取一份载荷里本命名空间那条（构造变体用；变体都**只改一个字段**，出处写在用例名里） */
+export function nsEntry(response: SettingsResponse): Record<string, unknown> {
+  const value = response.value as { namespaces: Record<string, unknown>[] };
+  const entry = value.namespaces.find((row) => row['ns'] === 'dsh-terminal-profiles');
+  if (entry === undefined) throw new Error('夹具里必须有本包命名空间');
+  return entry;
+}
+
+/** 用一份改过的条目造载荷（其余逐字沿用真机夹具 ⇒ 变体的出处 = 它派生自哪份真机载荷） */
+export function withEntry(
+  patch: Record<string, unknown>,
+  base: SettingsResponse = REAL_WRITABLE_DESCRIBE,
+): SettingsResponse {
+  return { ok: true, value: { ...(base.value as object), namespaces: [{ ...nsEntry(base), ...patch }] } };
+}

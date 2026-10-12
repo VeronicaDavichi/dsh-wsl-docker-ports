@@ -14,16 +14,40 @@
  * 2. **零提权/零路由**：本模块不 import `./TerminalPane` / 不 fetch / 不碰 `node:*`。
  * 3. **失败是结果不是抛**：`update` 的失败、只读、revision 冲突全部变成**判别联合**（REQ-10.3/10.4）。
  *
- * ## 形状未验证 ⇒ 处处多重候选读取；🔴 缺陷 A（查证原文见 `tests/unit/client-config-readonly.test.tsx` 头）
+ * ## 形状未验证 ⇒ 处处多重候选读取
  *
  * `describe()` 除 `{ namespaces: [{ ns, value }] }` 之外的形状**没有实物证据** ⇒ revision / 可写性 /
  * 路径 / 唯一寻址标记全部**按候选名逐个试**，一处都没有就**明说「宿主未提供」**，绝不伪造。
  * 真机载荷 = `{writable:true, hasDocument:true, namespaces:[…21 条…]}`：21/21 条**不带**可写性字段、
- * **无路径**，而写入**确实被拒** ⇒ **唯一可得信号 = 拒绝原文**（`isReadOnlyRefusal`）、路径如实降级。
+ * **无路径**，而写入**确实被拒** ⇒ 显式信号在真机上**取不到**。
+ *
+ * ## 🔴 只读态的两条路都住在 `./config-readonly.ts`（2026-10-12 自动触发轮拆出）
+ *
+ * 本文件只负责「读状态 → 写回 → 结果映射」；**只读判定与呈现**（零写入推断、拒绝原文判据、
+ * 路径如实降级）整体搬去 `./config-readonly.ts`，本文件用 `readOnlyFromPayload(entry, outer)`
+ * 一处调用取回结论；载荷读取原语（`asRecord` / `firstString` / `firstBoolean` / `describeError`）
+ * 也住在那里，本文件 import 回去用 ⇒ **只有一份定义**，不复制第二份。
+ * 拆分的直接理由：本文件拆前 **399/400 行**（SHALL ≤ 400）且它自己写着「下次改动必须先拆」。
+ * ⚠️ **不是**靠删证据换行数 —— 真机载荷出处 / 反例清单 / 宿主行号**原文搬走**，此处只留指针。
  */
 
 import { parseRowStructure } from '../config/row-rules.ts';
 import type { RawProfileRow } from '../config/row-rules.ts';
+import {
+  REASON_CANDIDATES,
+  asRecord,
+  describeError,
+  firstBoolean,
+  firstString,
+  isReadOnlyRefusal,
+  readOnlyFromPayload,
+  readOnlyNoticeFrom,
+} from './config-readonly.ts';
+import type { ReadOnlyNotice } from './config-readonly.ts';
+
+// 只读相关的公开面仍在**原路径**可导入（既有消费方与用例零改动）；定义已搬到 config-readonly.ts。
+export { READONLY_PATH_UNKNOWN, describeError, isReadOnlyRefusal, readOnlyNoticeFrom } from './config-readonly.ts';
+export type { ReadOnlyNotice } from './config-readonly.ts';
 
 /** 命名空间 = patch **条目 id** = 包名（宿主按 `row.options.id === ns` 寻址，REQ-10.5） */
 export const SETTINGS_NAMESPACE = 'dsh-terminal-profiles';
@@ -87,40 +111,6 @@ export interface RemoteSettingsLike {
   update(ns: string, patch: unknown, expectedRevision?: unknown): Promise<SettingsResponse>;
 }
 
-/** 只读原因 + 文件路径（REQ-10.3：两个都要显示，不许只写「保存失败」） */
-export interface ReadOnlyNotice {
-  readonly reason: string;
-  readonly path: string;
-}
-
-/**
- * 「宿主未提供配置文件路径」的**唯一**字面量（真机降级，绝不伪造路径）。宿主**有**路径
- * （`dsh-settings/lib/index.js:399-408` 的 `documentPath`），但唯一的远端出口
- * `settings/openSettingsDocument` 只回 `{opened:true}`（`dsh-api-settings-controller/lib/index.js:441-459`，
- * 且副作用是打开系统编辑器），`configEditor` 也不在远端命名空间里 ⇒ **客户端取不到**。两个可选口径：
- * ① 改 REQ-10.3 措辞 ② 只回显可得字段（原因 + `details.ns`）—— 本实现取 ②，**不擅自改 requirements**。
- */
-export const READONLY_PATH_UNKNOWN = '（宿主未提供配置文件路径）';
-
-/**
- * 「写入被拒」里属于**只读**（本行被上层 patch 覆盖）的那一类，判据用**宿主自己的词汇**：
- * `dsh-config-editor/lib/index.js:122` 逐字原文 `… is overridden by a home patch or command-line overlay`
- * （真机实测同句）。⚠️ **故意不匹配裸的「只读 / read-only」**（`磁盘只读` 是存储故障，误判会锁死表单）。
- */
-export const READ_ONLY_REFUSAL_PATTERN =
-  /overridden by a home patch|command-line overlay|read[-\s]?only provider|provider is read[-\s]?only/i;
-
-/** 这个拒绝是不是「只读」那一类（字符串 / 对象两种错误形态都认；认不出 = false，绝不猜） */
-export function isReadOnlyRefusal(error: unknown): boolean {
-  const text = typeof error === 'string' ? error : firstString(asRecord(error) ?? {}, [...REASON_CANDIDATES, 'code', 'name']);
-  return text === undefined ? false : READ_ONLY_REFUSAL_PATTERN.test(text);
-}
-
-/** 把「只读拒绝」变成给页面显示的提示：**原因取宿主原文**，路径如实降级（不伪造） */
-export function readOnlyNoticeFrom(error: unknown): ReadOnlyNotice {
-  return { reason: describeError(error), path: READONLY_PATH_UNKNOWN };
-}
-
 /** 宿主对「本行是否满足唯一寻址」的说法（REQ-10.5；`undefined` = 宿主没说 ⇒ 不展示限制） */
 export interface AddressabilityNotice {
   readonly reason: string;
@@ -128,7 +118,11 @@ export interface AddressabilityNotice {
 
 /** 从 `describe()` 抽出的本命名空间状态 */
 export interface NamespaceState {
-  /** 宿主明确说了「不可写」⇒ 保存前就拦下（不是写完再报错） */
+  /**
+   * 只读态（REQ-10.3）。两条来源都汇到这里（判定实现见 `./config-readonly.ts`）：
+   * ① 读配置时**零写入推断**出「被上层 patch 覆盖」，或宿主显式说了不可写；
+   * ② 写入被拒且拒绝原文属于只读那一类（页面侧粘性）。
+   */
   readonly readOnly: ReadOnlyNotice | undefined;
   /** 唯一寻址不满足 ⇒ 展示限制（REQ-10.5） */
   readonly addressability: AddressabilityNotice | undefined;
@@ -162,8 +156,9 @@ export type SaveOutcome =
       readonly revisionPassed: boolean;
     }
   /**
-   * 只读 ⇒ **未写入**。两条来源：① 读配置时宿主就说了不可写；② 写入**被拒**且拒绝原文属于
-   * 「本行被上层 patch 覆盖」（缺陷 A 的真机路径）。页面收到后**粘性**进入只读态（不被后续读取解除）。
+   * 只读 ⇒ **未写入**。两条来源：① 读配置时零写入推断出被上层覆盖（或宿主显式说不可写）；
+   * ② 写入**被拒**且拒绝原文属于「本行被上层 patch 覆盖」（缺陷 A 的真机路径）。
+   * 页面收到后**粘性**进入只读态（不被后续读取解除）。
    */
   | { readonly kind: 'readonly'; readonly notice: ReadOnlyNotice; readonly skipped: readonly RowProblem[] }
   /** 校验失败（**全部**行都有问题 ⇒ 一个字节都不写，免得更坏地清空既有配置） */
@@ -181,49 +176,8 @@ export interface ConfigPipe {
   updateCount(): number;
 }
 
-/** 候选字段名（形状未验证 ⇒ 逐个试；测试会打印扫过的候选数） */
-export const PATH_CANDIDATES: readonly string[] = ['path', 'documentPath', 'file', 'settingsPath'];
-export const REASON_CANDIDATES: readonly string[] = ['reason', 'message', 'detail', 'error', 'why'];
-export const WRITABLE_CANDIDATES: readonly string[] = ['writable', 'writableByPlugin', 'canWrite'];
-export const READONLY_CANDIDATES: readonly string[] = ['readOnly', 'readonly'];
 export const REVISION_CANDIDATES: readonly string[] = ['revision', 'etag', 'version'];
 export const ADDRESSABLE_CANDIDATES: readonly string[] = ['addressable', 'uniqueAddress', 'addressed'];
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined;
-}
-
-function firstString(source: Record<string, unknown>, candidates: readonly string[]): string | undefined {
-  for (const key of candidates) {
-    const value = source[key];
-    if (typeof value === 'string' && value.trim() !== '') return value;
-  }
-  return undefined;
-}
-
-function firstBoolean(source: Record<string, unknown>, candidates: readonly string[]): boolean | undefined {
-  for (const key of candidates) {
-    const value = source[key];
-    if (typeof value === 'boolean') return value;
-  }
-  return undefined;
-}
-
-/** 把 `error` 变成一句人话（字符串直接用；对象取候选字段；都没有就 JSON 兜底 + 截断） */
-export function describeError(error: unknown): string {
-  if (typeof error === 'string' && error.trim() !== '') return error;
-  const record = asRecord(error);
-  if (record !== undefined) {
-    const text = firstString(record, [...REASON_CANDIDATES, 'code', 'name']);
-    if (text !== undefined) return text;
-    try {
-      return JSON.stringify(error);
-    } catch {
-      return String(error);
-    }
-  }
-  return error === undefined ? '未知原因（宿主未返回 error）' : String(error);
-}
 
 /**
  * revision 冲突判定（REQ-10.4）。
@@ -254,28 +208,19 @@ function namespaceEntry(described: SettingsResponse): Record<string, unknown> | 
 }
 
 /**
- * 抽出本命名空间的状态。**六处候选**（见上方候选表常量）：每处都在测试里单独喂过一遍。
- * 一处都没有 ⇒ 明说「宿主未提供」，不伪造。
+ * 抽出本命名空间的状态。**六处候选**（候选表与「只读」那三组在 `config-readonly.ts`，
+ * 「revision / 唯一寻址」两组在这里）：每处都在测试里单独喂过一遍。一处都没有 ⇒ 明说「宿主未提供」。
  */
 export function readNamespaceState(described: SettingsResponse): NamespaceState {
   const outer = asRecord(described.value);
   const entry = namespaceEntry(described);
-  const sources = [entry, outer].filter((item): item is Record<string, unknown> => item !== undefined);
 
-  let readOnly: ReadOnlyNotice | undefined;
-  for (const source of sources) {
-    const writable = firstBoolean(source, WRITABLE_CANDIDATES);
-    const flagged = firstBoolean(source, READONLY_CANDIDATES);
-    if (writable === false || flagged === true) {
-      readOnly = {
-        reason: firstString(source, REASON_CANDIDATES) ?? '宿主拒绝写入（本行被上层 patch 覆盖或当前为只读）',
-        path: firstString(source, PATH_CANDIDATES) ?? firstString(outer ?? {}, PATH_CANDIDATES) ?? READONLY_PATH_UNKNOWN,
-      };
-      break;
-    }
-  }
+  // 只读：① 宿主显式说不可写 ② **零写入推断**「有效值 ≠ base + user 可推导值」（见 config-readonly.ts）。
+  // 两条共用一个入口，任何不确定都返回 undefined（= 可写）⇒ 假阳性（把可写锁成只读）被挡在门外。
+  const readOnly = readOnlyFromPayload(entry, outer);
 
   let addressability: AddressabilityNotice | undefined;
+  const sources = [entry, outer].filter((item): item is Record<string, unknown> => item !== undefined);
   for (const source of sources) {
     if (firstBoolean(source, ADDRESSABLE_CANDIDATES) === false) {
       addressability = {
@@ -390,6 +335,8 @@ export function createConfigPipe(getSettings: () => RemoteSettingsLike | undefin
      * 🔴 **缺陷 A 的最小修复点**：旧实现把这句拒绝归成 `failed` ⇒ 页面只说「写入配置失败：…」、不进只读态、
      * 不锁表单（真机症状）；现在归成 `readonly`（页面据此**粘性**只读）。⚠️ 这一支确实调过一次 `update`
      * （拒绝就是信号本身），但**零字节落盘**（宿主拒绝 ⇒ patch sha 不变，真机已证）。
+     * 2026-10-12 起这条**不再是唯一路径**（自动触发见 `config-readonly.ts`），但**保留**为兜底：
+     * 推断有假阴性（例如覆盖层把值设成 schema 默认值 ⇒ 判良性），那一刻由这里接住。
      */
     if (isReadOnlyRefusal(result.error)) return { kind: 'readonly', notice: readOnlyNoticeFrom(result.error), skipped };
     return { kind: 'failed', message: `写入配置失败：${describeError(result.error)}`, skipped };
