@@ -52,7 +52,8 @@ export const CREDENTIAL_MISSING_HINT =
 /** 「服务端说凭据不对」时的提示（**不做重试循环**，只指路） */
 export const CREDENTIAL_REJECTED_HINT =
   '写通道凭据缺失或错误（服务端 401，零执行零写入）：请到本插件配置页重新「生成并保存写通道凭据」，' +
-  '并确认服务端已读到该值（改完配置需重载插件行）。本客户端**不重试**，也不会把凭据写进日志。';
+  '并确认服务端已读到该值（`writeToken` 是 **volatile** 字段、宿主**每次请求现读** ⇒ 改完**即时生效**，' +
+  '**不需要**重载插件行）。本客户端**不重试**，也不会把凭据写进日志。';
 
 /** `sessionStorage` / 假件的公共面（只要这两个方法就够） */
 export interface StorageLike {

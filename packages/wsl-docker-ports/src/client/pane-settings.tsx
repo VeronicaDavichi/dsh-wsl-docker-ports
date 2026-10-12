@@ -173,7 +173,7 @@ export function WriteTokenBlock(props: {
       </p>
       {sessionPresent && configured !== false ? null : (
         <p className="wdp-error" data-testid={WRITE_TOKEN_TESTID.consequence}>
-          后果：写入口会 401（凭据缺失 ⇒ `plan` / `apply` / `audit` 一律 unauthorized，零执行零写入）⇒ 请先「生成并保存写通道凭据」，再重载插件行使服务端读到新值。
+          后果：写入口会 401（凭据缺失 ⇒ `plan` / `apply` / `audit` 一律 unauthorized，零执行零写入）⇒ 请先在本配置页「生成并保存写通道凭据」（`writeToken` 是 volatile 字段、宿主每请求现读 ⇒ **即时生效**，不需要重载插件行）。
         </p>
       )}
       <button
@@ -186,7 +186,7 @@ export function WriteTokenBlock(props: {
       >
         生成并保存写通道凭据
       </button>
-      <p className="wdp-muted">再点一次 = **轮换**（新值覆盖旧值）；服务端要读到新值需要重载插件行。</p>
+      <p className="wdp-muted">再点一次 = **轮换**（新值覆盖旧值）；`writeToken` 是 volatile 字段、宿主每次请求现读 ⇒ **即时生效**（旧串立即 401、新串立即 200），不需要重载插件行。</p>
       <div className="wdp-grid">
         <button
           type="button"
@@ -230,8 +230,8 @@ export function WriteTokenBlock(props: {
         </div>
       )}
       <p className="wdp-muted" data-testid={WRITE_TOKEN_TESTID.delivery}>
-        ⚠️ 服务端要读到新值需要重载插件行。**2026-10-12 真机已订正**：`settings/describe` 里会出现本插件命名空间，
-        凭据经 `secrets` 脱敏下发（服务端不回显值），且**轮换即时生效** —— 旧串立即 401、新串立即 200。
+        ⚠️ **2026-10-12 真机已订正**：`settings/describe` 里会出现本插件命名空间，凭据经 `secrets` 脱敏下发（服务端不回显值）；
+        `writeToken` 是 volatile 字段、宿主每次请求现读 ⇒ **轮换即时生效**（旧串立即 401、新串立即 200）、**清除同样即时生效**，**不需要重载插件行**。
       </p>
     </section>
   );
