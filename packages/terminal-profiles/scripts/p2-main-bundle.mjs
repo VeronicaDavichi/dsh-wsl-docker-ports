@@ -80,6 +80,10 @@ export const MAIN_SIZE_CHECK_NAME = mainSizeCheckName(BUDGET.limitBytes);
  */
 export const MAIN_BUNDLE_LIMIT_RATIONALE =
   '64 KiB = 65,536 B；实测主 bundle 53,014 B（余 12,522 B ≈ 最大单次交付增量 +6,148 B 的 2.04×）；超限即须拆分（配置页族 → 懒加载 chunk），重定条件见本段。';
+//
+// ⚠️ 2026-10-12 重建后实测订正（原记一字不删，仅追加）：主 bundle 53,756 B / 余 11,780 B
+//    （原记 53,014 B / 12,522 B；依据 = stack-decision-changelog.md #53）。
+//    上面 RATIONALE 字面量保持原样 = #50 的推导记录；本包上限 65,536 B 未动。
 
 /**
  * §P2 三条不变量的**本包入口**（位置参数签名**逐字不变** ⇒ 既有调用方与用例不用改）。
