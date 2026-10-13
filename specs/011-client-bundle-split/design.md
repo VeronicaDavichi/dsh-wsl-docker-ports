@@ -104,3 +104,9 @@
 4. **标记字符串口径未定**（§7）⇒ 变异哨兵的实现细节待定。
 5. 真机路径「打开页面但不写」的**实际频率未知** ⇒ 「是否拆第二块」的判断依据不足。
 6. 本 Spec 的 `requirements.md` / `design.md` / `tasks.md` 三份子文档**均未经主人复核**。
+
+## 附：Phase 0 静态证据与 C1/C2 口径（2026-10-13 追加）
+
+- 官方 rc.2 的 `require.async("./client.terminal.js")` 用法（可 `await`、取 chunk 命名空间、与 `react.lazy` 兼容）与「chunk 随 `files` 通配符发出、不进 `exports`」的打包契约，**已由本机 `app.asar` 内产物只读证实**，取证原文见本 Spec 的 `tasks.md` 的「Phase 0 静态证据」节。
+- **C1 / C2 的量测对象 = 构建产物**（`lib/client.js` 与 `lib/client.*.js`），**不是**服务端下发字节（两者差 18 / 22 B 级的下发包装）。
+- **C4** 的「可解释降级」以真实实现为锚：取块失败 ⇒ promise **reject** 且文案形如 `client-modules: bundle script <url> failed to load`。

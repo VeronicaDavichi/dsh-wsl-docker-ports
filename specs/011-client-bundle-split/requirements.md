@@ -70,3 +70,10 @@
 - **假设 A-1**：宿主 ModuleLoader 的 `chunk:` 自注册 + `require.async("./x.js")` 是**唯一**取块机制（§E14 有官方终端页逐字实证）；若 0.2.0-rc.2 另有机制，以 `Phase 0` 真机结论为准。
 - **假设 A-2**：切块**不改变**客户端半的 `exports` / `dsh.client` 清单形状（chunk 不进 `exports`，与官方终端页一致）。
 - **假设 A-3**：`write/plan` 等**首方非 client 源码**被内联进 client 半是**既有构建行为**，切出它们**不需要**改宿主半分包边界。
+
+## 附：C1/C2/C4 的锚点（2026-10-13 追加，静态取证）
+
+- **C1（主包 ≤ 64 KiB）**：量测对象 = 构建产物 `packages/terminal-profiles/lib/client.js` 一类文件；当前基线 **53,756 B**（余 11,780 B）。**不**以服务端下发字节为准（下发版比归档产物大约 18 B 量级）。
+- **C2（chunks ≥ 1 且 tab 注册模块仍在主包）**：chunk 的存在与命名以产物 `lib/client.*.js` 为准（官方先例 `client.terminal.js` = 685,927 B，主包 19,869 B）。
+- **C4（异步取块失败可解释降级）**：以宿主 `dsh-client-modules` 的真实失败语义为锚 —— `script` 加载 `error` ⇒ **reject**，文案 `client-modules: bundle script <url> failed to load`。
+- 静态取证来源与命令原文见本 Spec 的 `tasks.md`「Phase 0 静态证据」节；**运行时那半仍未验**。

@@ -109,3 +109,15 @@
 5. **标记字符串口径未定**（design §7）⇒ 变异哨兵实现细节待定。
 6. **体积数字未由本轮复测**（遵「直接引用、别重新考古」）—— 本 Spec 不产生任何新测量值。
 7. **三份子文档未经主人复核**。
+
+## Phase 0 静态证据（2026-10-13，真机 rc.2 产物只读取证）
+
+- 取证方式：解析本机 `D:\Programs\DeepSeek Harness\resources\app.asar`（归档表 **12,967** 个文件）后**只读**取出官方插件源码；**未起探针实例、未装任何 profile、未改任何配置**。
+- 关键代码（`@deepseek-ai/dsh-client-ui-sidebar-terminal@0.2.0-rc.2` 的 `lib/client.js:167`）：
+  `const LoadedTerminalBody = (0, react.lazy)(async () => ({ default: (await require.async("./client.terminal.js")).TerminalBody }));`
+- 由此确认四项语义：① `require.async` 存在且可 `await`；② 解析值为 chunk 模块命名空间；③ 说明符相对**请求方模块**；④ 与 `react.lazy` / Suspense 兼容。
+- 打包契约：该包 `package.json` 的 `files` = `["lib/index.js","lib/client.js","lib/client.*.js","lib/types/**/*.d.ts"]` ⇒ chunk 随包发出、**不登记在 `exports`**。
+- 失败路径（`@deepseek-ai/dsh-client-modules/lib/client.js` 默认取块钩子 = 同源 classic script）：`script` 的 `error` ⇒ **reject** 并带明确文案 `client-modules: bundle script ${url} failed to load` ⇒ 本 Spec 的 C4「可解释降级」有真实实现可依。
+- 实体体量：`lib/client.js` = **19,869 B**、`lib/client.terminal.js` = **685,927 B**、`lib/index.js` = **210 B**。
+- ⚠️ 口径澄清：本文件早前记录的 **19,887 / 685,949 B** 是**服务端下发版**（比归档内产物各多 **18 / 22 B**，属下发包装）⇒ **C1 / C2 判据一律钉在构建产物**（即 `packages/*/lib/client.js` 这类文件）上，**不钉下发字节**。
+- ⏳ **仍未勾**：`T0.1` 的**运行时**那一半（真浏览器里 `require.async` 真取 chunk、真走 error 分支）**尚未观测** ⇒ 动态验证仍需临时 profile 探针，**动手前先问主人**。
