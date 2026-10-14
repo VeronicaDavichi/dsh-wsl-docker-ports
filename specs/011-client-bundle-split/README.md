@@ -1,5 +1,5 @@
 ---
-status: planned
+status: in-progress
 created: 2026-10-12
 priority: medium
 tags:
@@ -12,7 +12,10 @@ tags:
 depends_on:
 - 003-wsl-docker-ports
 created_at: 2026-10-12T09:39:07.692106800Z
-updated_at: 2026-10-12T09:40:15.595877700Z
+updated_at: 2026-10-14T03:28:22.955529500Z
+transitions:
+- status: in-progress
+  at: 2026-10-14T03:28:22.955529500Z
 ---
 # 客户端主包瘦身：渲染面 + 写路径内核移入 `require.async` 懒加载 chunk（≤ 64 KiB 硬门）
 
