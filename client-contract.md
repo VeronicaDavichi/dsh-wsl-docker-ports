@@ -59,6 +59,7 @@
 > 本节正文（P1–P9；含同日历史重号 P3 / P4 / P5 各两组，原文顺序与编号一律未改）见 [`client-contract-incremental.md`](./client-contract-incremental.md) 的同名「## P.」小节——**标题原文未改、正文一字未动**。
 > 🔴 **2026-10-12 §P2 追加变更记录（尺寸口径：比例代理 → 直接判据 + 64 KiB 明确上限）** —— 原文在分片 [`client-contract-incremental.md`](./client-contract-incremental.md) 的 **§P2 段末**（新坐标 = 该文件的小节「**P2·2026-10-12 追加变更记录**」，位于 §P2 正文之后、`### P3 第三条客户端→宿主通道` 之前）。**§P2 原正文一字未改**，只追加；判据实现落点 = `packages/terminal-profiles/scripts/verify-client-loader.mjs`（`MAIN_BUNDLE_LIMIT_BYTES` = 65,536 B、`mainBundleInvariantChecks`），留痕 = `stack-decision-changelog.md` **#50**。
 > 📌 **2026-10-12 §P2 适用范围订正指针（`wsl-docker-ports` 存量欠账 + 双重锁 + 棘轮；逐包上限表以标记块为准）** —— 规范原文在分片 [`client-contract-incremental.md`](./client-contract-incremental.md) 的小节「**P2·适用范围订正（2026-10-12）**」：`dsh-wsl-docker-ports` 欠账行 **144,149 B** / `nature: debt` / 留痕 **#52**（🔴 **不是认可值** —— 「门绿」只表示**没有再涨**）；**双重锁** = 机器表 ↔ 该分片的 `<!-- main-bundle-budgets:SSoT -->` 标记块**逐字段相等**（只改一边必红）；**棘轮只许降**；机器可读 SSoT = [`packages/wsl-shared/scripts/main-bundle-budgets.mjs`](./packages/wsl-shared/scripts/main-bundle-budgets.mjs) ⇒ **逐包上限表以该分片的标记块为准**，本文件**不复写第三份表格**。
+> ✅ **订正痕（2026-10-13，原文一字未删，只追加）**：上面的「欠账行 **144,149 B** / 留痕 **#52**」是**切分前**的登记；011 Phase 1 落地后**现行登记** = **38,640 B** / `nature: debt`（**棘轮地板**，仍只许降）/ 记录日 2026-10-13 / 留痕 **#54**，标记块已同步（`client-contract-incremental.md` §P2 的 `main-bundle-budgets:SSoT` 块）。
 
 ---
 

@@ -28,7 +28,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test --test-concurrency=1 \"tests/**/*.test.ts\" && vitest run",
     "test:client": "vitest run",
-    "check:client": "node scripts/verify-client-loader.mjs",
+    "check:client": "node scripts/verify-client-loader.mjs && node scripts/assert-client-split.mjs",
     "check:exports": "node scripts/check-exports.mjs",
     "check:size": "node ../wsl-shared/scripts/check-size.mjs",
     "check:host": "node scripts/verify-host-entry.mjs"

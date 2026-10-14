@@ -18,6 +18,12 @@
  * —— 独立成文件是**被迫的**：挂在本门上会把它顶到 **410 行** > 400 行（SHALL，**实测判红**），
  * 与 `terminal-profiles` 当初拆出 `scripts/p2-main-bundle.mjs` **同一个原因**（判据本体一个字没改）。
  * 🔴 本包登记 = 144,149 B、`nature: 'debt'` = **存量欠账，不是认可值**（棘轮只许降）。
+ * ✅ **订正痕（2026-10-13，原文一字未删）**：011 Phase 1 切分落地 ⇒ 主包 **38,640 B ≤ 65,536 B**（余 26,896 B）、
+ * chunk `lib/client.ports.js` 110,498 B；SSoT 上限随棘轮**下调为 38,640 B**（性质 debt = **棘轮地板**）、
+ * 记录日 2026-10-13、留痕 **#54**。🔴 本门的 §7/§8 判据（双重锁 / 棘轮 / 留痕 / 6 组哨兵）数值**全部取自 SSoT**
+ * ⇒ 下调后**自动**收紧（38,641 即红），无需改本文件。另：`T1.4` 的产物断言（`require.async` ≥ 1 / chunk 存在且
+ * 被引用 / 常驻 4 在 / 切出 12 不在 + 6 组哨兵 + 故障注入自证）落在
+ * [`scripts/assert-client-split.mjs`](./assert-client-split.mjs)，由本包 `check:client` 串联执行。
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';

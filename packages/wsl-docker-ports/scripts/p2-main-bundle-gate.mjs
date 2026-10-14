@@ -26,6 +26,13 @@
  * ⇒ 门口径 = **棘轮只许降**：「门绿」只表示「**没有再涨**」，**不表示达标**。
  * 收敛 = 拆懒加载 chunk（须**连带**拆写路径内核、须**单独立项**）；🔴 **不得为过门而删功能**。
  *
+ * ## ✅ 订正痕（2026-10-13，原文一字未删）
+ *
+ * 上面「本包登记 = 144,149 B / 已越线 78,613 B（2.20×）」是**切分前**的记录。011 Phase 1 已把渲染面 7 模块 +
+ * 写路径内核 21,202 B 移入懒加载 chunk ⇒ 实测 **38,640 B ≤ 65,536 B**（余 26,896 B），SSoT 上限随棘轮
+ * **下调为 38,640 B**、记录日 2026-10-13、留痕 **#54** ⇒ 本包**已达标**；「门绿」的含义从「没有再涨」变为
+ * 「守住切分后的水平 —— 再涨一个字节即红」。判据本体一个字未改。
+ *
  * ## 断言记录器由调用方注入
  *
  * `check` / `expectScanned` 是主门里的**同一对**闭包（计数进同一个 `checks` / `failures`）
@@ -75,19 +82,34 @@ export function runP2MainBundleGate({ pkgName, source, mainBytes, check, expectS
     /** §P2 的**推导口径**（65,536 B）—— 当初只由 `terminal-profiles` 推导；这里只用它算「越线多少」，不改本包上限 */
     const derivationLimit = MAIN_BUNDLE_BUDGETS['dsh-terminal-profiles'].limitBytes;
     const overDerivation = mainBytes - derivationLimit;
-    const ratio = (mainBytes / derivationLimit).toFixed(2);
-    console.log(
-      `  🔴 **存量欠账**：本包主 bundle 上限 = ${String(p2Budget.limitBytes)} B = 按现状（${String(mainBytes)} B）登记的**上限**，` +
-        '**不是认可值** —— 它**不表示本包达标**。',
-    );
-    console.log(
-      `     相对 §P2 的推导口径（${String(derivationLimit)} B）本包**已越线 ${String(overDerivation)} B（${ratio}×）**，` +
-        '且该越线**早于 008/009**（初始 client 半 `8bfb6fb` 即 83,709 B > 64 KiB）。',
-    );
-    console.log('     收敛方向：① **先拆懒加载 chunk** —— 只切渲染面**不够**（按本轮构成推算：切后主包仍 ≈ 70,246 B，');
-    console.log('       仍超 65,536 B 共 **4,710 B**）⇒ 须**连带**拆**写路径内核**，预期主包 ≈ 49 KB；');
-    console.log('     ② 该拆包动作**须单独立项**（不在本轮、也不在本 Spec 面内）。');
-    console.log('     🔴 **不得为过门而删功能** —— 上限的意义是「棘轮只许降」，删功能过门 = 把可验收的东西藏起来。');
+    if (overDerivation > 0) {
+      const ratio = (mainBytes / derivationLimit).toFixed(2);
+      console.log(
+        `  🔴 **存量欠账**：本包主 bundle 上限 = ${String(p2Budget.limitBytes)} B = 按现状（${String(mainBytes)} B）登记的**上限**，` +
+          '**不是认可值** —— 它**不表示本包达标**。',
+      );
+      console.log(
+        `     相对 §P2 的推导口径（${String(derivationLimit)} B）本包**已越线 ${String(overDerivation)} B（${ratio}×）**，` +
+          '且该越线**早于 008/009**（初始 client 半 `8bfb6fb` 即 83,709 B > 64 KiB）。',
+      );
+      console.log('     收敛方向：① **先拆懒加载 chunk** —— 只切渲染面**不够**（按本轮构成推算：切后主包仍 ≈ 70,246 B，');
+      console.log('       仍超 65,536 B 共 **4,710 B**）⇒ 须**连带**拆**写路径内核**，预期主包 ≈ 49 KB；');
+      console.log('     ② 该拆包动作**须单独立项**（不在本轮、也不在本 Spec 面内）。');
+      console.log('     🔴 **不得为过门而删功能** —— 上限的意义是「棘轮只许降」，删功能过门 = 把可验收的东西藏起来。');
+      /** 订正痕（2026-10-13，原文一字未删）：上面几行的 `70,246 / 4,710 / ≈49 KB` 是**切分前的一阶推算**；
+       *  011 Phase 1 实测已收敛到 38,640 B（连带写内核进 chunk、未删功能），SSoT 上限随棘轮下调到实测值（留痕 #54）
+       *  ⇒ **本分支当前不可达**（登记上限 38,640 < 65,536 ⇒ `overDerivation` 恒 ≤ 0）。原文保留作留痕。 */
+    } else {
+      console.log(
+        `  ✅ **已达标**：主 bundle ${String(mainBytes)} B ≤ §P2 推导口径 ${String(derivationLimit)} B（余 ${String(-overDerivation)} B）` +
+          ' —— 011 Phase 1 切分（渲染面 + 写路径内核入 chunk），留痕 #54。',
+      );
+      console.log(
+        `     本行上限 ${String(p2Budget.limitBytes)} B = **切分后实测值的棘轮地板**（性质 debt：不是推导值，但**只许降**）` +
+          '；旧读数 144,149 / 70,246 / 4,710 是切分前的记录（原文保留，见 changelog #52 与 #54）。',
+      );
+      console.log('     🔴 **不得为过门而删功能** —— 上限的意义是「棘轮只许降」，删功能过门 = 把可验收的东西藏起来。');
+    }
   }
   const invariant = p2Budget === undefined ? [] : mainBundleInvariantChecks({ mainSource: source, mainBytes, chunkBytes: 0, budget: p2Budget });
   for (const entry of invariant) check(entry.name, entry.ok, entry.detail);
