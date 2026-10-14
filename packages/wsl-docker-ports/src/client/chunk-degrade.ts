@@ -45,21 +45,46 @@ const HINT: Record<ChunkFailureReason, string> = {
   unknown: '未归类的取块失败（原文见详情与 Console）⇒ 点「重试」重发一次。',
 };
 
-/** chunk URL = 主包 URL 同目录换名，**保留 `?rev=`**（与宿主 `chunkUrl()` 同形 ⇒ 探测打的就是真 URL） */
+/** 本包名（= `/plugins/` 路由里那一段；与 `index.ts` 的 `name` 同值） */
+const PACKAGE_NAME = 'dsh-wsl-docker-ports';
+
+/**
+ * chunk URL = 主包 URL 同目录换名（保 `?rev=`）；**批次 URL**（宿主把多个主包合成一条脚本 URL，
+ * 真机实测形态 `…/plugins/??a/client.js,b/client.js&rev=X`）⇒ 用本包那一段拼成独立路径
+ * `…/plugins/<pkg>/<chunk>?rev=X`（rev 取批次那条，只作**回落**探测）。
+ */
 export function deriveChunkUrl(mainUrl: string, chunkName: string): string {
+  const batch = mainUrl.indexOf('/??');
+  if (batch >= 0) {
+    const rev = mainUrl.indexOf('rev=');
+    return `${mainUrl.slice(0, batch + 1)}${PACKAGE_NAME}/${chunkName}${rev < 0 ? '' : `?${mainUrl.slice(rev)}`}`;
+  }
   const q = mainUrl.indexOf('?');
   const path = q < 0 ? mainUrl : mainUrl.slice(0, q);
   const cut = path.lastIndexOf('/');
   return (cut < 0 ? '' : path.slice(0, cut + 1)) + chunkName + (q < 0 ? '' : mainUrl.slice(q));
 }
 
-/** 主包自己的 URL（失败 URL 就是它换名后的那个；取不到就只报原因、不报 URL） */
+/**
+ * 主包 URL：**只认本包那条** —— 真机实测页面里有多条 `client.js` 批次 URL，取第一条会拿到
+ * **别的包**（例 `dsh-client-modules`）⇒ 派生出的 chunk URL 畸形、探测状态与真实 chunk 不符。
+ */
 export function findMainBundleUrl(): string | undefined {
-  const scripts = Array.from(document.getElementsByTagName('script'));
-  return scripts.map((el) => el.src).find((src) => src.includes('/client.js'));
+  const srcs = Array.from(document.getElementsByTagName('script'), (el) => el.src);
+  return srcs.find((src) => src.includes(PACKAGE_NAME)) ?? srcs.find((src) => src.includes('/client.js'));
 }
 
-/** 分类（顺序即优先级：离线 > 404 > chunk 自身抛错 > 脚本没到 > 未归类） */
+/** 宿主原文里它**真正请求**的那个 chunk URL（最准：带真实 `?rev=`）；抠不到则回落推导 */
+export function chunkUrlFromError(error: unknown, chunkName: string): string | undefined {
+  const text = error instanceof Error ? error.message : String(error);
+  const at = text.indexOf(chunkName);
+  if (at < 0) return undefined;
+  const head = /[^\s"']*$/.exec(text.slice(0, at))?.[0] ?? '';
+  const tail = /^[^\s"']*/.exec(text.slice(at))?.[0] ?? '';
+  return new URL(head + tail, document.baseURI).href;
+}
+
+/** 分类（优先级：离线 > 宿主明说「已加载却没注册」⇒ init-failed > 404 > 脚本没到 > 未归类） */
 export function classifyChunkFailure(
   error: unknown,
   facts: { readonly online: boolean; readonly status: number | null },
@@ -67,7 +92,8 @@ export function classifyChunkFailure(
   const detail = error instanceof Error ? error.message : String(error);
   const reason: ChunkFailureReason = !facts.online
     ? 'offline'
-    : facts.status === 404 || facts.status === 410
+    // 🔴 真机教训：探测可能打偏 ⇒ 宿主明说「已加载却没注册」时不让 404 抢答
+    : (facts.status === 404 || facts.status === 410) && !detail.includes('loaded without registering')
       ? 'not-deployed'
       : detail.includes('loaded without registering')
         ? 'init-failed'
@@ -124,7 +150,7 @@ export function ChunkBoot(props: ChunkBootProps): ReactElement {
       .catch(async (error: unknown) => {
         const isOnline = (online ?? ((): boolean => navigator.onLine))();
         const base = (mainUrl ?? findMainBundleUrl)();
-        const chunkUrl = base === undefined ? undefined : deriveChunkUrl(base, spec.slice(2));
+        const chunkUrl = chunkUrlFromError(error, spec.slice(2)) ?? (base === undefined ? undefined : deriveChunkUrl(base, spec.slice(2)));
         // 离线时不发这次注定失败的探测；在线且拿得到 URL 才探（分类要它把 404 与网络不通分开）
         const status = !isOnline || chunkUrl === undefined ? null : await (probe ?? probeChunkStatus)(chunkUrl);
         const failure = classifyChunkFailure(error, { online: isOnline, status });

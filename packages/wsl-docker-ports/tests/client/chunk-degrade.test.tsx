@@ -28,8 +28,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CHUNK_DEGRADE_TESTID,
   ChunkBoot,
+  chunkUrlFromError,
   classifyChunkFailure,
   deriveChunkUrl,
+  findMainBundleUrl,
   type ChunkSeatModule,
 } from '../../src/client/chunk-degrade.ts';
 
@@ -77,6 +79,36 @@ describe('T2.4 纯函数：URL 推导与原因分类', () => {
     expect(deriveChunkUrl('http://h/client.js?v=1#x', 'client.ports.js')).toBe('http://h/client.ports.js?v=1#x');
   });
 
+  it('①b 批次 URL（真机形态）⇒ 拼成本包独立路径；主包 URL **只认本包那条**', () => {
+    // 真机实测：页面里 `client.js` 批次 URL 有三条以上，取第一条会拿到 dsh-client-modules（别的包）
+    const BATCH = 'http://h/plugins/??@a/client.js,@b/client.js,dsh-wsl-docker-ports/client.js&rev=68e1c0ff6961';
+    expect(deriveChunkUrl(BATCH, 'client.ports.js')).toBe(
+      'http://h/plugins/dsh-wsl-docker-ports/client.ports.js?rev=68e1c0ff6961',
+    );
+    document.head.innerHTML = [
+      '<script src="http://h/plugins/??@deepseek-ai/dsh-client-modules/client.js&rev=b7"></script>',
+      '<script src="http://h/plugins/??@x/client.js,@y/client.js&rev=11"></script>',
+      `<script src="${BATCH}"></script>`,
+    ].join('');
+    expect(findMainBundleUrl()).toBe(BATCH);
+    // 坏 URL ⇒ 探测打偏 ⇒ 真机上会把「初始化失败」误判成 404（这就是本条回归要钉死的东西）
+    expect(deriveChunkUrl('http://h/plugins/??@deepseek-ai/dsh-client-modules/client.js&rev=b7', 'client.ports.js')).toBe(
+      'http://h/plugins/dsh-wsl-docker-ports/client.ports.js?rev=b7',
+    );
+    document.head.innerHTML = '';
+  });
+
+  it('①c 从宿主原文抠出**它真正请求**的那个 chunk URL（带真实 ?rev=，相对/绝对两种形态）', () => {
+    expect(chunkUrlFromError(new Error(NOT_REGISTERED), 'client.ports.js')).toBe(CHUNK);
+    expect(
+      chunkUrlFromError(
+        new Error('client-modules: bundle script plugins/dsh-wsl-docker-ports/client.ports.js?rev=e0a93490a42d failed to load'),
+        'client.ports.js',
+      ),
+    ).toBe('http://localhost:3000/plugins/dsh-wsl-docker-ports/client.ports.js?rev=e0a93490a42d');
+    expect(chunkUrlFromError(new Error('别的什么错'), 'client.ports.js')).toBeUndefined();
+  });
+
   it('② 分类优先级：离线 > 404 > chunk 抛错 > 脚本没到 > 未归类（每一类都点名过）', () => {
     const f = (error: unknown, online: boolean, status: number | null) => classifyChunkFailure(error, { online, status }).reason;
     const scriptError = new Error(FAILED_TO_LOAD);
@@ -84,12 +116,14 @@ describe('T2.4 纯函数：URL 推导与原因分类', () => {
     expect(f(scriptError, true, 404)).toBe('not-deployed');
     expect(f(scriptError, true, 410)).toBe('not-deployed');
     expect(f(new Error(NOT_REGISTERED), true, 200)).toBe('init-failed');
+    // 🔴 真机教训：探测 URL 打偏时会给 404，但宿主已明说「已加载却没注册」⇒ 不许被 404 抢答
+    expect(f(new Error(NOT_REGISTERED), true, 404)).toBe('init-failed');
     expect(f(scriptError, true, 200)).toBe('unreachable');
     expect(f(scriptError, true, null)).toBe('unreachable');
     expect(f(new Error('别的什么错'), true, 200)).toBe('unknown');
     // 非 Error 也分类（不能因为 throw 了字符串就炸）
     expect(f('boom', true, 500)).toBe('unknown');
-    console.log('  · 分类 7 条窗口全部按优先级落位（离线 / 404 / 410 / 抛错 / 200 / null / 未归类）');
+    console.log('  · 分类 8 条窗口全部按优先级落位（离线 / 404 / 410 / 抛错 / 抛错但探测 404 / 200 / null / 未归类）');
   });
 });
 
