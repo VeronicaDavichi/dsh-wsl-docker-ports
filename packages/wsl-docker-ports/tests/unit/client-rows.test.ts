@@ -13,7 +13,6 @@ import { PORT_STATES } from '../../src/diff/types.ts';
 import type { PortState } from '../../src/diff/types.ts';
 import { buildPortRows, buildPortsPageView, countSum, summarizeWriteReport, writeGate } from '../../src/client/page.ts';
 import {
-  buildDriftFixView,
   buildExternalRulesView,
   buildForwardActions,
   buildNatGuide,
@@ -31,6 +30,9 @@ import {
   UDP_TIP_TEXT,
   PORT_PRESETS,
 } from '../../src/client/rows.ts';
+// 011 T1.3（2026-10-13）：`buildDriftFixView` 已从 `rows.ts` 搬到 `drift-fix.ts`（只为让写内核随
+// 渲染面 chunk 走）。**本文件只改这一行 import 路径，断言一字未动**。
+import { buildDriftFixView } from '../../src/client/drift-fix.ts';
 import { countFunctions, classification, container, externalRulesFromFixture, managedPorts, NAT_NON_NAT, NAT_OK, realDiff, rule, snapshot, unsupportedMapping, ETH0, OLD_ETH0 } from './client-fixtures.ts';
 
 const GATE_OK = { allowed: true, reason: null } as const;

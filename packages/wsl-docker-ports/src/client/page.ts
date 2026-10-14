@@ -16,7 +16,8 @@
  */
 
 import { PORT_STATES, type PortState, type Scope } from '../diff/types.ts';
-import { buildDriftFixView, buildContainerRows, buildExternalRulesView, buildForwardActions, buildNatGuide, buildPresetOptions, buildScopeControl, buildDriftView, buildUnsupportedRows, managedPortsIssues, managedPortsText, natReason, stateLabel, stateTone, TESTID, UDP_TIP_TEXT, PORT_PRESETS } from './rows.ts';
+import { buildContainerRows, buildExternalRulesView, buildForwardActions, buildNatGuide, buildPresetOptions, buildScopeControl, buildDriftView, buildUnsupportedRows, managedPortsIssues, managedPortsText, natReason, stateLabel, stateTone, TESTID, UDP_TIP_TEXT, PORT_PRESETS } from './rows.ts';
+import { buildDriftFixView } from './drift-fix.ts';
 import type { ManagedPortsFormView } from './types.ts';
 import type { DistroPanelData, ForwardWriteReport } from './host.ts';
 import type {

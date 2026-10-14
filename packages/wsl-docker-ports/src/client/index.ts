@@ -43,7 +43,7 @@
  * 于是每条降级路径都可以被**逐条断言**，而不是靠「反正没崩」来证明。
  */
 
-import { createElement } from 'react';
+import { Suspense, createElement, lazy, type ComponentType, type ReactElement } from 'react';
 
 import {
   CLIENT_SERVICES,
@@ -58,7 +58,7 @@ import {
   type SidebarRightTabsServiceLike,
   type SlotsServiceLike,
 } from './host.ts';
-import { PortsPane } from './pane.tsx';
+import type { PortsPaneProps } from './pane.tsx';
 import { PAGE_ID, PAGE_KIND, PAGE_TITLE, TAB_SLOT, TAB_TITLE_SLOT, portsTabDefinition, registerTabSeats } from './rows.ts';
 import { createRouteSource } from './route-source.ts';
 import { createSettingsPipe } from './settings-pipe.ts';
@@ -66,6 +66,57 @@ import { installStylesWith } from './styles.ts';
 import { createWriteWiring } from './write-channel.ts';
 import type { WriteWiring } from './write-channel.ts';
 import { createWriteTokenStore, defaultSessionStorage } from './write-token.ts';
+
+/**
+ * 宿主注入的 CJS 工厂形参（`scripts/build-client.mjs` 的 banner 里就是 `(require) => {`）。
+ *
+ * 这里**只声明**我们用到的那个方法 `require.async`：宿主的懒加载取块 API，011 `Phase 0` 在
+ * **0.2.0-rc.2 真机**上跑通了整链路（官方终端页 `lib/client.js:167` 同形：
+ * `(await require.async("./client.terminal.js")).TerminalBody`）。声明成模块局部环境变量即可 ——
+ * 不引入任何新依赖（REQ-BS-7），也不往 `globalThis` 上挂东西。
+ */
+declare const require: {
+  (id: string): unknown;
+  async<T = unknown>(id: string): Promise<T>;
+};
+
+/**
+ * 渲染面 chunk 的**说明符**（相对本模块解析 ⇒ 宿主路由下与主包同目录）。
+ *
+ * 🔴 三处同名、改名必须三处同改：[`chunk-ports.ts`](./chunk-ports.ts)（chunk 入口）·
+ * `scripts/build-client.mjs`（chunk 产物名）· 本常量。对不上 = 运行期取块 404。
+ */
+const PANE_CHUNK = './client.ports.js';
+
+/**
+ * 懒加载的**渲染面 + 写路径内核**（011 `T1.2` / `T1.3`）。
+ *
+ * 主包只留 tab 注册壳与这一次取块调用：`pane.tsx` 及其整棵子树（区域组件 / 视图装配 /
+ * `../write/index.ts` 写内核）都在 chunk 侧 ⇒ REQ-BS-2 的「主包不含这些字节」由 **import 图**
+ * 保证，不靠维护一份清单（清单会腐化，边不会）。
+ *
+ * ⚠️ 取块失败（404 / 离线 / chunk 执行期抛错）时本 promise **reject**，由宿主的 slot 失败路径
+ * 报出来（`Phase 0` `T0.2` 三态已实测该语义与控制台原文）。**可解释降级 + 可重试** = REQ-BS-5 /
+ * `T2.4` 的活，本阶段不提前改语义。
+ */
+const LazyPortsPane = lazy(async () => {
+  const chunk: { readonly PortsPane: ComponentType<PortsPaneProps> } = await require.async(PANE_CHUNK);
+  return { default: chunk.PortsPane };
+});
+
+/**
+ * 座位组件（`sidebar.right.pane.tab` 的内容）：**自带 Suspense 兜底**。
+ *
+ * 官方终端页把 `react.lazy` 的组件直接交给 slot（宿主侧有边界，`T0.1` 实测）；我们多包一层
+ * 只为「宿主即便没有边界也不会整页空白」—— 代价约百字节，换来的是懒加载**不会**把别的页拖黑。
+ */
+function PortsPaneSeat(props: PortsPaneProps): ReactElement {
+  return createElement(
+    Suspense,
+    { fallback: createElement('div', { className: 'wdp-loading' }, `${PAGE_TITLE}：正在加载界面资源…`) },
+    createElement(LazyPortsPane, props),
+  );
+}
 
 /** 模块级 Cordis 服务注入（**只放稳定服务**） */
 export const inject: readonly string[] = CLIENT_SERVICES;
@@ -252,7 +303,7 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
     const scopedSlots = softGet<SlotsServiceLike>(scope, 'slots') ?? slots;
     for (const disposer of registerTabSeats(
       scopedSlots,
-      () => createElement(PortsPane, { runtime }),
+      () => createElement(PortsPaneSeat, { runtime }),
       () => createElement('span', { className: 'wdp-tab-title' }, PAGE_TITLE),
     )) {
       collect(disposer);

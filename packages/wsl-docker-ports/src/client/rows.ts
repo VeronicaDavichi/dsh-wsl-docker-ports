@@ -10,12 +10,9 @@ import { isManagedPort, type ManagedPorts } from '../diff/managed-ports.ts';
 import { parseManagedPorts } from '../diff/managed-ports-parse.ts';
 import type { PortClassification, PortState, Scope, UnsupportedMapping, ExternalRule } from '../diff/types.ts';
 import type { DockerContainer } from '../read/docker.ts';
-import type { PortproxyRule } from '../read/netsh.ts';
-import { buildWritePlan, portproxyAddStep, portproxyDeleteStep, type WritePlanOutcome } from '../write/index.ts';
 import type { SidebarRightTabDefinitionLike, SlotsServiceLike } from './host.ts';
 import type {
   ContainerRowView,
-  DriftFixView,
   DriftView,
   ExternalRulesView,
   ForwardActionView,
@@ -231,51 +228,17 @@ export function buildDriftView(classification: PortClassification): DriftView | 
   return { from, to, text: `旧地址 ${from} → 新地址 ${to}` };
 }
 
-export interface DriftFixInput {
-  readonly port: number;
-  readonly scope: Scope;
-  readonly eth0Ip: string;
-  readonly managedPorts: ManagedPorts;
-  readonly rules: readonly PortproxyRule[];
-}
-
-/**
- * 漂移修复序列（T5.6 / design §2 的 `fix` 行：**先 delete 再 add**）。
- *
- * ⚠️ **口径留痕**：命令原文一律来自 005 自己的步骤构造器（`portproxyDeleteStep` /
- * `portproxyAddStep`），本文件不渲染任何命令文本。`blocked` 是 005 的**所有权闸门**结果
- * （`plan.ts` 的 `fix` 分支当前恒被 REQ-1.2 的删除前置拦下：漂移规则的 `connectAddress`
- * 是旧 eth0，不建台账无法证明是本插件写的 ⇒ 序列**展示**、按钮**禁用**）。
- * 这样 UI 既回答了「修复会做什么」，也不会引导一个写路径必须拒绝的动作。
+/*
+ * 🔴 **2026-10-13 搬家留痕（011 `T1.3`；原文一字未删、只是挪了文件）**：
+ * `DriftFixInput` + `buildDriftFixView` **整段**搬到 [`drift-fix.ts`](./drift-fix.ts)。
+ * 理由：`buildDriftFixView` 是本文件里**唯一**触碰 `../write/index.ts` 的函数，而本文件是
+ * **tab 注册面**（REQ-BS-3 要求常驻主包）⇒ 它的那一行 import 会把 `write/plan.ts` 13,321 B
+ * 连同 `ownership` / `scope-note` / `firewall` 同步拽回主包，与 REQ-BS-2 冲突。
+ * 搬出后本文件**不再 import 写路径内核**（判据：产物里本文件仍在主包、`write/plan.ts` 不在）。
+ * 调用方 = `page.ts`（渲染面，已改正 import 路径）+ `tests/unit/client-rows.test.ts`（断言未动）。
+ * 原处**不留转发再导出** —— 那样等于没搬（再导出仍构成同步边）。
  */
-export function buildDriftFixView(input: DriftFixInput): DriftFixView {
-  const stale = input.rules.find((rule) => rule.connectAddress !== input.eth0Ip) ?? input.rules[0];
-  const intended =
-    stale === undefined
-      ? []
-      : [portproxyDeleteStep(stale), portproxyAddStep(input.port, input.scope, input.eth0Ip)];
-  const outcome: WritePlanOutcome = buildWritePlan({
-    action: 'fix',
-    port: input.port,
-    scope: input.scope,
-    managedPorts: input.managedPorts,
-    eth0Ip: input.eth0Ip,
-    rules: input.rules,
-    portState: 'drift',
-  });
-  const steps = (outcome.ok ? outcome.steps : intended).map((step, index) => ({
-    order: index + 1,
-    kind: step.kind,
-    commandText: step.commandText,
-  }));
-  return {
-    port: input.port,
-    from: stale?.connectAddress ?? '?',
-    to: input.eth0Ip,
-    steps,
-    blocked: outcome.ok ? null : { reason: outcome.reason, message: outcome.message, hint: outcome.hint },
-  };
-}
+
 
 /** 不可转发映射行（REQ-9.2：标「不支持」；未发布到宿主的也标出来） */
 export function buildUnsupportedRows(unsupported: readonly UnsupportedMapping[]): UnsupportedRowView[] {
