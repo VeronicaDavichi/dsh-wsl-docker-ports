@@ -161,6 +161,19 @@ export interface DistroPanelData {
   readonly source: 'config' | 'wslDefault' | 'onlyOne' | 'first' | null;
   readonly staleConfig: boolean;
   readonly message: string | null;
+  /**
+   * 「状态被后到的实证修正过」的**留痕**（003 缺陷修复，2026-10-13）。
+   *
+   * `null` = `state` 就是 `wsl -l -v` 的一次性快照原读数；
+   * 非 `null` = 本次装配里**已在目标发行版内成功执行过只读命令** ⇒ `state` 是**实证值**
+   * （`Running`），文案里同时保留**原读数**与**判据来源**（哪个读取成功过）。
+   *
+   * ⚠️ 这是**纯类型字段**：客户端半本轮**不渲染**它（`lib/client.js` 主 bundle 实测 144,149 B
+   * = 上限、余 0 字节 ⇒ 加一个 `<p>` 就会把 §P2 棘轮顶红）。与 `iphlpsvcRunning` 同一个先例：
+   * 契约先把**诚实的事实**留在传输面上，渲染等客户端腾出预算再接。
+   * 判据与实测证据见 `tests/unit/snapshot-cold-start-state.test.ts`。
+   */
+  readonly stateNote: string | null;
 }
 
 /**

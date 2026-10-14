@@ -135,7 +135,7 @@ export function snapshot(options: SnapshotOptions = {}): PortsSnapshot {
     diff: options.diff ?? { ok: true, result },
     scopes: options.scopes ?? {},
     managedPortsDecl: options.managedPortsDecl ?? [],
-    distro: options.distro === undefined ? { distros: [], name: 'Ubuntu2204', state: 'Running', source: 'wslDefault', staleConfig: false, message: null } : options.distro,
+    distro: options.distro === undefined ? { distros: [], name: 'Ubuntu2204', state: 'Running', source: 'wslDefault', staleConfig: false, message: null, stateNote: null } : options.distro,
     distroError: options.distroError ?? null,
     elevationPolicy: options.elevationPolicy ?? 'ask',
     elevationAvailable: options.elevationAvailable ?? true,

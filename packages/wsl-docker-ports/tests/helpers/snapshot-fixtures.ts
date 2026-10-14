@@ -9,6 +9,12 @@
 import { createFakeExecutor, failure, fixtureBytes, ok } from './fake-executor.ts';
 
 export const WSL_LIST = '  NAME            STATE           VERSION\n* Ubuntu2204    Running         2\n  Debian        Stopped         2\n';
+/**
+ * **冷启动场景**的 `wsl -l -v`（003 缺陷修复的输入）：一次性快照把目标发行版记成 `Stopped`，
+ * 而随后 `allowColdStart: true` 的发行版内读取**真的会把它冷启动起来** ⇒ 同一响应的两半矛盾。
+ * `Debian` 保持 `Stopped` 用来钉「只更正有证据的那一条，不许整列一起改」。
+ */
+export const WSL_LIST_STOPPED = '  NAME            STATE           VERSION\n* Ubuntu2204    Stopped         2\n  Debian        Stopped         2\n';
 export const ETH0_TEXT = '2: eth0    inet 172.20.201.152/20 brd 172.20.207.255 scope global eth0\n';
 /** 假 `.wslconfig` 路径与内容（`localhostForwarding=true` ⇒ loopback 不需要显式规则） */
 export const WSL_CONFIG = 'X:\\fake\\.wslconfig';
@@ -26,13 +32,20 @@ export interface FixtureFailureOverrides {
   readonly eth0?: boolean;
   readonly docker?: boolean;
   readonly netsh?: boolean;
+  /**
+   * `wsl -l -v` 一次性快照里目标发行版的状态（缺省 `Running`）。
+   * `'Stopped'` = 造冷启动场景（见 `WSL_LIST_STOPPED`）。
+   * ⚠️ 这只改**快照**：发行版内命令真被执行与否由 **001 的闸门**（`execInDistro`）决定 ——
+   * 本 fake 不模拟闸门（`probeDockerPs` / `probeEth0` 内部走的是生产代码）。
+   */
+  readonly wslState?: 'Running' | 'Stopped';
 }
 
 /** 分流 fake：按命令行回真 fixture 的字节（**不跑任何真进程**） */
 export function routingExecutor(overrides: FixtureFailureOverrides = {}): ReturnType<typeof createFakeExecutor> {
   return createFakeExecutor((call) => {
     const line = [call.file, ...call.argv].join(' ');
-    if (line.startsWith('wsl.exe -l -v')) return ok(WSL_LIST);
+    if (line.startsWith('wsl.exe -l -v')) return ok(overrides.wslState === 'Stopped' ? WSL_LIST_STOPPED : WSL_LIST);
     if (line.includes('show v4tov4')) {
       return overrides.netsh === false
         ? failure('NonZeroExit', { exitCode: 1, stderr: 'password=hunter2 请求的操作需要提升' })

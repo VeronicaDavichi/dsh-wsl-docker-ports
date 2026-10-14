@@ -8,13 +8,25 @@
  * | 快照字段 | 来源（已实现已测） |
  * | --- | --- |
  * | `nat` | 001 `readNetworkingMode()`（`.wslconfig` 自读） |
- * | `distro` / `distroError` | 001 `listDistros()` + `resolveDistro()` |
+ * | `distro` / `distroError` | 001 `listDistros()` + `resolveDistro()`（`state` 另经**状态调和**，见下） |
  * | `docker` | `read/docker-probe.ts` `probeDockerPs()`（超时 + 重试 + 三类失败） |
  * | 规则 | `read/netsh-probe.ts` `probePortproxyRules()` |
  * | eth0 | `read/eth0-source.ts` `createEth0Source().probe()` |
  * | `localhostForwarding` | `read/localhost-forwarding.ts` |
  * | `diff` | `diff/engine.ts` `diff()`（纯函数） |
  * | 脱敏 | `read/redact.ts` `redactOutput()`（**所有**贴进 UI 的原文都过它） |
+ *
+ * ## `distro.state`：装配末尾要做一次**状态调和**（2026-10-13 缺陷修复）
+ *
+ * `wsl -l -v` 是装配**开头**的一次性快照，而 `docker ps` / `eth0` 在**之后**才真跑命令；
+ * 用户点「启动并核验」（`allowColdStart: true`）时那次执行会把发行版冷启动起来（真机 12,637ms）
+ * ⇒ 同一个响应里 `distro.state === 'Stopped'` 与「已取到 eth0 + 6 个容器」直接打架。
+ * 故在**全部探针之后**调 `reconcileDistroState()`：有发行版内读取成功 ⇒ 以实证为准记为
+ * `Running` 并留痕（`stateNote`，含原读数与判据来源）。
+ *
+ * 🔴 **调用点固定在探针之后是判据、不是风格**：探针的准入（`execInDistro` 的 001 REQ-2.4 闸门）
+ * 读的就是 `distros` 这个快照 —— 提前调和会让 `Stopped` 变成 `Running` ⇒ 闸门放行 ⇒
+ * **未经用户同意就冷启动发行版**。故调和结果**只进快照**，绝不回喂任何执行路径。
  *
  * ## 三类失败各有各的位置（这是本文件最重要的设计决定）
  *
@@ -36,7 +48,7 @@ import { diff } from './diff/engine.ts';
 import { parseManagedPorts } from './diff/managed-ports-parse.ts';
 import type { ManagedPorts } from './diff/managed-ports.ts';
 import type { Scope } from './diff/types.ts';
-import { loadDistroPanel } from './distro.ts';
+import { loadDistroPanel, reconcileDistroState } from './distro.ts';
 import { probeDockerPs } from './read/docker-probe.ts';
 import type { DockerPsOptions, DockerPsOutcome } from './read/docker-probe.ts';
 import { createEth0Source } from './read/eth0-source.ts';
@@ -153,6 +165,14 @@ export function createSnapshotBuilder(deps: SnapshotDeps): SnapshotBuilder {
         const eth0Outcome = eth0Source === null ? null : await eth0Source.probe(options.allowColdStart === undefined ? {} : { allowColdStart: options.allowColdStart });
         const eth0Ip = eth0Outcome !== null && eth0Outcome.ok ? eth0Outcome.ip : null;
 
+        // ⑤.b 状态调和（003 缺陷修复）：把「后到的实证」接回 ② 那次一次性快照。
+        // 只认**成功**的发行版内读取（失败不能当证据：闸门挡下的那类失败恰恰说明「没跑起来」）。
+        // 🔴 位置是判据的一部分：必须在**全部**探针之后，理由见文件头「`distro.state`」一节。
+        const succeededReads: string[] = [];
+        if (dockerOutcome !== null && dockerOutcome.ok) succeededReads.push('docker ps');
+        if (eth0Outcome !== null && eth0Outcome.ok) succeededReads.push('eth0 地址');
+        const distroView = reconcileDistroState(distro, { succeededReads });
+
         // ⑥ `.wslconfig` 的 localhostForwarding（读不到 ⇒ null = 「不知道」，不冒充 false）
         const forwarding = await readLocalhostForwarding(deps.localhostForwarding ?? {});
         const localhostForwarding = forwarding.ok ? forwarding.enabled : null;
@@ -189,7 +209,7 @@ export function createSnapshotBuilder(deps: SnapshotDeps): SnapshotBuilder {
             diff: outcome,
             scopes,
             managedPortsDecl: declaration.managedPorts,
-            distro,
+            distro: distroView,
             distroError,
             elevationPolicy: declaration.elevationPolicy,
             elevationAvailable: await elevationAvailable(),
