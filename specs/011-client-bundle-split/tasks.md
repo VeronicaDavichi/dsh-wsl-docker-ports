@@ -57,9 +57,14 @@
 
 ## Phase 2：功能等价与降级
 
-- [ ] T2.1 [REQ-BS-4] 首开页面**功能等价**
+- [x] T2.1 [REQ-BS-4] 首开页面**功能等价**
   - 内容：右栏页能用（表格 / 设置 / 写面板入口都在），与切分前**逐项对照**。
   - 验证：chrome-devtools MCP 真机截图 + 逐项清单勾完。
+  - ✅ **2026-10-14 实测（受控 A/B 真机对照）**：**唯一变量 = `lib/client.js`** —— host 半边 **90 个文件逐字节相同（差异 0）**、`package.json` / `cordis.patch.yml` 同字节；A 组 = 切分前主包 **144,149 B**（`git archive 3efb13c` 取切分前树 + 切分前构建选项重建，**逐字节命中 T1.1 锚点** SHA256 `FCB0A7DC222C1C70F46911FC9163B7E99B6F9A277F711746928F76B428DEE5A7`），B 组 = 现行 **38,640 B + chunk 110,498 B**；两轮都用**一次性 profile `011-probe`**（junction 挂载、**零安装**、用后删档还原）、**同一 WSL 状态**（`Ubuntu2204` Stopped）、同一页同一操作路径。
+  - 结果（**全等**）：`innerText` **3,119 字符 / 127 行、逐行差异 0** · `outerHTML` **9,243 字符相等** · 标题 10 项（NAT 硬前提 / 目标发行版 / docker 读取失败（distro-not-running）/ 端口转发（五态）/ 外部规则（只读，19 条）/ 端口声明（managedPorts）/ 提权策略 / 写通道凭据 / 写通道（确认后执行）/ 下一期）· 按钮 9 个（含「进容器 exec [disabled]」）· 控件 19 个（含两个 `select` 的当前值 `Ubuntu2204` / `none` / `add` / `loopback`）· 逐项清单：**表格 1 张**（表头 端口/状态/作用域/动作/证据）、**设置区块** ✓（端口声明 + 提权策略 + 写通道凭据）、**写面板入口** ✓（「写通道（确认后执行）」+「预演（只读，零写入）」）、外部规则 **19** 条、下一期置灰 ✓。
+  - 输入侧同源：路由载荷 `GET /dsh-wsl-docker-ports/snapshot` **除 `refreshedAt`（刷新时刻 epoch 毫秒）外逐字节相同**（深比差异路径数 = **1 / 1**，且该路径名命中「易变字段」）。**A/B 判别器**：A `chunkRequested=false`、B `chunkRequested=true`（且 B 的资源列表里出现 `client.ports.js`）。**Console 两轮均 0 错 0 警**。
+  - ⚠️ **视觉凭证口径（诚实登记）**：两张截图已归档，但**视口不同**（A `929×917`、B `1400×900` —— `resize_page` 在 A 轮未生效，另 B 轮补拍同视口时 CDP 截图**连续超时**）⇒ **不做像素对照**（尺寸不同即不可比）；等价判定以 **DOM / 文本逐字节全等**为准（同一输入下比像素更强）。仓外归档：`C:\Users\EDY\dsh-probe-artifacts\20261014-011-t21\`（`captureA.json` / `captureB.json` / `build-pre.mjs` / `diff-snapshot.mjs` / `shotA-929x917.png` / `shotB-1400x900.png`）。
+  - 佐证（源码级）：那次切分只改了 `src/client/{index.ts,page.ts,rows.ts}` + 新增 `chunk-ports.ts` / `drift-fix.ts`（`git diff --name-status 3efb13c HEAD -- packages/wsl-docker-ports/src` 逐条可查）⇒ 其余客户端模块（`pane.tsx` / `pane-settings.tsx` / `pane-tables.tsx` / 三个 `write-*.tsx` / `styles.ts` / `route-source.ts` / `types.ts` / `write-dto.ts` / `settings-pipe.ts` / `write-channel.ts` / `write-token.ts` / `host.ts`）**逐字节未动**。
 
 - [ ] T2.2 [REQ-BS-4] **009 的凭据 a11y 判据仍全绿**
   - 内容：复用 009 的判据（一次性写通道凭据**不进 a11y 树**：`aria-hidden` 明文 + 无障碍名不含值的复制按钮），**逐条复跑**。
@@ -104,6 +109,8 @@
 | V7 | 变异哨兵（把模块塞回主包） | 断言**变红** | 断言 exit ≠ 0 |
 
 > ⚠️ 本表**一行都还没跑**（闸门未达、零实例）；写下来是为了让闸门一通过就能直接执行。 🔴 **订正（2026-10-13）：闸门已通过**（见文末「Phase 0 运行时证据」）⇒ 本表**可开跑**，但**仍未跑**（`Phase 1` 产物尚不存在）。
+>
+> 🔴 **订正（2026-10-14）：`V1` 已跑通**（受控 A/B 真机对照，见 `T2.1` 条目的 ✅ 实测行）——三条判据逐条落地：主包 **38,640 ≤ 65,536** ✓ · Network 里**真取到 chunk**（`reqid=39 … client.ports.js?rev=… [200]`，本轮另以 `chunkRequested` 由 false→true 复核）✓ · **页面功能与切分前一致**（DOM/文本逐字节全等）✓。⚠️ **`V2` 的真机半仍未跑**：产物半由 `T1.4` 的 ④（`rows.ts` 等常驻标记在主包）覆盖 ✓，但「**未取 chunk 时 tab 已注册**」需要在**取块被拦**的会话里观测 ⇒ 与 `V3`/`T2.4`（可解释降级）同轮跑，本轮**不宣称**。`V3`~`V6` 同样未跑。
 
 ## 未验项（如实登记）
 
