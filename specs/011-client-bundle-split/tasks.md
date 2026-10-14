@@ -78,7 +78,7 @@
   - ✅ **2026-10-14 实测（文案 diff 为空）**：**同一把尺子量两侧**（切分前 `3efb13c` vs 现在；`git show <rev>:<file>` 取源；8 个文案承载文件 = `write-result.tsx` / `write-panel.tsx` / `write-confirm.tsx` / `write-channel.ts` / `write-token.ts` / `pane-settings.tsx` / `transport/write-auth.ts` / `transport/routes.ts`）⇒ ① 字面量中文文案 **89 条 vs 89 条、diff 为空**（只在切分前 0 条、只在现在 0 条）；② JSX 文本中文文案 **41 条 vs 41 条、diff 为空**；③ 点名 **7 条**（四态「已执行（成功）」/「失败」/「未执行（跳过）」/「回滚」+ 服务端 401 三条「未配置写通道凭据：…」/「缺少写通道凭据：…」/「写通道凭据不正确：…」）两侧**逐字命中**。脚本与两侧清单落盘：`C:\Users\EDY\dsh-probe-artifacts\20261014-011-t22-t23\{copy-diff.mjs,copy-pre-literals.txt,copy-now-literals.txt,copy-pre-jsx.txt,copy-now-jsx.txt}`。
   - ✅ **2026-10-14 实测（真机走一遍 401）**：一次性 profile 真机实例（起完即删）打 `/dsh-wsl-docker-ports/write/*` **七连** —— 未配置态：`GET /audit` 无凭据 **401/`unauthorized`** + 文案（含 `WRITE_TOKEN_CONFIG_HINT` 全串）· `GET /audit?token=乱串` **401**（未配置 ≠ 放行）· `POST /plan` 无凭据 **401** · `GET` 未知路径 **401**（**鉴权优先于 404**）；生成凭据后：错凭据 **401**「写通道凭据不正确：拒绝本次请求（零执行、零写入、零审计）。」· 无凭据 **401**「缺少写通道凭据：拒绝本次请求（零执行、零写入、零审计）。」· 真凭据 `?token=` **200** 与 `Authorization: Bearer` **200**（**正向控制**：401 确因凭据而非通道坏）。另：`tokenEchoedInAnyResponseBody=false`（**401 与 200 的响应体都不回显凭据**）；树内状态由「本会话持有凭据：否；服务端配置 writeToken：未检查」变为「**是**；**已配置**」。readings 原文见证据档 `evidence.md` §3。
 
-- [ ] T2.4 [REQ-BS-5] **可解释降级**实现
+- [x] T2.4 [REQ-BS-5] **可解释降级**实现
   - 内容：取块失败 ⇒ 页面壳保留 + 原因分类文案 + 可重试；**禁止**白屏 / 静默。
   - 验证：三种失败情形（404 / 执行抛错 / 断网）各跑一次；断言有文案、有重试、无空白页；控制台有明确错误。
   - 🆕 **2026-10-14 落地记录（代码 + 离线门已绿；真机三态未跑）**：
@@ -114,17 +114,23 @@
 
 ## Phase 3：变异哨兵与收口
 
-- [ ] T3.1 [REQ-BS-9] **变异哨兵**
+- [x] T3.1 [REQ-BS-9] **变异哨兵**
   - 内容：临时把某个已切出模块**塞回主包** ⇒ 断言 ⑤ **必须**变红；跑完**还原**。
   - 验证：变异后断言 exit ≠ 0（红的原文留存）；还原后 `git status` 干净。
 
-- [ ] T3.2 [REQ-BS-1] 三绿 + 行数门
+- [x] T3.2 [REQ-BS-1] 三绿 + 行数门
   - 内容：`typecheck` / `test` / `build` 三绿；单文件 ≤ **400** 行（原始行数）。
   - 验证：三条命令 exit 0 + 行数复算。
 
-- [ ] T3.3 [REQ-BS-8] 文档收口
+- [x] T3.3 [REQ-BS-8] 文档收口
   - 内容：把真构建数字、`Phase 0` 结论、变异哨兵原文、未验项回收写进本 Spec；**只许降不许抬**的余量（≈16,494 B）登记。
   - 验证：本 Spec 四份文档与实测一致；未勾项 = 0（除明确登记的未验项）。
+  - ✅ **2026-10-14 收口记录（四份文档 ↔ 实测一致）**：
+    - **T3.1 变异哨兵（原文留存）**：把已切出的 12 模块**塞回主包**（`lib/client.js` += `lib/client.ports.js` 正文 ⇒ 44,621 → **155,120 B**）⇒ 断言门 **exit=1**，红的原文：`FAIL ⑤ 已切出 12 模块标记不在主包 — 仍留在主包 12/12：src/client/pane.tsx、src/client/pane-settings.tsx、src/client/pane-tables.tsx、src/client/page.ts、src/client/write-panel.tsx、src/client/write-confirm.tsx、src/client/write-result.tsx、src/client/drift-fix.ts、src/write/plan.ts、src/write/ownership.ts、src/write/scope-note.ts、src/write/firewall.ts`（同时如预期带红 `①a` / `①b`）⇒ **⑤ 确实会变红，不是恒真**。还原后主包**逐字节一致**（44,621 B / sha256 `0445269054CE5753…`）、门回绿（17/0）、`git status` 干净。全量原文：`C:\Users\EDY\dsh-probe-artifacts\20261014-011-t24\T31-mutation-red.log`。
+    - **T3.2 三绿 + 行数门（全部 Windows 侧实测）**：`tsc -p tsconfig.json` exit 0 · `node --test --test-concurrency=1 "tests/**/*.test.ts"`（docker-ports）与 `node --test "tests/contract/**/*.test.ts"`（wsl-shared）见上 · `vitest run` **13 files / 126 tests passed** exit 0 · `build` 三步（`tsc -p tsconfig.build.json` + `node scripts/build-client.mjs` + `tsc -p tsconfig.client.json`）均 exit 0，且**重建后产物与变异前逐字节一致**（主 **44,621 B** / `0445269054CE5753…`、chunk **110,498 B**）⇒ 构建确定性顺带得证。行数门：291 个源/测试文件，最大 **373 行**（`packages/wsl-docker-ports/src/transport/apply.ts`），**超 400 行 = 0 个**。
+    - **余量登记（订正痕，只降不抬）**：本任务原文写「≈16,494 B」，那是**切分第一轮**的旧余量；现口径 = §P2 硬上限 65,536 B − 实测主包 **44,621 B** = **20,915 B**（原文保留，不改，以此订正为准）。棘轮地板 `①b` 同值 44,621 B（`nature: debt`，只降不抬，trace `#56`）⇒ **硬判据 ①a 未抬、地板未抬**。
+    - **未验项回收**：T2.4 三态（404 / 执行期抛错 / 断网）**已在真机全部通过**（第三轮）+ 第四轮根因实验撤回一条假警报（详见上文两节）⇒ 本 Spec 未勾项 **= 0**；仍登记但**不属于本 Spec 未验项**的：001 的「闸门读到可能过期的 `Running` 快照」、003 的 `stateNote` 未渲染与失败类证据缺口（各自 Spec 登记）。
+    - **文档 ↔ 实测一致性**：`requirements.md`（REQ-BS-1/2/3/4/5/6/8/9 的判据均已由 T1/T2/T3 证据覆盖）· `design.md`（切分边界与 `chunk-degrade` 兜底面 = 真机验证的那一面）· `tasks.md`（本文件，含四轮真机记录）· `client-contract-incremental.md` + `client-contract.md` + `stack-decision*.md` 的预算/口径三处同步（留痕 `#56`）⇒ **四份一致 ✓**。
 
 ---
 
