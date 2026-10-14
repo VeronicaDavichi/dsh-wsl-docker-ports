@@ -292,3 +292,10 @@ T4.1–T4.5 **已整体迁至 [005-elevation-write-path](../005-elevation-write-
 - **⑤ 行数复核（两口径）**：本文件 `rawLines = 275`（SSoT = `check-size.mjs` 的 `rawLines()`）/ `split('\n') = 276` —— **已超 warn 200（既有状态、登记不修、不抬阈值）、max 400 未过**；`README.md = 191`（两口径 191 / 192）。**loneCR delta = 0**（改前 0 ⇒ 改后 0）、控制字符 0。
 - **⑥ 本轮改动**：`tasks.md`（3 处勾选 + `Phase 7` 空位 + 本块）· `README.md`（状态行追加 + 文档导航新增 010 行 + P1 块指针 + 「收口轮留痕」块）· **新增** `specs/010-docker-container-control/**`（CLI `create` + 三份内容文件）。**未碰** `packages/**`（零代码）· **未碰**任何 profile · **未跑** `pnpm` / 实例 / 浏览器 · **未用** `git add -A`。
 - **⑦ 仍留的未验项（不因翻状态而消失）**：本文件「真机验收清单」7 行**仍未逐行走**；`iphlpsvcRunning` 恒 `null` / `elevationAvailable` 保守 `false` 两个占位未变；`check:exports` 扩到两个插件包 = **001 口径变更，登记不修、待主人拍板**（该建议**留在本 Spec**、不随 `Phase 7` 迁走）。
+
+## 销项记录（2026-10-13 记账纠正）：`iphlpsvcRunning` 不是未验项
+
+- 结论：**该字段恒为 `null` 是故意设计，不是缺陷** —— 源码 `packages/wsl-docker-ports/src/snapshot.ts:197-199` 明确写着「本轮**没有**实现 iphlpsvc 探测（Spec 未要求，且它不在任何判据里）⇒ `iphlpsvcRunning: null`」。
+- 且已被测试**钉死**：`packages/wsl-docker-ports/tests/unit/snapshot.test.ts:102` = `assert.equal(snapshot.iphlpsvcRunning, null, '未实现 iphlpsvc 探测 ⇒ 必须是 null，不许编 true/false')`。
+- 类型面：`packages/wsl-docker-ports/src/wire.ts:187` = `readonly iphlpsvcRunning: boolean | null;`（允许 null 是契约的一部分）。
+- 处置：**从「未验项」账上销项** ✓ —— 它是「诚实表达未知」的产品决策，不需要补探测；若将来某判据要用到它，再按 Spec 变更流程补实现与验证（不得先编 true/false）。
