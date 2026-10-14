@@ -299,3 +299,24 @@ T4.1–T4.5 **已整体迁至 [005-elevation-write-path](../005-elevation-write-
 - 且已被测试**钉死**：`packages/wsl-docker-ports/tests/unit/snapshot.test.ts:102` = `assert.equal(snapshot.iphlpsvcRunning, null, '未实现 iphlpsvc 探测 ⇒ 必须是 null，不许编 true/false')`。
 - 类型面：`packages/wsl-docker-ports/src/wire.ts:187` = `readonly iphlpsvcRunning: boolean | null;`（允许 null 是契约的一部分）。
 - 处置：**从「未验项」账上销项** ✓ —— 它是「诚实表达未知」的产品决策，不需要补探测；若将来某判据要用到它，再按 Spec 变更流程补实现与验证（不得先编 true/false）。
+
+---
+
+## ✅ 003 缺陷修复轮（2026-10-13）：冷启动响应不自洽 —— 装配期状态调和（实证优先 + `stateNote` 留痕）
+
+> 结转自上面 `:266` 的老问题（**原文保留、一字未删**）：「冷启动那份响应内部不自洽（diff 已取到 eth0、同响应 distro.state 仍是 Stopped）」。本块只结这一条；同行的 `elevationAvailable=false` 占位**不在本轮范围**（它已由 008 的 `availability.probe()` 接线修正、待真机复验，见 AGENTS.md）。
+
+- **缺陷（结构性根因，不是解析错）**：修前 `packages/wsl-docker-ports/src/distro.ts:63` = `state: matched?.state ?? null`（现为 `:65`，同一个 `toPanel()`）—— `state` **只有**一个来源，即 `wsl -l -v` 的**一次性快照**，装配期**没有任何「后到证据回头修正」的通道**；而 `src/read/docker-probe.ts:15-16,132` 的反冷启动闸门只在「发行版非 Running 且未显式允许冷启动」时**不执行命令** ⇒ 用户点「启动并核验」（`allowColdStart: true`）时，`docker ps` / `eth0` 会**真的冷启动发行版**（真机 12,637ms）⇒ 同一响应里 `distro.state = Stopped` 与「已取到 eth0 `172.20.201.152` + 6 个容器」同时成立：页面一边说没运行、一边列出容器与地址。
+- **判据（可二值判定，逐条被用例钉死）**：
+  - ① 同一响应里存在「发行版内读取**成功**」⇒ `distro.state` SHALL 是 `Running`（实证优先），且 `distros` 里**同名那一条**一并更正、**其余条目一字不动**；
+  - ② 更正 SHALL 留痕：`stateNote` 非 `null`，且同时含**原读数**与**判据来源**；
+  - ③ 没有实证 ⇒ `Stopped` 保持 `Stopped`、`stateNote` 为 `null`（**不许编状态、不许留假痕**）；
+  - ④ 快照本来就是 `Running` ⇒ `stateNote` 为 `null`（不留噪声）；
+  - ⑤ 🔴 **反冷启动闸门一个字没动**：`allowColdStart` 缺省时 `wsl.exe -d …` 的执行次数 = **0**，且命令集合与修复前逐字相同（4 条 / 被闸门挡下后 2 条），无一条写或提权命令。
+- **修法**：`src/distro.ts` 新增纯函数 `reconcileDistroState()`；`src/snapshot.ts` 在**全部探针之后**调用（`// ⑤.b`）。🔴 **调用位置本身就是判据**：探针的准入（001 `execInDistro` 的 REQ-2.4 闸门）读的就是 `distros` 这个快照 —— 提前调和会让 `Stopped` 变 `Running` ⇒ 闸门放行 ⇒ **未经用户同意就冷启动发行版**（10–12 秒 + 拉起全部容器）⇒ 调和结果**只进快照**、绝不回喂任何执行路径。
+- **只认「成功」的理由（以及登记不做的相邻情形）**：`DistroNotRunning` / `DistroNotFound` / `CommandNotFound` 都发生在**执行之前**，恰恰说明「这次没跑起来」⇒ 不能当证据（否则 `state` 会从「旧的错」变成「新的错」）。⚠️ `daemon-down` / 非零退出 / 超时**也**说明命令被 spawn 过、严格说同属「在跑」的证据：**本轮不纳入**并已登记（判据会从「拿到过发行版内结果」退化成「推断发生过 spawn」，需与 001 错误码逐个耦合；且「Stopped + docker 守护进程未运行」不构成同一响应内两半直接打架）⇒ 若主人要求扩到那一层，**单独开工、不夹带**。
+- **契约改动**：`src/wire.ts` 的 `DistroPanelData` 加 `stateNote: string | null`（**纯类型字段**，运行期零字节）。⚠️ 客户端半**本轮不渲染**它 —— `lib/client.js` 主 bundle 实测 **144,149 B = 上限、余 0 字节**（§P2 棘轮、`nature: debt`），加一个 `<p>` 就会顶红；先例同 `iphlpsvcRunning`（契约先留诚实事实、渲染等腾出预算）。**实测**：产物 `144,149 B` / SHA256 `FCB0A7DC222C1C70F46911FC9163B7E99B6F9A277F711746928F76B428DEE5A7` 在改前与改后**逐字节相同**。
+- **红→绿证据（真执行，非转述）**：`node --test --test-concurrency=1 tests/unit/snapshot-cold-start-state.test.ts` —— 修前 **exit 1 / pass 2 / fail 2**，两条红的断言都是 `actual: 'Stopped' / expected: 'Running'`（正是缺陷本身），另两条护栏（闸门未变 / 不留假痕）**修前即绿** ⇒ 修复不许把它们弄红；修后 **exit 0 / pass 4 / fail 0**。
+- **门（本轮全部真跑、全绿）**：`tsc -p tsconfig.json` exit **0**；`node --test --test-concurrency=1 "tests/**/*.test.ts"` = **429 用例 / 429 过 / 0 失败**（基线 425 + 本轮 4）；`vitest run` = **12 文件 / 116 用例**；`verify-client-loader.mjs` = **40 项断言 / 0 失败**；`verify-host-entry.mjs` = **18 / 0**；`check-size.mjs` = **282 文件**（281 + 本次新增的用例文件）、最大 **396 行**。
+- **本轮改动**：commit **`870b81f`**（6 文件、+288 / −7）= `src/{distro,snapshot,wire}.ts` + 新增 `tests/unit/snapshot-cold-start-state.test.ts` + `tests/helpers/snapshot-fixtures.ts`（追加 `WSL_LIST_STOPPED` 常量与 `wslState` 覆盖项）+ `tests/unit/client-fixtures.ts`（类型必需字段）。**未碰** `src/client/**`（⇒ 客户端产物逐字节未变）· **未碰** 001（闸门一行未改）· **未碰** 任何 profile / 真机 / `netsh` / 实例 / 浏览器 · **未跑** `pnpm`（pnpm 11 的 `verify-deps-before-run` 会改写 `pnpm-lock.yaml`）· **未用** `git add -A`。
+- **行数复核（写入后实测）**：本文件 rawLines = 322（`max 400` 未过；**已超 `warn 200` 是既有状态，登记不修、不抬阈值**）· **追加后 孤 LF 增量 = 0 / 孤 CR 增量 = 0**（改前两值均 0）· 写盘走 `[IO.File]::WriteAllBytes` + `UTF8Encoding($false)`（无 BOM），**未用 `edit` 工具**。
