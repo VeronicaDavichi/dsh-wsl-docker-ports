@@ -258,8 +258,9 @@ export interface DshPackageManifest {
 | 包 | 上限（字节） | 性质 | 记录日 | 留痕 |
 | --- | --- | --- | --- | --- |
 | `dsh-terminal-profiles` | 65536 | hard | 2026-10-12 | #50 |
-| `dsh-wsl-docker-ports` | 38640 | debt | 2026-10-13 | #54 |
+| `dsh-wsl-docker-ports` | 43857 | debt | 2026-10-14 | #55 |
 <!-- main-bundle-budgets:SSoT:end -->
+> ✅ **订正痕（2026-10-14，原文一字未删，只追加）**：上面标记块里的 `dsh-wsl-docker-ports | 38640 | debt | 2026-10-13 | #54` 是 011 `Phase 1` 切分后的登记；011 `T2.4`（`REQ-BS-5` 可解释降级）落地后**现行登记 = 43857 / debt（**棘轮地板**，仍只许降）/ 2026-10-14 / #55**（标记块已同步）。原因：降级面**必须常驻主包** —— 失败的那一半**正是 chunk** ⇒ 新增常驻模块 `src/client/chunk-degrade.ts`（+5,217 B：五类原因文案 + 状态码探测 + 重试），**未删任何功能、未动切分边界**。🔴 **§P2 硬判据 65,536 B 不动**（余 **21,679 B**）—— 地板是「不许再涨」的快照，**不是**功能上限。留痕 = changelog **#55**。
 
 > **判定落点**：机器表 ↔ 本节标记块的**逐字段相等**、棘轮方向、留痕号可追，三件事都由 [`packages/wsl-docker-ports/scripts/verify-client-loader.mjs`](./packages/wsl-docker-ports/scripts/verify-client-loader.mjs) 的 §7 判（`terminal-profiles` 的门**不新增判据** ⇒ 该包读数仍锁在 **60/60**）；§P2 三条判据本体由**两个包的门共用**。
 

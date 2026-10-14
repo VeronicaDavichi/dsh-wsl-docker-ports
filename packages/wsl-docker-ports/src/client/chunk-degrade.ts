@@ -1,0 +1,164 @@
+/**
+ * 011 `T2.4`（`REQ-BS-5`）：异步取块失败 ⇒ **可解释降级**（原因分类 + 原文 + 可重试 + Console 明确错误）。
+ *
+ * 🔴 为什么住**主包**：失败的那一半**正是 chunk** ⇒ 降级面放进 chunk 就是「一起失败」。
+ * 于是这里的每个字节都吃主包预算（产物不压缩、注释也计字节）⇒ 深水区理由写在
+ * `tests/client/chunk-degrade.test.tsx` 与 `specs/011-client-bundle-split/design.md`。
+ */
+import { createElement, useEffect, useState, type ComponentType, type ReactElement } from 'react';
+
+export type ChunkFailureReason = 'offline' | 'not-deployed' | 'unreachable' | 'init-failed' | 'unknown';
+
+export interface ChunkFailure {
+  readonly reason: ChunkFailureReason;
+  readonly label: string;
+  readonly hint: string;
+  readonly detail: string;
+}
+
+/** chunk 侧导出的**最小**契约（真正的 props 契约在 `pane.tsx`） */
+export interface ChunkSeatModule {
+  readonly PortsPane: ComponentType<Record<string, unknown>>;
+}
+
+export const CHUNK_DEGRADE_TESTID = {
+  panel: 'chunk-degrade-panel',
+  label: 'chunk-degrade-label',
+  hint: 'chunk-degrade-hint',
+  detail: 'chunk-degrade-detail',
+  retry: 'btn-chunk-degrade-retry',
+} as const;
+
+const LABEL: Record<ChunkFailureReason, string> = {
+  offline: '离线：界面资源无法下载',
+  'not-deployed': '界面资源不存在（404）',
+  unreachable: '界面资源下载失败（网络 / 代理）',
+  'init-failed': '界面资源已下载但初始化失败',
+  unknown: '界面资源取块失败（未归类）',
+};
+
+const HINT: Record<ChunkFailureReason, string> = {
+  offline: '当前处于离线状态。恢复网络后点「重试」即可（不需要重载插件行）。',
+  'not-deployed': '界面资源没部署到宿主能服务的位置（构建 / 安装不完整）⇒ 点「重试」重发请求；仍失败请重装本插件。',
+  unreachable: '请求没到达宿主（网络中断 / 代理拦截 / 跨域）⇒ 点「重试」重发一次。',
+  'init-failed': '资源已下载但执行期抛错（版本不匹配或内部错误）；原文见详情与 Console。这是本插件缺陷，请连详情一并上报。',
+  unknown: '未归类的取块失败（原文见详情与 Console）⇒ 点「重试」重发一次。',
+};
+
+/** chunk URL = 主包 URL 同目录换名，**保留 `?rev=`**（与宿主 `chunkUrl()` 同形 ⇒ 探测打的就是真 URL） */
+export function deriveChunkUrl(mainUrl: string, chunkName: string): string {
+  const q = mainUrl.indexOf('?');
+  const path = q < 0 ? mainUrl : mainUrl.slice(0, q);
+  const cut = path.lastIndexOf('/');
+  return (cut < 0 ? '' : path.slice(0, cut + 1)) + chunkName + (q < 0 ? '' : mainUrl.slice(q));
+}
+
+/** 主包自己的 URL（失败 URL 就是它换名后的那个；取不到就只报原因、不报 URL） */
+export function findMainBundleUrl(): string | undefined {
+  const scripts = Array.from(document.getElementsByTagName('script'));
+  return scripts.map((el) => el.src).find((src) => src.includes('/client.js'));
+}
+
+/** 分类（顺序即优先级：离线 > 404 > chunk 自身抛错 > 脚本没到 > 未归类） */
+export function classifyChunkFailure(
+  error: unknown,
+  facts: { readonly online: boolean; readonly status: number | null },
+): ChunkFailure {
+  const detail = error instanceof Error ? error.message : String(error);
+  const reason: ChunkFailureReason = !facts.online
+    ? 'offline'
+    : facts.status === 404 || facts.status === 410
+      ? 'not-deployed'
+      : detail.includes('loaded without registering')
+        ? 'init-failed'
+        : detail.includes('failed to load')
+          ? 'unreachable'
+          : 'unknown';
+  return { reason, label: LABEL[reason], hint: HINT[reason], detail };
+}
+
+/** 探一次 chunk URL 的真实状态码（把「404 没部署」与「网络不通」分开；探不通 = null） */
+export async function probeChunkStatus(url: string): Promise<number | null> {
+  try {
+    return (await fetch(url, { method: 'GET', cache: 'no-store' })).status;
+  } catch {
+    return null;
+  }
+}
+
+export interface ChunkBootProps {
+  readonly spec: string;
+  readonly title: string;
+  readonly load: (spec: string) => Promise<ChunkSeatModule>;
+  readonly paneProps: Record<string, unknown>;
+  /** 测试缝（生产缺省 = 真 `navigator.onLine` / 真 `fetch` / 真 DOM 自省） */
+  readonly online?: () => boolean;
+  readonly probe?: (url: string) => Promise<number | null>;
+  readonly mainUrl?: () => string | undefined;
+}
+
+type BootState =
+  | { readonly phase: 'loading' }
+  | { readonly phase: 'ready'; readonly Pane: ComponentType<Record<string, unknown>> }
+  | { readonly phase: 'failed'; readonly failure: ChunkFailure };
+
+/**
+ * 取块壳：`loading → ready | failed`（failed 带原因分类 + 原文 + 「重试」）。
+ *
+ * 🔴 重试**真能重发**：宿主 `importChunk` 的 `pendingArrival` 在 `.finally()` 里清、`loadCache`
+ * 只记**已材质化**的模块 ⇒ 失败不入缓存，同 URL 再取一次会重新发请求（不再用 `react.lazy`：
+ * 它会把失败的 promise 记忆住 ⇒ 重试变成空转）。
+ */
+export function ChunkBoot(props: ChunkBootProps): ReactElement {
+  const { spec, title, load, paneProps, online, probe, mainUrl } = props;
+  const [state, setState] = useState<BootState>({ phase: 'loading' });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    setState({ phase: 'loading' });
+    void load(spec)
+      .then((mod) => {
+        if (alive) setState({ phase: 'ready', Pane: mod.PortsPane });
+      })
+      .catch(async (error: unknown) => {
+        const isOnline = (online ?? ((): boolean => navigator.onLine))();
+        const base = (mainUrl ?? findMainBundleUrl)();
+        const chunkUrl = base === undefined ? undefined : deriveChunkUrl(base, spec.slice(2));
+        // 离线时不发这次注定失败的探测；在线且拿得到 URL 才探（分类要它把 404 与网络不通分开）
+        const status = !isOnline || chunkUrl === undefined ? null : await (probe ?? probeChunkStatus)(chunkUrl);
+        const failure = classifyChunkFailure(error, { online: isOnline, status });
+        console.error(
+          `[dsh-wsl-docker-ports] 取块失败（${failure.reason}）：${spec}${chunkUrl === undefined ? '' : ` → ${chunkUrl}`}`,
+          failure.detail,
+        );
+        if (alive) setState({ phase: 'failed', failure });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [attempt, spec, load, online, probe, mainUrl]);
+
+  if (state.phase === 'ready') return createElement(state.Pane, paneProps);
+  if (state.phase === 'loading') return createElement('div', { className: 'wdp-loading' }, `${title}：正在加载界面资源…`);
+
+  const { failure } = state;
+  return createElement(
+    'div',
+    { className: 'wdp-card', role: 'alert', 'data-testid': CHUNK_DEGRADE_TESTID.panel },
+    createElement('h3', null, `${title}：界面资源加载失败`),
+    createElement('p', { 'data-testid': CHUNK_DEGRADE_TESTID.label }, failure.label),
+    createElement('p', { className: 'wdp-muted', 'data-testid': CHUNK_DEGRADE_TESTID.hint }, failure.hint),
+    createElement('pre', { className: 'wdp-pre', 'data-testid': CHUNK_DEGRADE_TESTID.detail }, failure.detail),
+    createElement(
+      'button',
+      {
+        type: 'button',
+        className: 'wdp-btn wdp-btn-primary',
+        'data-testid': CHUNK_DEGRADE_TESTID.retry,
+        onClick: () => setAttempt((n) => n + 1),
+      },
+      '重试',
+    ),
+  );
+}

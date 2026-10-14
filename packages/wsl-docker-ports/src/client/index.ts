@@ -43,8 +43,9 @@
  * 于是每条降级路径都可以被**逐条断言**，而不是靠「反正没崩」来证明。
  */
 
-import { Suspense, createElement, lazy, type ComponentType, type ReactElement } from 'react';
+import { createElement, type ReactElement } from 'react';
 
+import { ChunkBoot, type ChunkSeatModule } from './chunk-degrade.ts';
 import {
   CLIENT_SERVICES,
   SIDEBAR_SERVICE,
@@ -89,33 +90,28 @@ declare const require: {
 const PANE_CHUNK = './client.ports.js';
 
 /**
- * 懒加载的**渲染面 + 写路径内核**（011 `T1.2` / `T1.3`）。
+ * 取块调用（`T2.4` 起由 `ChunkBoot` 统一负责 loading / failed / 重试）。
  *
- * 主包只留 tab 注册壳与这一次取块调用：`pane.tsx` 及其整棵子树（区域组件 / 视图装配 /
- * `../write/index.ts` 写内核）都在 chunk 侧 ⇒ REQ-BS-2 的「主包不含这些字节」由 **import 图**
- * 保证，不靠维护一份清单（清单会腐化，边不会）。
- *
- * ⚠️ 取块失败（404 / 离线 / chunk 执行期抛错）时本 promise **reject**，由宿主的 slot 失败路径
- * 报出来（`Phase 0` `T0.2` 三态已实测该语义与控制台原文）。**可解释降级 + 可重试** = REQ-BS-5 /
- * `T2.4` 的活，本阶段不提前改语义。
+ * ⚠️ 取块失败（404 / 离线 / chunk 执行期抛错）时本 promise **reject**；`T2.4` 之前由宿主的 slot
+ * 失败路径报出来（`Phase 0` `T0.2` 三态已实测该语义与控制台原文），现在由 `ChunkBoot` 接住 ⇒
+ * **可解释降级 + 可重试**（`REQ-BS-5`）。
  */
-const LazyPortsPane = lazy(async () => {
-  const chunk: { readonly PortsPane: ComponentType<PortsPaneProps> } = await require.async(PANE_CHUNK);
-  return { default: chunk.PortsPane };
-});
+const loadPortsChunk = (spec: string): Promise<ChunkSeatModule> => require.async(spec) as Promise<ChunkSeatModule>;
 
 /**
- * 座位组件（`sidebar.right.pane.tab` 的内容）：**自带 Suspense 兜底**。
+ * 座位组件（`sidebar.right.pane.tab` 的内容）：**自带加载态与降级面板**（`ChunkBoot`）。
  *
  * 官方终端页把 `react.lazy` 的组件直接交给 slot（宿主侧有边界，`T0.1` 实测）；我们多包一层
- * 只为「宿主即便没有边界也不会整页空白」—— 代价约百字节，换来的是懒加载**不会**把别的页拖黑。
+ * 只为「宿主即便没有边界也不会整页空白」+「失败时说清原因、给重试」—— `T0.2` 的原基线是
+ * **不白屏但也没有任何原因文案 / 重试**，那正是本层要补的缺口。
  */
 function PortsPaneSeat(props: PortsPaneProps): ReactElement {
-  return createElement(
-    Suspense,
-    { fallback: createElement('div', { className: 'wdp-loading' }, `${PAGE_TITLE}：正在加载界面资源…`) },
-    createElement(LazyPortsPane, props),
-  );
+  return createElement(ChunkBoot, {
+    spec: PANE_CHUNK,
+    title: PAGE_TITLE,
+    load: loadPortsChunk,
+    paneProps: props as unknown as Record<string, unknown>,
+  });
 }
 
 /** 模块级 Cordis 服务注入（**只放稳定服务**） */
