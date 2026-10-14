@@ -81,6 +81,11 @@
 - [ ] T2.4 [REQ-BS-5] **可解释降级**实现
   - 内容：取块失败 ⇒ 页面壳保留 + 原因分类文案 + 可重试；**禁止**白屏 / 静默。
   - 验证：三种失败情形（404 / 执行抛错 / 断网）各跑一次；断言有文案、有重试、无空白页；控制台有明确错误。
+  - 🆕 **2026-10-14 落地记录（代码 + 离线门已绿；真机三态未跑）**：
+    - **实现** = 新增常驻模块 `src/client/chunk-degrade.ts` —— **必须常驻主包**（失败的那一半**正是 chunk**，放进去就是一起失败）+ `index.ts` 的座位改走 `ChunkBoot`；**弃用 `react.lazy`**（它按 id 记忆失败 promise ⇒ 重试会空转）。五类原因 = `offline` / `not-deployed`(404·410) / `unreachable` / `init-failed`（宿主文案 `loaded without registering`）/ `unknown`；分类靠**探测**：离线读 `navigator.onLine`（且**不**发注定失败的探测），在线探 chunk URL 的**真实状态码**（URL = 主包 URL 同目录换名、**保留 `?rev=`**，与宿主 `chunkUrl()` 同形）；「重试」**真重发**（宿主 `importChunk` 的 `pendingArrival` 在 `.finally()` 清、`loadCache` 只记**已材质化**模块 ⇒ 失败不入缓存）；Console 打**原因 + spec + chunk URL + 原文**。
+    - **离线门** = `tests/client/chunk-degrade.test.tsx` **8/8 passed**：分类优先级 7 窗口 / URL 推导（保 `?rev=`）/ 404（面板 + 文案 + 探测 URL 正确 + Console）/ 离线（文案 + 探测 **0** 次）/ 执行期抛错（专属文案，不是网络问题）/ 网络不可达 / 重试 load **1→2** 且面板消失 / 加载态非空白 ⇒ 「有文案、有重试、无空白页、控制台明确错误」在**组件层**全部二值化。
+    - **读数与代价（如实）**：主包 **38,640 → 43,857 B**（**+5,217 B**）· chunk `lib/client.ports.js` **110,498 B** 不变 · `①a` 硬判据 65,536 B 仍达标（余 **21,679 B**）⇒ 棘轮地板按实测**重登**（`nature: debt` 不变、**仍只许降**；记录日 2026-10-14、留痕 **#55**；三处同步 = 机器表 + 契约分片 `main-bundle-budgets:SSoT` 标记块 + changelog）。回归：`tsc` ×3 exit 0 · `node --test` 429/429/0 · `vitest` 124 · `split` 17/0 exit 0（ratchet 哨兵：上限 + 1 处**恰好** ①b 红）· `§P2` exit 0 · `check:exports` 22/0。提交 **`b283070`**。
+    - ⏳ **未完成的那半（故本条暂不勾）**：**真机三态**（404 / 执行期抛错 / 断网）各跑一次 —— 需一次性 profile + CDP `Fetch` 拦截（`T0.2` 已有成熟脚本）；`V3` / `V4` 的真机半同批跑。
 
 ---
 
