@@ -43,9 +43,11 @@
   - 🔴 **2026-10-13 实测（`T1.3` 落地；原文一字未删）**：主包 **38,640 B ≤ 65,536 B** ✅（余 **26,896 B**，见文末证据）；写内核 4 件已离开主包 —— `write/plan.ts` 13,321 + `ownership` 3,359 + `scope-note` 2,523 + `firewall` 1,999 = **21,202 B**（判据：四者路径注释在主包**零命中**、在 chunk **全命中**）；常驻 4 模块 `rows.ts` / `write-channel` / `write-token` / `settings-pipe` 标记**全在主包** ✅。实现手段：把**唯一**触碰写内核的 `buildDriftFixView` 从 `rows.ts` 搬到 chunk 侧 `src/client/drift-fix.ts`（**原处不留再导出** —— 再导出仍是同步边）；**未打断**任何同步 import 边（design §3.2 的纪律照旧）。
   - 🔴 **订正痕（2026-10-13；原文一字未删）**：§3.2 列的 4 条同步边里 `diff/port-presets`（1,008 B）**被 tree-shaking 消除**（主包零命中、只在 chunk）⇒ 实际拉回 = `diff/managed-ports-parse` 2,778 + `wire` 1,135 + `transport/constants` 250 = **4,163 B**（比 §3.2 的 5,171 B 少 1,008 B）；主包 + chunk 合计 **149,138 B**（较切分前 **+4,989 B** = 两包各留一份常驻/共享字节，量级与 §3.2 的 5,171 B 一致）。口径全文见 design §13。
 
-- [ ] T1.4 [REQ-BS-8] **产物断言**落地（含落点确定）
+- [x] T1.4 [REQ-BS-8] **产物断言**落地（含落点确定）
   - 内容：断言 ① 主包 ≤ 65,536 ② `require.async` ≥ 1 ③ chunk 存在且被引用 ④ 常驻 4 模块标记在主包 ⑤ 已切出模块标记**不在**主包。落点见 `N-3`（本轮**未核**本包是否已有等价脚本）。
   - 验证：断言脚本 exit 0；故意构造超标产物 ⇒ exit ≠ 0。
+  - ✅ **2026-10-13 落地（`T1.4`）**：落点 = **新增** `packages/wsl-docker-ports/scripts/assert-client-split.mjs`（`N-3` 关闭），并**串进**本包 `check:client`（`verify-client-loader.mjs && assert-client-split.mjs`）⇒ 门里不可跳过。五条判据全落地，另加三处**加严/定稿**：(a) ① 拆成 **①a ≤ 65,536 B**（`REQ-BS-1` 的硬判据）与 **①b ≤ SSoT 登记上限**（棘轮地板）**分开报**，避免拿棘轮地板替硬判据；(b) 每条断言带**扫描项计数**（为 0 即恒真 ⇒ 判失败，沿用主门纪律）；(c) ③ 一条覆盖三件事（chunk 存在 + 被主包引用 + **含 12 个切出标记** ⇒ 证「搬家不是删除」）。**标记口径定稿**（design §7「待定」项关闭）= esbuild 的**模块路径注释**、**整行锚定** `^// <相对路径>$`（`page.ts` 不会误命中 `page-tables.ts`）。**哨兵改内存合成**（不碰仓库、无需「跑完还原」）：6 组（size / ratchet / async / chunk / resident / cut）各证「**恰好**目标判据红」，期望值按**同一套边界现算**（棘轮一改不脱钩）。**红路径自证**：`DSH_SPLIT_ASSERT_FAULT=<key>` 把故障注入**真实读数** ⇒ 实测**6 个键各自 `exit 1`**，仓库零改动。
+  - 验证（实测，全 exit 0）：`node scripts\assert-client-split.mjs` = **17 项断言 / 失败 0**；`node scripts\verify-client-loader.mjs` = **40 / 0**；两者串联（= `check:client` 语义）合并 **exit 0**。
 
 - [x] T1.5 [REQ-BS-1] **上限口径不动**复核
   - 内容：确认没有偷改 §P2 上限、没有把直接判据换成比例代理。
@@ -196,3 +198,32 @@
   `stack-decision-changelog.md` 新留痕，且 `LOCK_FIELDS` 四字段须两表逐字段相等）⇒ **须主人裁定**（证据已备齐）；
   ② `T1.4` 产物断言脚本 —— 本包现有门**只覆盖 §P2 三条字节判据 + loader 形状**，`require.async` / chunk 存在且被引用 / 常驻在 / 切出不在**四项均无断言**；
   ③ 运行期复验（未验项 8）需临时 profile ⇒ **动手前先问**。
+- ✅ **订正痕（2026-10-13 收口；原文一字未删）**：上面三条**已全部完成** ——
+  ① **棘轮下调已执行**（主人授权「含顺带订正旧读数」）：机器表 `limitBytes 144,149 → 38,640` / `recorded → 2026-10-13` / `trace → #54` / `nature` 仍 `debt`（语义改为**棘轮地板**），契约文档 §P2 标记块同步为 `38640 / debt / 2026-10-13 / #54`（`LOCK_FIELDS` 四字段两表逐字段相等）；`stack-decision-changelog.md` 新增 **#54**、`stack-decision.md` 变更记录新增一行；两处过期读数（`main-bundle-budgets.mjs` 注释 + `p2-main-bundle-gate.mjs` 打印文本里的 **70,246 / 4,710 / ≈49 KB**）**加订正痕、原文保留**；另修一处**只有下调后才会暴露**的显示缺陷 —— 门的欠账分支改按 `overDerivation > 0` 判定（否则会打印「已越线 **−26,896 B（0.59×）**」这种负数）。
+  ② **`T1.4` 已落地** —— 见 `T1.4` 条目的 ✅ 实测行与新增脚本 `scripts/assert-client-split.mjs`。
+  ③ **运行期复验已跑通（未验项 8 关闭）** —— 一次性 profile `011-probe` 真机取块 + 真渲染，**已删档还原** ✓。
+
+## Phase 1 收口证据（`T1.4` + 棘轮下调 + 运行期复验，2026-10-13）
+
+### 1. `T1.4` 产物断言门（新增；`N-3` 落点关闭）
+
+- 落点：新增 `packages/wsl-docker-ports/scripts/assert-client-split.mjs`（单文件 ≤ 400 行、**零新依赖**），并串进本包 `check:client`。命令（cwd = `packages/wsl-docker-ports`，Windows 侧）：`node scripts\assert-client-split.mjs` ⇒ **17 项断言 / 失败 0 / exit 0**。
+- 真实读数（脚本自报）：**①a** 主 **38,640 B** / 上限 **65,536 B**（余 26,896）✅ · **①b** 主 38,640 / 登记上限 38,640（余 0 = **棘轮地板**）✅ · **②** `require.async(` 命中 **1** ✅ · **③** chunk `client.ports.js` = **110,498 B**、主包引用 `./client.ports.js` = true、**chunk 内含切出标记 12/12** ✅ · **④** 常驻 **4/4**（`rows.ts` / `write-channel` / `write-token` / `settings-pipe`）✅ · **⑤** 切出**仍留在主包 0/12** ✅。
+- 变异哨兵（同批判定函数、内存合成）：**⓪** 真实读数红 0 条（非恒红）· **size** 读数 65,537 ⇒ **恰好 ①a** 红 · **ratchet** 读数 = 登记上限 + 1 ⇒ **恰好 ①b** 红（棘轮下调后该哨兵随之收紧）· **async** 抹掉 `require.async(` ⇒ 恰好 ②红 · **chunk** 说 chunk 不存在 ⇒ 恰好 ③红 · **resident** 抹掉常驻标记 ⇒ 恰好 ④红 · **cut** 注入切出标记 ⇒ 恰好 ⑤红（6 组全过）。
+- 红路径自证（`T1.4` 的验证要求）：`DSH_SPLIT_ASSERT_FAULT=size|ratchet|async|chunk|resident|cut` ⇒ **6 个键逐个实测 `exit 1`**（故障注入**真实读数**，仓库文件零改动）。
+- 标记口径（design §7 的「待定」项关闭）：**esbuild 模块路径注释**、整行锚定；两个已知前提由脚本当场兜住 —— 注释路径相对 `absWorkingDir`（构建脚本已钉死为包目录）· 一旦开 `minify` 注释消失 ⇒ ④ 会**响亮判红**（不静默变绿），⑤ 也不会退化为恒真（③ 要求 chunk 内 12 条全命中）。
+
+### 2. 棘轮下调（`REQ-BS-1` 语义桥接；主人授权「含顺带订正旧读数」）
+
+- 机器表（SSoT）：`packages/wsl-shared/scripts/main-bundle-budgets.mjs` —— `limitBytes: 144149 → 38640`、`recorded: '2026-10-12' → '2026-10-13'`、`trace: '#52' → '#54'`、`nature` 仍 `'debt'`（语义 = **棘轮地板**）、`note` 重写；头部注释与「欠账」节**加订正痕、原文一字未删**。
+- 文档面（`LOCK_FIELDS` 四字段 ↔ 标记块逐字段绑定）：`client-contract-incremental.md` §P2 的 `main-bundle-budgets:SSoT` 表行换成 `| dsh-wsl-docker-ports | 38640 | debt | 2026-10-13 | #54 |`，③/④ 两处加订正痕（原文保留）；`client-contract.md` 指针行加订正痕；`stack-decision-changelog.md` 新增 **#54**（CRLF 文件、原文逐行保全）；`stack-decision.md` 变更记录新增一行。
+- 显示缺陷修复（**只有下调后才会暴露**）：`p2-main-bundle-gate.mjs` 的欠账分支改按 `overDerivation > 0` 判定并补 `else` 达标分支 —— 否则 `38640 − 65536` 会打印「已越线 **−26,896 B（0.59×）**」。
+- 门自证（`node scripts\verify-client-loader.mjs` ⇒ **40 项 / 0 失败 / exit 0**）：自报 `· 本包登记：上限 38640 B、nature=debt、记录日 2026-10-13、留痕 #54` · `✅ 已达标：主 bundle 38640 B ≤ §P2 推导口径 65536 B（余 26896 B）` · 判据行 `主 bundle: 体积 ≤ 明确上限 38,640 B（…）— 主 38640 B / 上限 38640 B（余 0 B，性质=debt）` · ① 双重锁 **8 字段全 same** · ② 棘轮**上调 0 处** · ③ `changelog 计得 54 条 | N | 行、最大 #54`（`Set` 口径：id 去重 54、缺号 0） · 哨兵 **① 人造 38,641 ⇒ 判红**（下调后**自动收紧**）· ③ 只抬机器表 ⇒ 红 · ④ 去掉字节判据 ⇒ 红。
+- **未改**：§P2 判据本体（`packages/wsl-shared/scripts/lib/p2-main-bundle.mjs`）一个字未动；`dsh-terminal-profiles` 行（65,536 / `hard` / 2026-10-12 / #50）一字未动。
+
+### 3. 运行期复验（未验项 8 关闭；一次性 profile `011-probe`）
+
+- 起法（**不跑 `pnpm`**）：新建 `~/.dsh/profiles/011-probe/`（`package.json` 的 `dsh.profile.bundles` = `@deepseek-ai/dsh-base` + `@deepseek-ai/dsh-web-app` + 本包；`node_modules/dsh-wsl-docker-ports` 用 **junction** 挂到本包目录 —— 与 pnpm `link:` 在 `nodeLinker: hoisted` 下的产物同形）⇒ `node D:\nodejs\node_modules\@deepseek-ai\dsh\lib\bin.js --profile 011-probe --host 127.0.0.1 --port 43321 --no-open` ⇒ 首行即 `dsh web: http://127.0.0.1:43321/…`（**零安装**）。
+- CDP（`chrome-devtools` MCP，**只开一个新页签**、不碰主人既有页签）原文：`reqid=4 GET /plugins/??…dsh-wsl-docker-ports/client.js… [200]`（主 bundle 随插件包下发）· **`reqid=39 GET http://127.0.0.1:43321/plugins/dsh-wsl-docker-ports/client.ports.js?rev=0fe0177eabc7 [200]`**（`content-type: text/javascript; charset=utf-8`、`cache-control: public, max-age=31536000, immutable`；响应体首行逐字 = `window.__ModuleLoader__.load({ id: "dsh-wsl-docker-ports", chunk: "client.ports.js", factory: (require) => {`）· `reqid=41 GET /dsh-wsl-docker-ports/snapshot [200]`（真 pane 的数据路径）。
+- 结论：点开右栏页 ⇒ `Suspense` 兜底**消失**、真 pane 渲染实况（`suspenseFallbackPresent=false`、`hasWdpRoot=true`、正文含「上次刷新 / 目标发行版 Ubuntu2204（Stopped）/ 外部规则（只读，19 条）」——**19 条**与真机既有事实吻合，属交叉印证）；**Console 0 错 0 警**；tab 名「WSL Docker 端口」注册成功。
+- 还原（逐字节）：实例停止（端口 43321 **已释放**）· junction 用 `cmd /c rmdir` 摘除（**未穿透**：目标包 `lib/client.ports.js` 仍 110,498 B）· `011-probe` 目录**已删** · `desktop` / `web` / `volatile-probe` 的 6 个清单文件 SHA256 **与探针前完全一致** · `profiles/node_modules` 顶层条目数 **31 → 31**。

@@ -149,3 +149,11 @@
 - **落地改动面**（5 改 + 2 新，**全在本包内**，零新依赖）：`src/client/index.ts`（懒加载壳 + `declare const require` 只声明 `require.async` + `Suspense` 兜底）· 新增 `src/client/chunk-ports.ts`（chunk 入口，只再导出 `PortsPane`）· 新增 `src/client/drift-fix.ts`（搬走 `buildDriftFixView`）· `rows.ts`（**不再 import 写内核**）· `page.ts` + `tests/unit/client-rows.test.ts`（只改 import 路径，断言零改动）· `scripts/build-client.mjs`（第二入口 + chunk 自报 `chunk:` + `absWorkingDir` 钉死包目录 —— 消掉 `T1.1` 实测的 **754 B cwd 漂移**）。
 - **宿主契约**（沿用 Phase 0 实证）：`require.async('./client.ports.js')` 相对**请求方模块**解析 ⇒ 与主包同目录（`lib/`）；`package.json` 的 `files: ["lib/**"]` 已覆盖 chunk，**不进 `exports`**（假设 A-2 无需改）。
 - ❌ **仍未做**：棘轮下调（避让区，待裁定）· `T1.4` 断言脚本（本包现有门缺四项断言）· 运行期复验（未验项 8，需临时 profile）。
+
+## 14 收口：标记口径定稿 + 哨兵改内存合成 + 真机复验（2026-10-13）
+
+- **§7「标记字符串口径（待定）」定稿**（= 未验项 4 关闭）：取 **esbuild 的模块路径注释**，形如 `// src/client/pane.tsx`，**整行锚定**匹配（`^// <相对路径>$`，`m` 标志）⇒ `page.ts` 不会误命中 `page-tables.ts`；`legalComments: 'none'` 不影响它。**§7 未写的两个前提**由断言脚本当场兜住：① 注释里的路径相对 `absWorkingDir` ⇒ 构建脚本已把它**钉死为包目录**（§12 实测：cwd 漂移差 754 B / 29 行注释）；② 一旦开 `minify`，注释消失 ⇒ ④（常驻标记在主包）会**响亮判红**（不是静默变绿），且 ⑤ 的「零命中」不会退化为恒真 —— 因为 ③ 要求 **chunk 内 12 条标记全命中**。
+- **§7「变异哨兵」改法**（原文的「临时把模块同步 import 回主包、跑完还原」**不再采用**）：改为**内存合成** —— 把**同一批**判据函数喂给 6 组人造读数（改字节数 / 抹掉 `require.async` / 说 chunk 不存在 / 抹掉常驻标记 / 注入切出标记），各证「**恰好**目标判据红」；期望值按**同一套边界现算**（不写死 ⇒ 棘轮一改不脱钩）。证明力相同（同一个判定函数、非恒真），但**不需要**「跑完必须还原」这条人工纪律，也不会在门里留下 `git` 脏状态。**另加红路径自证**：`DSH_SPLIT_ASSERT_FAULT` 把故障注入**真实读数** ⇒ 6 个键各自 `exit 1` —— `T1.4` 的「故意构造超标产物 ⇒ exit ≠ 0」即由此满足，且仓库零改动。
+- **未验项 8 关闭（真机运行期复验）**：一次性 profile `011-probe`（junction 挂载、**零安装**、不碰 `desktop`/`web`）⇒ chunk 请求 `/plugins/dsh-wsl-docker-ports/client.ports.js?rev=…` **200**、响应体首行 = chunk banner、`Suspense` 兜底消失、真 pane 渲染实况（含「19 条外部规则」，与真机既有事实吻合）、Console **0 错 0 警**；跑完**删档还原**（三个既有 profile 的清单文件 SHA256 一致、`profiles/node_modules` 条目数 31 不变、目标包未受 junction 摘除影响）。命令与原文见 [tasks.md](./tasks.md)「Phase 1 收口证据」§3。
+- **棘轮下调口径**（`REQ-BS-1` 语义桥接落地）：`limitBytes` 由 144,149 **下调到实测 38,640**，`nature` 仍 `debt` 但语义 = **棘轮地板**（不是 §P2 推导值，也不再是「存量欠账 = 不表示达标」的旧含义）⇒ 判据名变成「体积 ≤ 明确上限 38,640 B」，**再涨一个字节即红**；§P2 的 65,536 B 判据本体未改，且断言脚本把「硬判据 ①a」与「棘轮地板 ①b」**分开报**（避免用棘轮地板替代硬判据）。留痕 = changelog **#54**。
+- ❌ **仍未做**：`T2.x`（首开等价 / 009 a11y / 008 四态与 401 文案 / 可解释降级）与 `T3.x`（变异哨兵收口、三绿 + 行数门、文档收口）—— 本轮只做完 `Phase 1`。
