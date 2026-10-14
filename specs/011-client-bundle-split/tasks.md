@@ -66,13 +66,17 @@
   - ⚠️ **视觉凭证口径（诚实登记）**：两张截图已归档，但**视口不同**（A `929×917`、B `1400×900` —— `resize_page` 在 A 轮未生效，另 B 轮补拍同视口时 CDP 截图**连续超时**）⇒ **不做像素对照**（尺寸不同即不可比）；等价判定以 **DOM / 文本逐字节全等**为准（同一输入下比像素更强）。仓外归档：`C:\Users\EDY\dsh-probe-artifacts\20261014-011-t21\`（`captureA.json` / `captureB.json` / `build-pre.mjs` / `diff-snapshot.mjs` / `shotA-929x917.png` / `shotB-1400x900.png`）。
   - 佐证（源码级）：那次切分只改了 `src/client/{index.ts,page.ts,rows.ts}` + 新增 `chunk-ports.ts` / `drift-fix.ts`（`git diff --name-status 3efb13c HEAD -- packages/wsl-docker-ports/src` 逐条可查）⇒ 其余客户端模块（`pane.tsx` / `pane-settings.tsx` / `pane-tables.tsx` / 三个 `write-*.tsx` / `styles.ts` / `route-source.ts` / `types.ts` / `write-dto.ts` / `settings-pipe.ts` / `write-channel.ts` / `write-token.ts` / `host.ts`）**逐字节未动**。
 
-- [ ] T2.2 [REQ-BS-4] **009 的凭据 a11y 判据仍全绿**
+- [x] T2.2 [REQ-BS-4] **009 的凭据 a11y 判据仍全绿**
   - 内容：复用 009 的判据（一次性写通道凭据**不进 a11y 树**：`aria-hidden` 明文 + 无障碍名不含值的复制按钮），**逐条复跑**。
   - 验证：既有判据用例全绿（不新增、不改写 009 的判据）。
+  - ✅ **2026-10-14 实测（既有判据原样复跑：未新增、未改写一条）**：`node ..\..\node_modules\vitest\vitest.mjs run tests/client/write-token-a11y.test.tsx` ⇒ **Test Files 1 passed / Tests 5 passed (5)、exit 0**；五条读数照旧 —— 门① 「扫了 **199** 个凭据窗口 / a11y 节点 **225** 个（4049 字符）：命中 **0** 个」· 门② 「扫了 **155** 条属性：含凭据子串的 **0** 条」· 门③ 「复制按钮可访问名「复制写通道凭据」（含凭据窗口 **0** 个）；剪贴板收到 **1** 次、逐字相同；复制后 a11y 投影仍 **0** 命中」· 门④ 「失败提示里凭据窗口 **0** 命中、剪贴板 **0** 次写入」· 哨兵 「同一函数：修前 a11y 投影命中 **199** 个窗口（判红）、修后命中 **0** 个（判绿）」（⇒ 门不恒真）。
+  - 🎁 **附加：真机 CDP 无障碍树实物**（只补 009 登记的未验① —— 其门①用的是 `@testing-library/dom` **投影**、不是 Chrome 的真 AX 树；**不新增任何 009 判据，是否据此关闭 009 未验① 请主人裁定**）。做法：一次性 profile 真机实例里经配置页「生成并保存写通道凭据」发出凭据（DOM 侧读数：`issuedTokenPresentInDom=true` / `issuedTokenLen=64` / `onceInsideAriaHidden=true`），再读**真** AX 树 ⇒ 凭据区**确实被投影**（`heading "写通道凭据"` · `StaticText "本会话持有凭据：" "是"` · `"；服务端配置 writeToken：" "已配置"` · `button "复制写通道凭据"`），而 **64 字符明文一个字都不在树里**（承载它的 `<code data-testid="write-token-once">` 被 prune，树中无任何 ≥40 字符令牌样长串）；复制按钮可访问名**不含值** ⇒ **判据非恒真、真机同结论**。证据档：`C:\Users\EDY\dsh-probe-artifacts\20261014-011-t22-t23\evidence.md` §1.1。
 
-- [ ] T2.3 [REQ-BS-4] **008 的四态与 401 文案不变**
+- [x] T2.3 [REQ-BS-4] **008 的四态与 401 文案不变**
   - 内容：写结果四态与 401 文案**逐字**比对切分前。
   - 验证：文案 diff 为空 + 真机走一遍 401。
+  - ✅ **2026-10-14 实测（文案 diff 为空）**：**同一把尺子量两侧**（切分前 `3efb13c` vs 现在；`git show <rev>:<file>` 取源；8 个文案承载文件 = `write-result.tsx` / `write-panel.tsx` / `write-confirm.tsx` / `write-channel.ts` / `write-token.ts` / `pane-settings.tsx` / `transport/write-auth.ts` / `transport/routes.ts`）⇒ ① 字面量中文文案 **89 条 vs 89 条、diff 为空**（只在切分前 0 条、只在现在 0 条）；② JSX 文本中文文案 **41 条 vs 41 条、diff 为空**；③ 点名 **7 条**（四态「已执行（成功）」/「失败」/「未执行（跳过）」/「回滚」+ 服务端 401 三条「未配置写通道凭据：…」/「缺少写通道凭据：…」/「写通道凭据不正确：…」）两侧**逐字命中**。脚本与两侧清单落盘：`C:\Users\EDY\dsh-probe-artifacts\20261014-011-t22-t23\{copy-diff.mjs,copy-pre-literals.txt,copy-now-literals.txt,copy-pre-jsx.txt,copy-now-jsx.txt}`。
+  - ✅ **2026-10-14 实测（真机走一遍 401）**：一次性 profile 真机实例（起完即删）打 `/dsh-wsl-docker-ports/write/*` **七连** —— 未配置态：`GET /audit` 无凭据 **401/`unauthorized`** + 文案（含 `WRITE_TOKEN_CONFIG_HINT` 全串）· `GET /audit?token=乱串` **401**（未配置 ≠ 放行）· `POST /plan` 无凭据 **401** · `GET` 未知路径 **401**（**鉴权优先于 404**）；生成凭据后：错凭据 **401**「写通道凭据不正确：拒绝本次请求（零执行、零写入、零审计）。」· 无凭据 **401**「缺少写通道凭据：拒绝本次请求（零执行、零写入、零审计）。」· 真凭据 `?token=` **200** 与 `Authorization: Bearer` **200**（**正向控制**：401 确因凭据而非通道坏）。另：`tokenEchoedInAnyResponseBody=false`（**401 与 200 的响应体都不回显凭据**）；树内状态由「本会话持有凭据：否；服务端配置 writeToken：未检查」变为「**是**；**已配置**」。readings 原文见证据档 `evidence.md` §3。
 
 - [ ] T2.4 [REQ-BS-5] **可解释降级**实现
   - 内容：取块失败 ⇒ 页面壳保留 + 原因分类文案 + 可重试；**禁止**白屏 / 静默。
@@ -111,6 +115,8 @@
 > ⚠️ 本表**一行都还没跑**（闸门未达、零实例）；写下来是为了让闸门一通过就能直接执行。 🔴 **订正（2026-10-13）：闸门已通过**（见文末「Phase 0 运行时证据」）⇒ 本表**可开跑**，但**仍未跑**（`Phase 1` 产物尚不存在）。
 >
 > 🔴 **订正（2026-10-14）：`V1` 已跑通**（受控 A/B 真机对照，见 `T2.1` 条目的 ✅ 实测行）——三条判据逐条落地：主包 **38,640 ≤ 65,536** ✓ · Network 里**真取到 chunk**（`reqid=39 … client.ports.js?rev=… [200]`，本轮另以 `chunkRequested` 由 false→true 复核）✓ · **页面功能与切分前一致**（DOM/文本逐字节全等）✓。⚠️ **`V2` 的真机半仍未跑**：产物半由 `T1.4` 的 ④（`rows.ts` 等常驻标记在主包）覆盖 ✓，但「**未取 chunk 时 tab 已注册**」需要在**取块被拦**的会话里观测 ⇒ 与 `V3`/`T2.4`（可解释降级）同轮跑，本轮**不宣称**。`V3`~`V6` 同样未跑。
+>
+> 🔴 **订正（2026-10-14 第二轮）：`V5` / `V6` 的「判据与文案」半已跑通** —— `V5`：009 的既有 a11y 判据**原样复跑 5/5 绿**（另补**真机 AX 树**实物：凭据区在树里、值不在，见 `T2.2` 条目的 🎁 行）✓；`V6`：**文案 diff 为空**（89/89 + 41/41 + 点名 7/7 逐字在）且**真机走遍 401**（未配置 / 缺 / 错 / 正确四路，见 `T2.3` 条目）✓。⚠️ **仍未跑**：`V2` 真机半（未取 chunk 时 tab 已注册）· `V3`（可解释降级）· `V4`（离线）· `V7`（变异哨兵）⇒ 分别归 `T2.4` 与 `T3.x`。
 
 ## 未验项（如实登记）
 
