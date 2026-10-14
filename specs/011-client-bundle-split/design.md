@@ -99,7 +99,7 @@
 ## 11. 未验项（本 Spec 全部判据**未开始执行**）
 
 1. `Phase 0`（0.2.0-rc.2 的 `require.async` 语义）**未验** ⇒ 本 Spec **不得**进实现。
-2. 切割推算的 **1,777 B 系统性偏移**未解释（见 [requirements.md](./requirements.md) `N-1`）⇒ 实现前必须真构建复算。 🔴 **订正痕（2026-10-12 追加；本行原文一字未删）**：本处引用的**可达性估算值**（**70,246** / **43,871**）**原记为估算值被当直减结果**（**不是**直减结果）⇒ 直减为 **72,023** / **45,648**（`144,149 − 72,126` / `144,149 − 98,501`），两处**同差 1,777 B**；该差值与**未归属（banner/footer + 共享 helper）1,777 B** 那格**同值** ⇒ 差额来源**口径一致**（⚠️ 该诊断**不在本仓文件内**、本仓**无可复算坐标** ⇒ **不算复核**）；状态由「未解释 / 待核」改为「**来源已定位、数值待复算**」。**估算，实现前必须用真构建复算。**
+2. 切割推算的 **1,777 B 系统性偏移**未解释（见 [requirements.md](./requirements.md) `N-1`）⇒ 实现前必须真构建复算。 🔴 **订正痕（2026-10-12 追加；本行原文一字未删）**：本处引用的**可达性估算值**（**70,246** / **43,871**）**原记为估算值被当直减结果**（**不是**直减结果）⇒ 直减为 **72,023** / **45,648**（`144,149 − 72,126` / `144,149 − 98,501`），两处**同差 1,777 B**；该差值与**未归属（banner/footer + 共享 helper）1,777 B** 那格**同值** ⇒ 差额来源**口径一致**（⚠️ 该诊断**不在本仓文件内**、本仓**无可复算坐标** ⇒ **不算复核**）；状态由「未解释 / 待核」改为「**来源已定位、数值待复算**」。**估算，实现前必须用真构建复算。** ✅ **2026-10-13 已复算闭环（`T1.1`）**：见本文 §12 —— 1,777 B = 段拆解闭环，逐模块账口径（metafile `bytesInOutput`、cwd = 包目录）与文档数字**逐项吻合**；`70,246 / 43,871` 确系口径错 ⇒ 权威一阶值 = **72,023 / 45,648**。
 3. 本包产物断言脚本**落点未定**（`N-3`）；chunk 侧上限**未设**（`N-4`）。
 4. **标记字符串口径未定**（§7）⇒ 变异哨兵的实现细节待定。
 5. 真机路径「打开页面但不写」的**实际频率未知** ⇒ 「是否拆第二块」的判断依据不足。
@@ -110,3 +110,32 @@
 - 官方 rc.2 的 `require.async("./client.terminal.js")` 用法（可 `await`、取 chunk 命名空间、与 `react.lazy` 兼容）与「chunk 随 `files` 通配符发出、不进 `exports`」的打包契约，**已由本机 `app.asar` 内产物只读证实**，取证原文见本 Spec 的 `tasks.md` 的「Phase 0 静态证据」节。
 - **C1 / C2 的量测对象 = 构建产物**（`lib/client.js` 与 `lib/client.*.js`），**不是**服务端下发字节（两者差 18 / 22 B 级的下发包装）。
 - **C4** 的「可解释降级」以真实实现为锚：取块失败 ⇒ promise **reject** 且文案形如 `client-modules: bundle script <url> failed to load`。
+## 12. 真构建复算（`T1.1`，2026-10-13；**只复算、未切分**）
+
+- 口径与可复现性：cwd = `packages/wsl-docker-ports`；三条命令（**不跑 `pnpm`**）`tsc -p tsconfig.build.json` / `node scripts/build-client.mjs` / `tsc -p tsconfig.client.json` ⇒ **exit 0 / 0 / 0**，`lib/client.js` = **144,149 B** / SHA256 `FCB0A7DC222C1C70F46911FC9163B7E99B6F9A277F711746928F76B428DEE5A7`（与开工前副本**逐字节相同**）⇒ 复现成立、§2 的推算是**基于真产物**的。
+- 🔴 **新增口径红线**：esbuild 的 `absWorkingDir` **默认 = cwd**，模块路径注释（`// <相对路径>`）随之变化 ⇒ 在**仓库根**构建 = **144,903 B**（+754 = **29 条注释行 × 26 字符**前缀 `packages/wsl-docker-ports/`）⇒ 字节断言**必须钉 cwd = 包目录**，否则读数差 754 B。
+- 逐模块账（metafile `bytesInOutput`；**27 模块、Σ = 142,372 B**）：
+
+| 模块 | B | 模块 | B |
+| --- | ---: | --- | ---: |
+| `client/pane.tsx` | 15,315 | `client/write-channel.ts` | 6,189 |
+| `client/pane-settings.tsx` | 14,387 | `client/write-result.tsx` | 5,867 |
+| `write/plan.ts` | 13,321 | `client/write-token.ts` | 4,911 |
+| `client/pane-tables.tsx` | 10,680 | `client/write-dto.ts` | 3,548 |
+| `client/rows.ts` | 9,643 | `write/ownership.ts` | 3,359 |
+| `client/page.ts` | 8,782 | `client/styles.ts` | 3,255 |
+| `client/write-panel.tsx` | 8,753 | `diff/managed-ports-parse.ts` | 2,778 |
+| `client/write-confirm.tsx` | 8,342 | `write/scope-note.ts` | 2,523 |
+| `client/settings-pipe.ts` | 7,040 | `write/firewall.ts` | 2,001 |
+| `client/index.ts` | 6,997 | 其余 8 项（`route-source` 1,843 · `wire` 1,135 · `port-presets` 1,008 · `constants` 250 · `managed-ports.ts` 181 · `engine.ts` 147 · `host.ts` 117 · `write/index.ts` 0） | 4,681 |
+
+- 三组求和（**与本文 §2 / [requirements.md](./requirements.md) §2.1–2.2 的数字逐项吻合**）：渲染面 7 模块 **72,126** · 写路径内核追加 8 项 **26,375** ⇒ ②累计 **98,501** · 常驻 4 模块 **27,783**（`rows.ts` 9,643 + `write-channel` 6,189 + `write-token` 4,911 + `settings-pipe` 7,040）。
+- 🎯 **1,777 B 闭环（`N-1` 的「未归属」项，本仓可复算）**：
+
+  144,149 = Σ模块 142,372 + banner 142 + esbuild 前导段 804 + 模块路径注释 773 + 区内空行 28 + footer 29 + 末尾换行 1
+
+  ⇒ `未归属 = 144,149 − 142,372 = 1,777` ✓（前导段 = `"use strict";` + `__defProp` / `__getOwnPropNames` / `__export` / `__copyProps` / `__toCommonJS` 等 esbuild helper + 首个注释前的空行）。
+- **结论（`N-1` 关闭）**：文档的逐模块账**口径正确**（= metafile `bytesInOutput`，且是**包目录口径**）；`70,246 / 43,871` **不是直减结果**，方向也反了（把「未归属的 1,777 B」当成会随切分消失）⇒ 权威一阶值 = **72,023 / 45,648**（`144,149 − 72,126` / `144,149 − 98,501`）。
+- **一阶预估（含「模块路径注释随模块离开主包」这一项）**：① 只切渲染面 ⇒ 主包 ≈ **71,770 B**（72,023 − 253 注释）⇒ 仍超 **6,234 B** ✗ **不达门**（§2 的定性结论不变，缺口比原记的 4,710 B 更大）；② 连带写路径内核（15 模块注释 = 460 B）⇒ ≈ **45,188 B** ⇒ ✅ 达门（余 ≈ 20,348），再计入 4 条同步 import 拉回 **5,171 B** ⇒ ≈ **50,359 B**（余 ≈ 15,177）。
+- ⚠️ 上述**仍是一阶预估**：esbuild 前导 helper 段（804 B）会随切分变化（少一个 helper 就少几十字节）、各区段空行也会变 ⇒ **达标判定只认 `Phase 1` 的实测产物**（这也正是本 Spec 不许拿推算当结论的原因）。
+- 归档（仓外，可复核）：`C:\Users\EDY\dsh-probe-artifacts\20261013-011-t11\`（`metafile-ledger.json` = 两次构建对照 + 全账；`closure.json` = 1,777 B 闭环；`client.js.pre-build`；`mirror-pkgDir.js` / `mirror-repoRoot.js`）。
