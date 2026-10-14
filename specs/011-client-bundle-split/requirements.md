@@ -77,3 +77,10 @@
 - **C2（chunks ≥ 1 且 tab 注册模块仍在主包）**：chunk 的存在与命名以产物 `lib/client.*.js` 为准（官方先例 `client.terminal.js` = 685,927 B，主包 19,869 B）。
 - **C4（异步取块失败可解释降级）**：以宿主 `dsh-client-modules` 的真实失败语义为锚 —— `script` 加载 `error` ⇒ **reject**，文案 `client-modules: bundle script <url> failed to load`。
 - 静态取证来源与命令原文见本 Spec 的 `tasks.md`「Phase 0 静态证据」节；**运行时那半仍未验**。
+
+## 附 2：`U1` 达标与棘轮下调待裁（2026-10-13 追加，`T1.2`/`T1.3` 实测）
+
+- **`U1` 达标（实测，非推算）**：主包 **38,640 B ≤ 65,536 B** ✅ · `require.async` 命中 **1** ✅ · chunk **1** 个（`lib/client.ports.js` = 110,498 B）✅ ⇒ §5 的 `U1` 三件齐。命令原文与逐模块账见 [tasks.md](./tasks.md) 文末「Phase 1 实测证据」。
+- ⚠️ **§2 表里的「144,149 B / 无 chunk / `require.async` 0 处」是切分前的现状**（原文一字未删 —— 它是立项依据）⇒ 与切分后读数**并列**，不覆盖（与 design §12/§13 的订正痕同一纪律）。
+- ❌ **待主人裁定（本 Spec 未动）**：`REQ-BS-1` 语义桥接要求的「`Phase 1` 落地后把 `dsh-wsl-docker-ports` 的欠账行下调到**实测值**」**尚未执行**，因为落点全在**避让区**：`packages/wsl-shared/scripts/main-bundle-budgets.mjs` 的机器表 + `client-contract-incremental.md` §P2 的 `main-bundle-budgets:SSoT` 表（`LOCK_FIELDS` 四字段须逐字段相等）+ `stack-decision-changelog.md` 的留痕条目。**现状风险**：门目前仍按 144,149 B 判 ⇒ 切分后主包即使涨回 144 KB 也不会红（棘轮暂时失效），`REQ-BS-9`/`U5` 的哨兵强度同步下降。
+- ❌ **`U2` 的字节口径订正**：`REQ-BS-3` 的 27,783 B 是**整模块**口径的估算；实测主包里 `rows.ts` 只留 1,279 B、`write-token` 2,375 B（esbuild tree-shaking，见 design §13）⇒ 判据按**存在性**执行**仍达门**；本行**不**改 REQ-BS-3 的判据文字（改判据须主人拍板）。

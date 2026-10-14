@@ -31,14 +31,17 @@
   - 内容：真构建一次，复算 `lib/client.js` 字节与逐模块账；**解释**推算里的 **1,777 B 系统性偏移**（见 `N-1`）—— 若解释不了，**先查清再切**。
   - 验证：构建 exit 0 + 复算表（字节 + 逐模块）落进本 Spec；偏差有结论。
 
-- [ ] T1.2 [REQ-BS-2] 切出**渲染面** 7 模块到 chunk
+- [x] T1.2 [REQ-BS-2] 切出**渲染面** 7 模块到 chunk
   - 内容：`pane.tsx` / `pane-settings.tsx` / `pane-tables.tsx` / `page.ts` / `write-panel.tsx` / `write-confirm.tsx` / `write-result.tsx` ⇒ 取块边界；**不改**组件内部逻辑。
   - 验证：产物里模块字节**离开**主包；tab 仍注册；页面仍能用。
+  - 🔴 **2026-10-13 实测（`T1.2` 落地；原文一字未删）**：7 模块**真离开**主包 —— 产物里 `// src/client/pane.tsx` / `page.ts` / `pane-settings.tsx` / `pane-tables.tsx` / `write-panel.tsx` / `write-confirm.tsx` / `write-result.tsx` **零命中**，同一批标记在 `lib/client.ports.js` 里**全命中** ⇒ 是**搬家**不是**删除**（chunk 侧实测：pane 15,310 · pane-settings 14,387 · pane-tables 10,680 · page 8,782 · write-panel 8,753 · write-confirm 8,342 · write-result 5,863 B）。「tab 仍注册」= **产物级**（`rows.ts` 标记仍在主包）+ **单测级**（`tests/client/entry*.test.tsx` 429 条全绿）双证；⚠️ **真机未跑**（未验项 8）⇒ 本行**不**宣称运行期通过。
 
-- [ ] T1.3 [REQ-BS-2][REQ-BS-3] 切出**写路径内核**并**保常驻面**
+- [x] T1.3 [REQ-BS-2][REQ-BS-3] 切出**写路径内核**并**保常驻面**
   - 内容：切出 `write/plan.ts` / `ownership` / `diff/managed-ports-parse` / `write/scope-note` / `write/firewall` / `wire` / `diff/port-presets` / `transport/constants`；**保常驻** `rows.ts` + `write-channel` / `write-token` / `settings-pipe`。
   - ⚠️ 已知：4 条同步 import 边（合计 **5,171 B**）会把部分字节**拉回**主包（见 design §3.2）—— 本任务**不打断**这些边（改 import 关系属另一设计变更）。
   - 验证：主包 ≤ 65,536 B；常驻 4 模块仍在主包（产物断言）。
+  - 🔴 **2026-10-13 实测（`T1.3` 落地；原文一字未删）**：主包 **38,640 B ≤ 65,536 B** ✅（余 **26,896 B**，见文末证据）；写内核 4 件已离开主包 —— `write/plan.ts` 13,321 + `ownership` 3,359 + `scope-note` 2,523 + `firewall` 1,999 = **21,202 B**（判据：四者路径注释在主包**零命中**、在 chunk **全命中**）；常驻 4 模块 `rows.ts` / `write-channel` / `write-token` / `settings-pipe` 标记**全在主包** ✅。实现手段：把**唯一**触碰写内核的 `buildDriftFixView` 从 `rows.ts` 搬到 chunk 侧 `src/client/drift-fix.ts`（**原处不留再导出** —— 再导出仍是同步边）；**未打断**任何同步 import 边（design §3.2 的纪律照旧）。
+  - 🔴 **订正痕（2026-10-13；原文一字未删）**：§3.2 列的 4 条同步边里 `diff/port-presets`（1,008 B）**被 tree-shaking 消除**（主包零命中、只在 chunk）⇒ 实际拉回 = `diff/managed-ports-parse` 2,778 + `wire` 1,135 + `transport/constants` 250 = **4,163 B**（比 §3.2 的 5,171 B 少 1,008 B）；主包 + chunk 合计 **149,138 B**（较切分前 **+4,989 B** = 两包各留一份常驻/共享字节，量级与 §3.2 的 5,171 B 一致）。口径全文见 design §13。
 
 - [ ] T1.4 [REQ-BS-8] **产物断言**落地（含落点确定）
   - 内容：断言 ① 主包 ≤ 65,536 ② `require.async` ≥ 1 ③ chunk 存在且被引用 ④ 常驻 4 模块标记在主包 ⑤ 已切出模块标记**不在**主包。落点见 `N-3`（本轮**未核**本包是否已有等价脚本）。
@@ -170,3 +173,26 @@
 - 一阶预估（含「模块路径注释随模块离开主包」）：① 切渲染面 ⇒ 主包 ≈ **71,770**（72,023 − 253）⇒ 仍超 **6,234 B** ✗ **不达门**（定性结论不变，缺口比原记 4,710 更大）；② 连带写路径内核 ⇒ ≈ **45,188** ⇒ ✅ 达门，计入 4 条同步 import 拉回 **5,171 B** 后 ≈ **50,359**（余 ≈ 15,177）。⚠️ 前导 helper 段（804 B）与空行会随切分变 ⇒ 达标判定**只认 `Phase 1` 实测产物**。
 - `T1.5` 复核：上限常量仍为 **65,536**（SSoT = `packages/wsl-shared/scripts/main-bundle-budgets.mjs` 的 `limitBytes: 65536` / `nature: 'hard'`，经 `p2-main-bundle.mjs` 的 `MAIN_BUNDLE_LIMIT_BYTES` 转发）；本包欠账行 **144,149 / `nature: 'debt'`** 一个字节未动；`node scripts\verify-client-loader.mjs` = **40 项断言 / 失败 0 / exit 0**，门**自证非恒真**（② 上限恰好等于读数仍绿 ⇒ 判定是 `<=` 且边界含等号；③ 只抬机器表 ⇒ 红；④ 去掉字节判据退回旧口径 ⇒ 红；⑤a/⑤b 人造内联 React / xterm 指纹 ⇒ **恰好**那条直接判据红）；`stack-decision*` 改动 = **0**（`git status --porcelain` 空 + `e11b503..HEAD` 零提交）。
 - 归档（仓外）：`C:\Users\EDY\dsh-probe-artifacts\20261013-011-t11\`（`metafile-ledger.json`、`closure.json`、`client.js.pre-build`、`mirror-pkgDir.js`、`mirror-repoRoot.js`）。
+
+## Phase 1 实测证据（`T1.2` + `T1.3`，2026-10-13；命令原文 + 逐模块账）
+
+- 口径：`pnpm run` 被红线禁用 ⇒ 直接执行等价命令，**Windows 侧**、cwd = `packages/wsl-docker-ports`，四条**全 exit 0**：
+  `node ..\..\node_modules\typescript\bin\tsc -p tsconfig.json` · `node scripts/build-client.mjs` ·
+  `node ..\..\node_modules\typescript\bin\tsc -p tsconfig.build.json` · `node ..\..\node_modules\typescript\bin\tsc -p tsconfig.client.json`。
+- 产物：`lib/client.js` = **38,640 B**（SHA256 `F87B5191125EBE7B…`）· `lib/client.ports.js` = **110,498 B**（`D0386F2AC74BAF9E…`）；
+  主包 `require.async(` 命中 **1**、`client.ports.js` 说明符 **1** ⇒ `U1` 的「`require.async` ≥ 1 + chunk ≥ 1」达门；
+  chunk banner 逐字为 `window.__ModuleLoader__.load({ id: "dsh-wsl-docker-ports", chunk: "client.ports.js", factory: (require) => {`。
+- 逐模块账（**镜像构建与真产物逐字节相同** ⇒ 账本对本产物有效：主包 true、chunk true）：
+  主包 `Σ bytesInOutput` = **37,280 B / 13 模块**，闭合 `37,280 + banner 142 + footer 29 + 注释 371 + 残余 818 = 38,640` ✅；
+  chunk `Σ` = **108,843 B / 21 模块**，闭合 `108,843 + 168 + 29 + 634 + 824 = 110,498` ✅。
+  全账（含逐模块明细）：`C:\Users\EDY\dsh-probe-artifacts\20261013-011-t12-t13\ledger-t12-t13.json`（仓外归档）。
+- 常驻面（`U2`）：4 个标记**全在主包** ✅；⚠️ 但**字节**不是 design §3.1 估的 27,783 B —— esbuild 只保留被 `index.ts` 真正用到的导出
+  （`rows.ts` 9,643 → **1,279 B**、`write-token` 4,911 → **2,375 B**）⇒ `REQ-BS-3` 的判据是**存在性**，据此**仍达门**；数字口径订正见 design §13。
+- 既有门回归（四条 exit 0）：`node --test --test-concurrency=1 "tests/**/*.test.ts"` **429 pass / 0 fail** ·
+  `node ..\..\node_modules\vitest\vitest.mjs run` **12 文件 / 116 用例** · `node scripts\verify-client-loader.mjs` **40 断言 / 0 失败** ·
+  `node scripts\verify-host-entry.mjs` **18 断言 / 0 失败** ⇒ `U6` 的「三道门不回归」本轮成立；另跑 `node ../wsl-shared/scripts/check-size.mjs`（284 文件、最大 396 行 ≤ 400 ✅）与 `node scripts/check-exports.mjs`（25 断言 / 0 失败 ✅）—— 两条 exit 0（`pnpm run` 被红线禁用 ⇒ 等价直接执行）。
+- ❌ **本轮未做（如实登记，不宣称完成）**：① **棘轮下调**（`REQ-BS-1` 语义桥接的 SHALL）—— 落点在**三个避让区文件**
+  （`packages/wsl-shared/scripts/main-bundle-budgets.mjs` 机器表 · `client-contract-incremental.md` §P2 的 `main-bundle-budgets:SSoT` 表 ·
+  `stack-decision-changelog.md` 新留痕，且 `LOCK_FIELDS` 四字段须两表逐字段相等）⇒ **须主人裁定**（证据已备齐）；
+  ② `T1.4` 产物断言脚本 —— 本包现有门**只覆盖 §P2 三条字节判据 + loader 形状**，`require.async` / chunk 存在且被引用 / 常驻在 / 切出不在**四项均无断言**；
+  ③ 运行期复验（未验项 8）需临时 profile ⇒ **动手前先问**。

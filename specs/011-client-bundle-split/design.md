@@ -139,3 +139,13 @@
 - **一阶预估（含「模块路径注释随模块离开主包」这一项）**：① 只切渲染面 ⇒ 主包 ≈ **71,770 B**（72,023 − 253 注释）⇒ 仍超 **6,234 B** ✗ **不达门**（§2 的定性结论不变，缺口比原记的 4,710 B 更大）；② 连带写路径内核（15 模块注释 = 460 B）⇒ ≈ **45,188 B** ⇒ ✅ 达门（余 ≈ 20,348），再计入 4 条同步 import 拉回 **5,171 B** ⇒ ≈ **50,359 B**（余 ≈ 15,177）。
 - ⚠️ 上述**仍是一阶预估**：esbuild 前导 helper 段（804 B）会随切分变化（少一个 helper 就少几十字节）、各区段空行也会变 ⇒ **达标判定只认 `Phase 1` 的实测产物**（这也正是本 Spec 不许拿推算当结论的原因）。
 - 归档（仓外，可复核）：`C:\Users\EDY\dsh-probe-artifacts\20261013-011-t11\`（`metafile-ledger.json` = 两次构建对照 + 全账；`closure.json` = 1,777 B 闭环；`client.js.pre-build`；`mirror-pkgDir.js` / `mirror-repoRoot.js`）。
+
+## 13 `T1.2` / `T1.3` 实测与两处口径订正（2026-10-13）
+
+- **实测**：主包 **38,640 B**（限 65,536 B，余 **26,896 B**）+ chunk **110,498 B**；主包 `require.async` **1** 处；镜像构建与真产物**逐字节相同** ⇒ 账本有效（逐模块明细见 [tasks.md](./tasks.md) 文末「Phase 1 实测证据」）。
+- 🔴 **订正 1（口径：一阶预估把主包估大了）**：§2 的 ② 与 §12 的一阶预估 `≈ 45,188 / ≈ 50,359 B`，实测 **38,640 B**，差 **≈ 11,700 B**。原因是**我漏算了 esbuild 的 tree-shaking**：`index.ts` 只从 `rows.ts` 取 7 个 tab 注册符号 ⇒ `rows.ts` 在主包里只留 **1,279 B**（整模块 9,643 B）、`write-token` 只留 **2,375 B**（整模块 4,911 B）。⇒ 预估的「整模块留在主包」假设**偏保守**（方向对：实测更小），但**达标判定只认实测**（原文之数不再引用）。
+- 🔴 **订正 2（口径：4 条同步边实际只拉回 3 条）**：§3.2 表里的 `diff/port-presets`（1,008 B）**被 tree-shaking 消除**（主包零命中、只在 chunk）⇒ 实际拉回 = `managed-ports-parse` 2,778 + `wire` 1,135 + `transport/constants` 250 = **4,163 B**（比 §3.2 的 5,171 B 少 1,008 B）。口径：`write-channel`（常驻）同步 import 前两者与 `constants`；`port-presets` 的消费方 `page.ts` / `pane-settings.tsx` 都在 chunk 侧。
+- **切出确认**（`REQ-BS-2`）：12 个模块在主包**零命中** / chunk **全命中**；写内核 4 件 = plan 13,321 + ownership 3,359 + scope-note 2,523 + firewall 1,999 = **21,202 B** 离开主包。**代价**：主包 + chunk 合计 **149,138 B**（切分前 144,149 B，**+4,989 B**）—— 两包各留一份共享字节，与 §3.2 的 5,171 B 同量级，且**只切一次**（不做二级 chunk）。
+- **落地改动面**（5 改 + 2 新，**全在本包内**，零新依赖）：`src/client/index.ts`（懒加载壳 + `declare const require` 只声明 `require.async` + `Suspense` 兜底）· 新增 `src/client/chunk-ports.ts`（chunk 入口，只再导出 `PortsPane`）· 新增 `src/client/drift-fix.ts`（搬走 `buildDriftFixView`）· `rows.ts`（**不再 import 写内核**）· `page.ts` + `tests/unit/client-rows.test.ts`（只改 import 路径，断言零改动）· `scripts/build-client.mjs`（第二入口 + chunk 自报 `chunk:` + `absWorkingDir` 钉死包目录 —— 消掉 `T1.1` 实测的 **754 B cwd 漂移**）。
+- **宿主契约**（沿用 Phase 0 实证）：`require.async('./client.ports.js')` 相对**请求方模块**解析 ⇒ 与主包同目录（`lib/`）；`package.json` 的 `files: ["lib/**"]` 已覆盖 chunk，**不进 `exports`**（假设 A-2 无需改）。
+- ❌ **仍未做**：棘轮下调（避让区，待裁定）· `T1.4` 断言脚本（本包现有门缺四项断言）· 运行期复验（未验项 8，需临时 profile）。
