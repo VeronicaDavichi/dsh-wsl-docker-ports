@@ -325,7 +325,10 @@ T4.1–T4.5 **已整体迁至 [005-elevation-write-path](../005-elevation-write-
     - `src/client/page.ts(106,3): error TS2741: … but required in type "DistroPanelView"` ⇒ **面板视图**对象补 `stateNote: distro.stateNote`。
     - `src/client/page.ts(114,25): error TS2339: Property "stateNote" does not exist on type "WslDistro"` ⇒ 我那行**误落进 `options.map`**，需撤销。
     - 同理 `types.ts` 第 128 行的 `readonly state: string | null;` 是**选项行**字段 ⇒ 正确落点是 **`DistroPanelView` 自己那条 `state` 行**。
-    - 纪律留痕：红即 `git checkout` 整批回滚 ⇒ 工作区干净（**不夹带半成品**）；下一轮照上述 **4 个落点**改即可，其余（渲染块 + 用例）可直接复用。
+    - 纪律留痕：红即 `git checkout` 整批回滚 ⇒ 工作区干净（**不夹带半成品**）；下一轮照上述 **4 个落点**改即可，其余（渲染块 + 用例）可直接复用。  - ✅ **2026-10-15 stateNote 渲染收口（提交 `ef73656`）**：落点订正后一次全绿 —— `tsc -p tsconfig.json` **exit 0** · `assert-client-split` **17/0** · vitest **14 files / 128 passed**（含新增 2 条 `distro-state-note.test.tsx`：null 不渲染附加行 / 非 null 原文完整）· `node --test` **exit 0** · 行数门最大 **373 行**、超 400 = **0** ✓
+    - 落点：`types.ts` 在 **`DistroPanelView` 声明开括号后**加 `readonly stateNote: string | null;`；`page.ts` **兜底对象**补 `stateNote: null`、**面板对象**补 `stateNote: data.stateNote`；`pane-tables.tsx` 加条件渲染块（testid `distro-state-note`）。
+    - **判据 ③ 的诚实读法**：主包 **44,621 B 逐字节不变**（渲染落在 chunk 侧）⇒ `①a` 仍 44,621/65,536、`①b` 地板**无需重登**（未变 ⇒ 无新留痕）；chunk 110,498 → **110,737 B**（chunk 无预算门）。
+    - **仍未做（登记）**：**真机**复现「冷启动响应不自洽」那一幕（需要冷发行版 + 快照记 Stopped 而实证 Running 的时序）以验 `stateNote` 在页面上真出现 —— 本轮只做到单元层自证（判据 ①②）+ 门全绿（③④）。
   - 🆕 **2026-10-15 单独开工（主人要求扩到这一层）：三类失败的真机原始刺激已取齐，零副作用**（不碰用户 dockerd / 容器；每步都加硬超时）：
     - **A daemon-down**：`wsl -d Ubuntu2204 -- docker -H tcp://127.0.0.1:1 ps --format "{{json .}}"` ⇒ **rc=1**，stderr = `Cannot connect to the Docker daemon at tcp://127.0.0.1:1. Is the docker daemon running?`（原文 `A-daemon-down.txt`）。
     - **B 非零退出**：`… docker ps --format "{{json .}}" --bogus-flag-003` ⇒ **rc=125**，stderr 首行 = `unknown flag: --bogus-flag-003`（原文 `B-nonzero.txt`）。
