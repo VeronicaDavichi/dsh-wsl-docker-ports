@@ -122,6 +122,7 @@ export interface ManagedPortsFormView {
 }
 
 export interface DistroPanelView {
+  readonly stateNote: string | null;
   readonly testId: string;
   readonly name: string | null;
   readonly sourceLabel: string;

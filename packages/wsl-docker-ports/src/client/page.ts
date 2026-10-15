@@ -96,6 +96,7 @@ function buildDistroPanel(
       name: null,
       sourceLabel: '未解析',
       state: null,
+      stateNote: null,
       options: [],
       staleMessage: null,
       error: error ?? '尚未解析目标发行版',
@@ -108,6 +109,7 @@ function buildDistroPanel(
     name: data.name,
     sourceLabel: data.source === null ? '未解析' : DISTRO_SOURCE_LABELS[data.source],
     state: data.state,
+    stateNote: data.stateNote,
     options: data.distros.map((distro) => ({
       name: distro.name,
       state: distro.state,

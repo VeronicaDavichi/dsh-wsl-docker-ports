@@ -26,6 +26,11 @@ export function DistroBlock(props: { readonly distro: DistroPanelView; readonly 
         {distro.name ?? '未解析'}（来源：{distro.sourceLabel}
         {distro.state === null ? '' : `，状态：${distro.state}`}）
       </p>
+      {distro.stateNote !== null ? (
+        <p className="wdp-secondary" data-testid="distro-state-note">
+          {distro.stateNote}
+        </p>
+      ) : null}
       {distro.error !== null ? <p className="wdp-error">{distro.error}</p> : null}
       {distro.staleMessage !== null ? (
         <p className="wdp-error" data-testid="distro-stale">
