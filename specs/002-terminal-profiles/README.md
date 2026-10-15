@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-10-08
 priority: high
 tags:
@@ -13,17 +13,21 @@ depends_on:
 - 001-wsl-shared
 - 006-path-translation
 created_at: 2026-10-08T09:43:13.130539300Z
-updated_at: 2026-10-09T02:07:40.898759800Z
+updated_at: 2026-10-15T08:59:07.023457100Z
+completed_at: 2026-10-15T08:59:07.023457100Z
 transitions:
 - status: planned
   at: 2026-10-08T13:23:04.496516100Z
 - status: in-progress
   at: 2026-10-09T02:07:40.898759800Z
+- status: complete
+  at: 2026-10-15T08:59:07.023457100Z
 ---
 # 可配置终端 · Agent 可读写（右栏受管终端）
 
 **类型**: 需求驱动（requirements-first）
-**状态**: in-progress（**2026-10-09 转 `in-progress`**：Phase 1「配置模型与容错」实现中；Phase 0 剩 **T0.2 / T0.3** 由**只读契约研究**并行核对（结论将回写本目录的 tasks/design）、~~**T0.5** 真机安装接入待主人在场时做~~ ⇒ **T0.5 已于 2026-10-15 真机逐条标态 ✅**（临时探针 profile；① ② ③ ④ 成立，⑤ 的交付文案见下方「安装与接入」节））
+**状态**: **complete**（**2026-10-15 转 `complete`**：`tasks.md` 未勾项 **0**（27/27）、整包质量门 `T7.3` 于同日**复跑全绿**（`typecheck` / `vitest` 39 文件 461 passed + 1 skipped / `build` / `check:client` / `check:exports` / `check:size` **全 exit 0**）⇒ 关闭评估完成；证据见 `tasks.md` 的 2026-10-15 T7.3 行与 `C:\Users\EDY\dsh-probe-artifacts\20261015-statenote\t7.3-terminal-profiles.log`）
+**状态原文（保留不改写）**: in-progress（**2026-10-09 转 `in-progress`**：Phase 1「配置模型与容错」实现中；Phase 0 剩 **T0.2 / T0.3** 由**只读契约研究**并行核对（结论将回写本目录的 tasks/design）、~~**T0.5** 真机安装接入待主人在场时做~~ ⇒ **T0.5 已于 2026-10-15 真机逐条标态 ✅**（临时探针 profile；① ② ③ ④ 成立，⑤ 的交付文案见下方「安装与接入」节））
 **优先级**: high
 **包名**: `dsh-terminal-profiles`（**插件包**）
 **位置**: `packages/terminal-profiles/`
@@ -182,3 +186,4 @@ transitions:
 1. 主人复核本 Spec，重点：REQ-6 的增量流缓冲策略与 REQ-7 的 WS 握手校验口径。
 2. **B-1（五条全定案）/ B-2（清除）/ B-3（源码定案）均已闭环** ⇒ 002 **已于 2026-10-09 转 `in-progress`**，Phase 1 实现中（见 `tasks.md`）。
 3. 剩余 Phase 0：**T0.2 / T0.3**（宿主 0.2.0-rc.2 基线能力与路由注册行为）由**只读契约研究**并行核对；**T0.5**（安装接入验证）**已于 2026-10-15 真机逐条标态 ✅**（① ② ③ ④ 成立；⑤「路径即版本」文案已补进上方「安装与接入」节 ⇒ REQ-13.4 的交付面有落点）。
+4. 🔴 **2026-10-15 订正（上面第 2 / 3 条为当时的现场记录，保留不改写）**：第 2 条「已于 2026-10-09 转 `in-progress`，Phase 1 实现中」**已过时** —— Phase 1–5 与 Phase 7 全部完成、`tasks.md` 未勾项 **0**；第 3 条「剩余 Phase 0：T0.2 / T0.3」**已不成立** —— **T0.1 / T0.2 / T0.3 / T0.4 / T0.5 / T0.6 全部 `[x]`**（T0.2 / T0.3 于 2026-10-09 以只读源码复核关闭、残余真机项并入 T0.5；T0.5 于 2026-10-15 真机逐条标态）。⇒ 本 Spec 于 **2026-10-15 转 `complete`**（`completed_at: 2026-10-15T08:59:07Z`，由 CLI 写入，非手改 frontmatter）。
