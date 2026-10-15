@@ -320,6 +320,12 @@ T4.1–T4.5 **已整体迁至 [005-elevation-write-path](../005-elevation-write-
   - ⑤ 🔴 **反冷启动闸门一个字没动**：`allowColdStart` 缺省时 `wsl.exe -d …` 的执行次数 = **0**，且命令集合与修复前逐字相同（4 条 / 被闸门挡下后 2 条），无一条写或提权命令。
 - **修法**：`src/distro.ts` 新增纯函数 `reconcileDistroState()`；`src/snapshot.ts` 在**全部探针之后**调用（`// ⑤.b`）。🔴 **调用位置本身就是判据**：探针的准入（001 `execInDistro` 的 REQ-2.4 闸门）读的就是 `distros` 这个快照 —— 提前调和会让 `Stopped` 变 `Running` ⇒ 闸门放行 ⇒ **未经用户同意就冷启动发行版**（10–12 秒 + 拉起全部容器）⇒ 调和结果**只进快照**、绝不回喂任何执行路径。
 - **只认「成功」的理由（以及登记不做的相邻情形）**：`DistroNotRunning` / `DistroNotFound` / `CommandNotFound` 都发生在**执行之前**，恰恰说明「这次没跑起来」⇒ 不能当证据（否则 `state` 会从「旧的错」变成「新的错」）。⚠️ `daemon-down` / 非零退出 / 超时**也**说明命令被 spawn 过、严格说同属「在跑」的证据：**本轮不纳入**并已登记（判据会从「拿到过发行版内结果」退化成「推断发生过 spawn」，需与 001 错误码逐个耦合；且「Stopped + docker 守护进程未运行」不构成同一响应内两半直接打架）⇒ 若主人要求扩到那一层，**单独开工、不夹带**。
+  - 🟡 **2026-10-15 渲染实现第一刀（已回滚，落点订正留档）**：`pane-tables.tsx` 的条件渲染块 + 2 条自证用例（`renderToStaticMarkup`，null 不渲染 / 非 null 原文完整）**已证明可用** —— vitest **14 files / 128 passed** ✓、断言门 **17/0** ✓、主包仍 **44,621 B**（**棘轮免动** ✓）、chunk 110,498 → **110,718 B** ✓、行数门最大 373 行 ✓。**唯一红项 = tsc：我把 `stateNote` 插进了「下拉选项行」而不是面板视图**，三条原文：
+    - `src/client/page.ts(94,5): error TS2741: Property "stateNote" is missing in type "{ testId: "sel-distro"; … enabled: false; … }" but required in type "DistroPanelView"` ⇒ **兜底视图**对象补 `stateNote: null`。
+    - `src/client/page.ts(106,3): error TS2741: … but required in type "DistroPanelView"` ⇒ **面板视图**对象补 `stateNote: distro.stateNote`。
+    - `src/client/page.ts(114,25): error TS2339: Property "stateNote" does not exist on type "WslDistro"` ⇒ 我那行**误落进 `options.map`**，需撤销。
+    - 同理 `types.ts` 第 128 行的 `readonly state: string | null;` 是**选项行**字段 ⇒ 正确落点是 **`DistroPanelView` 自己那条 `state` 行**。
+    - 纪律留痕：红即 `git checkout` 整批回滚 ⇒ 工作区干净（**不夹带半成品**）；下一轮照上述 **4 个落点**改即可，其余（渲染块 + 用例）可直接复用。
   - 🆕 **2026-10-15 单独开工（主人要求扩到这一层）：三类失败的真机原始刺激已取齐，零副作用**（不碰用户 dockerd / 容器；每步都加硬超时）：
     - **A daemon-down**：`wsl -d Ubuntu2204 -- docker -H tcp://127.0.0.1:1 ps --format "{{json .}}"` ⇒ **rc=1**，stderr = `Cannot connect to the Docker daemon at tcp://127.0.0.1:1. Is the docker daemon running?`（原文 `A-daemon-down.txt`）。
     - **B 非零退出**：`… docker ps --format "{{json .}}" --bogus-flag-003` ⇒ **rc=125**，stderr 首行 = `unknown flag: --bogus-flag-003`（原文 `B-nonzero.txt`）。
