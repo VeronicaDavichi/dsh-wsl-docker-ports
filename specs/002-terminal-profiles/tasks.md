@@ -39,7 +39,7 @@
 - [x] T0.4 [REQ-全]（原阻塞 B-2，全线共用）6 项 `backend.*` 的 `confirmed: implied` 由主人逐条点头 —— ✅ **2026-10-08 确认全为 `none`**，结论记入 [stack-decision.md](../../stack-decision.md) 的「复核记录（已闭环）」
   - 验证：`stack-decision.md` 的 `pendingReview` 清空；本 Spec 不因此改动（全为 `none`）
 
-- [ ] T0.5 [REQ-13.1][REQ-13.2][REQ-13.3][REQ-13.4] 安装接入验证（D-1）
+- [x] T0.5 [REQ-13.1][REQ-13.2][REQ-13.3][REQ-13.4] 安装接入验证（D-1）
   - 内容：按 `link:<绝对路径>` 写入 profile `package.json` 的 `dependencies` + `dsh.profile.bundles`（与同机 `@xxxyz/dsh-mcp-manager` 同型），`pnpm install` 后重载
   - 验证（真机，二值）：① 行出现在 profile 行列表 ② 终端页 kind 已注册 ③ **无** compatibility 预检 `disabled`（宿主 stderr 无 `disabling profile plugin`）④ 卸载后行消失、路由/页/工具注销、patch 无孤儿条目 ⑤ README 已明示 `link:` 模式「**路径即版本**」的开发工作流（改源码 → 重载/重启生效）
   - ✅ **2026-10-15 真机逐条标态（① ② ③ ④ 已证；⑤ 未达 ⇒ 本行保持 `[ ]`）**：探针 profile = `011-probe`（临时、可弃），装载 = `package.json` 两条 `link:` 绝对路径 + `dsh.profile.bundles` 两个包名 + `node_modules/` 两条 junction（与 pnpm `link:` 在 `nodeLinker: hoisted` 下的产物同形），**零 `pnpm install`、未触碰 `desktop` / `web`**。
@@ -47,7 +47,7 @@
     - ② **终端页 kind 已注册** ✅：右栏 guide 列表出现「受管终端 · 按 profile 起真 PTY 终端：配置名称、命令、参数与 cwd；开页零副作用」（标题/描述由本包客户端注册提供），与官方页及 003 的「端口转发」并列；同页里 003 的页面 DOM 可交互（`distro-panel` / `tbl-ports` / `write-token` 等 testid 实测在位）。
     - ③ **无 compatibility 预检 `disabled`** ✅：两个探针实例的宿主 stderr **均为 0 字节**，`disabling profile plugin` **0 命中**。
     - ④ **卸载后四项注销 + patch 无孤儿** ✅：复用 2026-10-12 批次（同批**两个包同时装**）实物 —— 卸后运行时清单 `A2-pluginInventory-after-uninstall.json` 对 `dsh-terminal-profiles` / `dsh-wsl-docker-ports` / `dsh-wsl-shared` / `managedTerminal` / `managed_terminal` / `dsh-managed-terminal` / `…/snapshot` **逐项 0 命中**（行 / 页 / 工具 / 路由四注销）；`A2-route-probe.txt`：`POST /dsh-managed-terminal/instances => 405`、`GET /dsh-wsl-docker-ports/snapshot => 404`、对照组 `POST /api/settings/describe => 200`；装后清单 `A2-package.json.with-both-plugins` 与 `profile-package.json.after-load.txt` **sha 相同**且条目内无 `disabled` 字段。本轮另在 `011-probe` 复核 **patch 无孤儿**：`cordis.patch.yml`（343 B）内**只有宿主自写的** `ui-settings-general / welcomeNoticeVersion`，两个包名 **0 命中**。
-    - ⑤ ✗ **未达（真缺口，非环境问题）**：全仓**没有任何 README** 明示 `link:` 的「路径即版本」开发工作流 —— `specs/002-terminal-profiles/README.md` 里 `link` 只出现在两处**非安装语义**的位置（「依赖边」段里 CLI `link`/`rel` 未迁移、以及 T0.5「待主人在场时做」的待办），`specs/003-wsl-docker-ports/README.md` 连 `link` 字样都没有；`link:` 仅出现在 `specs/*/requirements.md`、`specs/*/tasks.md` 与 `stack-decision.md` 的先例句中 ⇒ **REQ-13.4 在交付面上尚无落点**。**建议落点（未擅自改，待主人点头）**：在 `specs/002-terminal-profiles/README.md` 的「文档导航」之前新增一节「安装与开发工作流（`link:` = 路径即版本）」，写清：`dependencies` + `dsh.profile.bundles` **两处都要写**、`pnpm install` 后重载、**改源码 ⇒ 重载/重启即生效**、**不存在版本号语义**（不写 `^x.y.z`、不依赖 npm 发布）。
+    - ⑤ ✅ **2026-10-15 已补上（主人点头后同轮落地）**：此前全仓**没有任何 README** 明示 `link:` 的「路径即版本」开发工作流 —— `specs/002-terminal-profiles/README.md` 里 `link` 只出现在两处**非安装语义**的位置（「依赖边」段里 CLI `link`/`rel` 未迁移、以及 T0.5「待主人在场时做」的待办），`specs/003-wsl-docker-ports/README.md` 连 `link` 字样都没有；`link:` 仅出现在 `specs/*/requirements.md`、`specs/*/tasks.md` 与 `stack-decision.md` 的先例句中 ⇒ **REQ-13.4 在交付面上尚无落点**。**落地（本轮已做）**：在 [`README.md`](./README.md) 的「文档导航」之前新增一节 **「安装与接入（`link:` = 路径即版本）」**，写清：`dependencies` + `dsh.profile.bundles` **两处都要写**（含 `link:` 绝对路径写法示例表）、`pnpm install` 后重载 / 重启、**改源码 ⇒ 重载 / 重启即生效**（并点明宿主加载的是 `lib/` 产物 ⇒ 改 `src/` 要先构建）、**不存在版本号语义**（不写 `^x.y.z`、不依赖 npm 发布），以及装成三判据（REQ-13.2）与卸载口径（REQ-12.1 / 13.3）⇒ **REQ-13.4 的交付面至此有落点**。
 
 > **Phase 1 与 Phase 0 门的关系（2026-10-09）**：T1.1–T1.3 是**纯配置模型**（零 `ctx.subprocess` / `ctx.webServer` / `ctx.settings`、零真机），故 T0.2 / T0.3（只读核对中）与 T0.5（需真机改 profile + 重启）**未打掉也能独立落地** —— 本包不消费 Phase 0 的任何宿主 API 结论。
 

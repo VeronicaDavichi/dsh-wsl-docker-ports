@@ -23,7 +23,7 @@ transitions:
 # 可配置终端 · Agent 可读写（右栏受管终端）
 
 **类型**: 需求驱动（requirements-first）
-**状态**: in-progress（**2026-10-09 转 `in-progress`**：Phase 1「配置模型与容错」实现中；Phase 0 剩 **T0.2 / T0.3** 由**只读契约研究**并行核对（结论将回写本目录的 tasks/design）、**T0.5** 真机安装接入待主人在场时做）
+**状态**: in-progress（**2026-10-09 转 `in-progress`**：Phase 1「配置模型与容错」实现中；Phase 0 剩 **T0.2 / T0.3** 由**只读契约研究**并行核对（结论将回写本目录的 tasks/design）、~~**T0.5** 真机安装接入待主人在场时做~~ ⇒ **T0.5 已于 2026-10-15 真机逐条标态 ✅**（临时探针 profile；① ② ③ ④ 成立，⑤ 的交付文案见下方「安装与接入」节））
 **优先级**: high
 **包名**: `dsh-terminal-profiles`（**插件包**）
 **位置**: `packages/terminal-profiles/`
@@ -87,6 +87,25 @@ transitions:
 | Agent 工具（**004**）| `dsh-tools` 的 `defineTool` | `plugin.agentSurface` |
 | 权限（**004**）| 受 `ctx.sandboxPolicy` + 工具审批约束 | `plugin.agentPermission` |
 | 跨包服务 | 导出 `managedTerminal` 服务，供 003 **可选注入** | `plugin.crossPackageService` |
+
+---
+
+## 安装与接入（`link:` = 路径即版本）
+
+**两处都要写**（`profiles/<name>/package.json`；`<ABS>` = 本仓 `packages/<pkg>` 的绝对路径，写正斜杠）：
+
+| 位置 | 写法示例 | 作用 |
+|---|---|---|
+| `dependencies` | `"dsh-terminal-profiles": "link:E:/NodeProjects/dsh-wsl-toolkit/packages/terminal-profiles"` | 解析出真实目录（`node_modules/<包名>` 挂到该目录：pnpm 默认 symlink，`nodeLinker: hoisted` 下是 junction）|
+| `dsh.profile.bundles` | 数组里加同一包名 `"dsh-terminal-profiles"` | 让宿主把它当**插件行**装载 —— 行 / 页 / 工具 / 路由都由这一条带起来 |
+
+装完跑一次 `pnpm install`（`link:` 也要装：那两条链接由它建），然后**重载**（改 `cordis.patch.yml` 时 `dsh.profile.patchReload: "live"` 即时生效）或**重启实例**（改 `package.json` 清单必须重启）。
+
+**路径即版本（本工作流的核心）**：`link:` **没有版本号语义** —— 不写 `^x.y.z`、不需要 npm 账号、不经过发布；改完源码「重载 / 重启」看到的就是该目录本身。⚠️ 两条实操约束：① 宿主加载的是 `lib/` **产物** ⇒ 改 `src/` 后先构建（客户端 bundle 由 esbuild 生成）再重载，否则看到的仍是旧产物；② **本包运行时绝不改写 profile 清单**（REQ-13.1，自举风险）⇒ 安装与卸载都是**一次性显式步骤**。
+
+**装成功的判定（三条同时成立，REQ-13.2）**：① 行出现在 profile 行列表 ② 终端页 kind `managedTerminal` 已注册 ③ 宿主 stderr **无** `disabling profile plugin`（不兼容时由官方 `evaluatePluginCompatibility` 置灰并写 stderr，本包**不自行绕过**）。
+**卸载**：删掉上表两处 + `pnpm install` ⇒ 行消失、页 / 工具 / 路由全部注销（REQ-12.1 / REQ-13.3）；profile patch **不留孤儿 `- id:` 条目**（patch 归宿主 loader / `configEditor`，本包不手写）。
+**2026-10-15 真机实测**：临时探针 profile（两条 `link:` + 两条 junction）逐条标态 —— ① ② ③ ④ 全部成立、⑤ 即本节文案；证据与逐条读数见 [tasks.md](./tasks.md) 的 **T0.5**。
 
 ---
 
@@ -162,4 +181,4 @@ transitions:
 
 1. 主人复核本 Spec，重点：REQ-6 的增量流缓冲策略与 REQ-7 的 WS 握手校验口径。
 2. **B-1（五条全定案）/ B-2（清除）/ B-3（源码定案）均已闭环** ⇒ 002 **已于 2026-10-09 转 `in-progress`**，Phase 1 实现中（见 `tasks.md`）。
-3. 剩余 Phase 0：**T0.2 / T0.3**（宿主 0.2.0-rc.2 基线能力与路由注册行为）由**只读契约研究**并行核对；**T0.5**（安装接入验证）需真机改 profile + 重启 DSH ⇒ **待主人在场时**排期。
+3. 剩余 Phase 0：**T0.2 / T0.3**（宿主 0.2.0-rc.2 基线能力与路由注册行为）由**只读契约研究**并行核对；**T0.5**（安装接入验证）**已于 2026-10-15 真机逐条标态 ✅**（① ② ③ ④ 成立；⑤「路径即版本」文案已补进上方「安装与接入」节 ⇒ REQ-13.4 的交付面有落点）。
