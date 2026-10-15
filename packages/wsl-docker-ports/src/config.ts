@@ -104,7 +104,7 @@
 import { readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute, join, dirname } from 'node:path';
 
 /** profile 目录枚举上限（有界：只取排序后的前 N 个，防止畸形 HOME 把候选炸开） */
 export const PROFILE_ANCHOR_MAX = 24;
@@ -228,6 +228,18 @@ export function hostModuleAnchors(): readonly string[] {
   }
   // ⑤ 最后兜底：宿主的工作目录（宿主若以 profile 目录为 cwd，这一条也能命中 ④-a）
   add(join(process.cwd(), 'index.js'));
+  // ⑥ 宿主 CLI 包**自带的嵌套依赖树**（2026-10-15 新增；本机 = 全局 npm 安装形态）
+  //    本机实测：`D:\nodejs\node_modules\@deepseek-ai\` 下只有 `dsh` 与 `dsh-acp-app`，**没有平铺的**
+  //    `schemastery`；宿主把自己的依赖**嵌套在包里** ——
+  //    `D:\nodejs\node_modules\@deepseek-ai\dsh\node_modules\@deepseek-ai\schemastery\lib\index.cjs`（3.18.4，真工厂）
+  //    ⇒ ①–⑤ 九个锚点在这一形态下**全部** `MODULE_NOT_FOUND`（`node_modules` 沿树向上的每一层都没有它），
+  //    于是 `Config === undefined`：`check:exports` 的「Config 在场」与 `config-gate` / `config`
+  //    的宿主判据会**判红**（2026-10-15 实测 5 条红 + 1 条导出门红，全部同一根因）。
+  //    写法与 `tests/helpers/host-gate.ts` 的 `HOST_SETTINGS_RELATIVE`（同一台机器、同一个宿主形态，
+  //    已用它切出宿主真函数）**同源**：在「可执行文件所在目录」下拼出宿主包的嵌套落点当解析基准。
+  //    `createRequire` 只把该路径当**起点**、不校验它存在 ⇒ 未装宿主/别的安装形态时这一族自然解析失败
+  //    并被跳过（不产生额外诊断噪声）；且它**追加在末尾** ⇒ 既有环境的命中顺序与语义一字不动。
+  add(join(dirname(process.execPath), 'node_modules/@deepseek-ai/dsh/index.js'));
   return anchors;
 }
 

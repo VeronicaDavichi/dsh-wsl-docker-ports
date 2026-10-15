@@ -23,6 +23,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 
 import {
@@ -305,4 +306,27 @@ test('009 缺陷 1：锚点覆盖 profile 层（本机实测唯一解析得到�
   const profileAnchors = anchors.filter((anchor) => anchor.includes('.dsh') && anchor.includes('profiles'));
   assert.ok(profileAnchors.length >= 1, `必须包含 profile 层锚点（本机实测它能解析到，profile 公共层与自身锚点都失败）：${anchors.join(' / ')}`);
   console.log(`  · 扫了 ${String(anchors.length)} 个锚点，其中 profile 层 ${String(profileAnchors.length)} 个：${profileAnchors.slice(0, 3).join(' / ')}`);
+});
+
+test('009 缺陷 1 补强（2026-10-15）：锚点覆盖宿主**自带嵌套依赖树**（全局 npm 安装形态），且**只追加在末尾**', (t) => {
+  // 本机实测（2026-10-15）：`D:\nodejs\node_modules\@deepseek-ai\` 下只有 `dsh` 与 `dsh-acp-app`，
+  // **没有平铺的** schemastery；宿主把它嵌套在包里。缺这一族 ⇒ ①–⑤ 全 MODULE_NOT_FOUND ⇒
+  // `Config === undefined`（5 条宿主判据红 + `check:exports` 的「Config 在场」红，同一根因）。
+  const anchors = hostModuleAnchors();
+  const nested = join(dirname(process.execPath), 'node_modules/@deepseek-ai/dsh/index.js');
+  assert.ok(anchors.includes(nested), `必须包含宿主 CLI 包的嵌套落点锚点：${nested}`);
+  assert.equal(anchors[anchors.length - 1], nested, '**只追加**：新族必须是最后一个锚点 ⇒ 既有环境的命中顺序与语义一字不动');
+
+  const viaNested = resolveSchemaFactory([nested]);
+  if (viaNested.factory === undefined) {
+    // 宿主不在这一形态（Electron 打包 / 未装 / 别的安装形态）⇒ **如实**说清并 skip，不造假判定
+    console.log(`  · 本机没有这一形态的宿主依赖树（${String(viaNested.attempts[0]?.detail)}）⇒ 该族解析不到是如实结果`);
+    t.skip('本机无该形态宿主依赖树');
+    return;
+  }
+  assert.equal(isSchemaFactory(viaNested.factory), true, '解析到的必须是**真工厂**（any/array/object/string 齐备）');
+  const vendor = (viaNested.factory.string() as unknown as CallableSchema)['~standard']?.vendor;
+  assert.equal(vendor, 'schemastery', '宿主 `isSchemastery()` 判的就是这个 vendor 串（Zod 会让 volatile 静默失效）');
+  console.log(`  · 从新族锚点解析到真 schemastery：${String(viaNested.resolvedFrom)}`);
+  console.log(`  · 锚点共 ${String(anchors.length)} 个，新族在**末位**（第 ${String(anchors.length)} 位）：${nested}`);
 });
