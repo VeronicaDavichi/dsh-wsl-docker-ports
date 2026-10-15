@@ -153,14 +153,28 @@
 
 ## Phase 2b：产品内闸门（A）与审计留痕（B）　← 2026-10-09 主人拍板新增
 
-> 背景：真机实测本机 `ConsentPromptBehaviorAdmin = 0` ⇒ **UAC 不弹窗**，「UAC = 人类闸门」不成立，Agent 可零交互提权改写系统状态。闸门因此收回产品内，且**与 OS 行为解耦**。**阻塞**：写入传输尚未接 HTTP/UI（005 当前的 gap），本 Phase 的验收要等它接线后才能做端到端。
+> 背景：真机实测本机 `ConsentPromptBehaviorAdmin = 0` ⇒ **UAC 不弹窗**，「UAC = 人类闸门」不成立，Agent 可零交互提权改写系统状态。闸门因此收回产品内，且**与 OS 行为解耦**。**阻塞**：写入传输尚未接 HTTP/UI（005 当前的 gap），本 Phase 的验收要等它接线后才能做端到端。✅ **2026-10-15 阻塞已解除**（008-write-transport / 009-write-ui 均已 `complete`，写通道已接 HTTP 与 UI）⇒ 本 Phase 终判本轮已做。
 
-- [ ] **T2b.1（A·强制）** 提权写入前的应用内确认 + **变更预览**：逐条列出将新增/删除的规则（作用域 · 监听地址 · 端口 · 连接地址 · 是否伴随防火墙规则）、命令条数与影响面。判据：① 未确认 ⇒ 零提权、零写入（spy 全 0）；② 拒绝 ⇒ 失败可读且零残留；③ 确认文案含每条规则的端口与作用域（不是「即将执行」这种空话）；④ **在 UAC 不弹窗的机器上同样生效**（与 OS 行为解耦，用假后端断言）。
+- [x] **T2b.1（A·强制）** 提权写入前的应用内确认 + **变更预览**：逐条列出将新增/删除的规则（作用域 · 监听地址 · 端口 · 连接地址 · 是否伴随防火墙规则）、命令条数与影响面。判据：① 未确认 ⇒ 零提权、零写入（spy 全 0）；② 拒绝 ⇒ 失败可读且零残留；③ 确认文案含每条规则的端口与作用域（不是「即将执行」这种空话）；④ **在 UAC 不弹窗的机器上同样生效**（与 OS 行为解耦，用假后端断言）。
   - 🔵 **2026-10-12 真机部分证据（判据只中 ③；本行保持 `[ ]`）**：③ ✅ **确认文案含每条规则的端口与作用域** —— `A6-plan-add-lan.json` 的 `ports[].steps[].commandText` 逐字含 `listenport=45999` / `listenaddress=0.0.0.0` / `connectport=45999` / `connectaddress=172.20.201.152`，`notes` 写「局域网作用域：需要 0.0.0.0 的 portproxy 规则 + 仅放行该端口的入站 TCP 规则」；plan 回包带 `confirm.ticket` + `expiresAt`，apply 必须带 `confirmed:true` + `ticket`（`A-write-pilot.log` / `A2-lan-pilot.log`）⇒ 闸门**存在且被满足**。④ ⚪ **部分**：本机 `ConsentPromptBehaviorAdmin=0`（**UAC 不弹窗**）而产品内闸门照常要 ticket ⇒ 「与 OS 行为解耦」有正向现场，但**未**用假后端断言。① ✗ **未跑**：无「确认缺失 ⇒ 零提权零写入（spy 全 0）」样本（本轮 apply 一律带 `confirmed:true`）。② ✗ **未跑**：无「拒绝确认 ⇒ 失败可读且零残留」样本（近似的 `B-driver.json` `gsudoDirect` 失败带 `cleanup` 两文件已删，但那**不是**「用户拒绝」）。
-- [ ] **T2b.2（B·强制）** 审计留痕：每次提权写操作（含拒绝/超时/失败/回滚）落一条人类可读记录（时间 · 来源 agent/user · `elevationPolicy` · 实际后端 · 端口与作用域 · 结果与退出码 · 耗时 · 是否回滚），**不含任何凭据/口令**。判据：① 成功与失败各留一条；② 记录里能读出实际后端（`gsudo` / `native`）；③ 敏感词扫描零命中。
+    - ✅ **2026-10-15 结清（⇒ 本行据此勾掉；上面 2026-10-12 那行里的「本行保持 `[ ]`」是当时的现场记录，保留不改写）** —— ① ② ④ 由「未跑」转为**已跑绿的可执行断言**，③ 沿用 2026-10-12 真机现场；本轮**零生产代码改动**：
+      - ① **未确认 ⇒ 零提权、零写入** ✔ `tests/unit/transport-apply-plan.test.ts` 两条：`T2.2 ② 确认门：未确认 / 畸形 body / 篡改目标 ⇒ 零执行零审计，且**不吃掉票据**`、`T2.2 ① 票据门四态：无票 / 错票 / 从未签发 / 过期 ⇒ 四种可区分拒绝 + 零执行 + 零写入 + 零审计` —— 台架执行器调用数 0、审计 0 条（就是「spy 全 0」的可执行形态）。
+      - ② **拒绝 ⇒ 失败可读且零残留** ✔ 拒绝原因是**四种可区分**的具名值（不是「即将执行失败」这类空话）；「零残留」由三条覆盖：`T2.5 ⑥ 什么都没写（UAC 被拒 / 脚本没跑起来）⇒ **不做任何回滚**（防误删他人规则）`、`T2.3 用户拒绝 UAC（native：Start-Process 抛错 + 无 out 文件）⇒ 报「已取消」且不做回滚`、`T2.3 超时：按失败处理，且两个临时文件照样清理` ⇒ 拒绝/超时都不进提权、无半成品、临时文件清零。
+      - ④ **与 OS 行为解耦（用假后端断言）** ✔ 上面两条断言的后端是注入的**假执行器**（零提权、零进程），闸门照样拦下 ⇒ 「UAC 不弹窗的机器上同样生效」这条是**可执行**判据；真机侧同一现场仍在（本机 `ConsentPromptBehaviorAdmin=0`、UAC 不弹，而 apply 必须带 `confirmed:true` + `ticket`）。
+      - **实跑证据**：`node --test --test-concurrency=1 <4 个文件>` ⇒ `tests 18 / pass 18 / fail 0 / exit 0`；同轮 `vitest run` ⇒ `14 files / 128 tests / exit 0`。日志 `C:\Users\EDY\dsh-probe-artifacts\20261015-statenote\gates-005-focused.log`。⚠️ 同轮**全量** `node --test` 是 `429 tests / 424 pass / 5 fail`，那 5 条**与本判据无关**（根因：本机 `@deepseek-ai/schemastery@3.18.4` 只存在于 `D:\nodejs\node_modules\@deepseek-ai\dsh\node_modules\@deepseek-ai\schemastery`，而 `src/config.ts` 的 9 个锚点全 `MODULE_NOT_FOUND` ⇒ `Config === undefined`），按「额外发现只记录、不顺手改」留待主人裁定。
+- [x] **T2b.2（B·强制）** 审计留痕：每次提权写操作（含拒绝/超时/失败/回滚）落一条人类可读记录（时间 · 来源 agent/user · `elevationPolicy` · 实际后端 · 端口与作用域 · 结果与退出码 · 耗时 · 是否回滚），**不含任何凭据/口令**。判据：① 成功与失败各留一条；② 记录里能读出实际后端（`gsudo` / `native`）；③ 敏感词扫描零命中。
   - 🔵 **2026-10-12 真机部分证据（判据 ① 未跑 ⇒ 本行保持 `[ ]`）**：路由**存在**且受令牌保护 —— `A0-route-probe.txt` 里 `POST /dsh-wsl-docker-ports/write/audit => 401`（无令牌被拒）。② ✅/⚪ **实际后端可读出**：`A2-lan-pilot.log` 的 apply 回包含 `"backend":"gsudo"`，`B-driver.json` 的 native 侧含 `"backend":"native"` ⇒ 记录里**能**读出后端。① ✗ **未跑**：本轮**没有**读回一条审计记录的实物（「成功与失败各留一条」无样本）。③ ✗ **未跑**：没有对审计文本做敏感词扫描的样本。
+    - ✅ **2026-10-15 结清（⇒ 本行据此勾掉；上面 2026-10-12 那行的「本行保持 `[ ]`」为当时现场记录，保留不改写）** —— ① 的成功侧取到**真机实物**、② 两条链都留痕、③ 为可执行扫描；本轮**零生产代码改动**：
+      - ① **真机 2 条**（上一批 `switch-scope` 6379 往返时**产品自己落的行**，本轮从探针实例 stdout 原件读回，不是测试造物）：
+        - `[dsh-wsl-docker-ports] audit seq=1 at=2026-10-15T04:22:59.337Z origin=user result=applied action=switch-scope scope=loopback ports=6379 steps=portproxy-delete@6379 policy=passby backend=gsudo exit=0 ms=7210 rolledBack=false planId=635b0cf3ac92 note=提权脚本执行成功（退出码 0）`
+        - `[dsh-wsl-docker-ports] audit seq=2 at=2026-10-15T04:23:43.586Z origin=user result=applied action=switch-scope scope=lan ports=6379 steps=portproxy-add@6379+firewall-add@6379 policy=passby backend=native exit=0 ms=3940 rolledBack=false planId=70fb2a0a2541 note=提权脚本执行成功（退出码 0）`
+        - 原件 `C:\Users\EDY\dsh-probe-artifacts\20261015-statenote\probe2.out.log`；字段齐备：时间 · 来源 · 生效档 · **实际后端** · 端口与作用域 · 结果与退出码 · 耗时 · 是否回滚。
+      - ① **失败侧**（口径诚实：样本是**可执行断言**，真机上我**没有**制造过一发失败的提权写 —— 那会动系统状态）：`tests/unit/transport-apply-rollback.test.ts:48-51` 的「失败也要留一条审计（这是真发生过的动作）」＝ `result='failed'` + `rolledBack=true` + `audit.size()===1`；`T2.5 ⑥` 尾部同样断言「尝试过但失败 ⇒ 审计记 failed」⇒ 「成功与失败**各留一条**」在记录层成立。
+      - ② **实际后端可读出** ✔ 上面两条真机行分别是 `backend=gsudo` 与 `backend=native`（**两条链各一条**），并带**生效档** `policy=passby` 与 `origin=user`（不是配置档、不是「猜是用户」）。
+      - ③ **敏感词扫描零命中** ✔ `T1.6 ③ 🔴 白名单拷贝：凭据/原始请求体等额外字段进不了记录` —— 字段白名单恰 15 项（`action/at/backend/durationMs/elevationPolicy/exitCode/note/origin/planId/ports/result/rolledBack/scope/seq/steps`），逐词断言 `绝密-令牌` / `绝密-口令` / `绝密-环境变量` / `portproxy reset` **不出现**在格式化行里，且 `JSON.stringify` 无 `token`；另有 `T1.6 ② 防日志注入（任何内嵌换行压成空格 ⇒ 恰一行）`。
 - [ ] **T2b.3（C·附带）** UI 与用户手册明说「本机提权可能不会请你确认（取决于系统 UAC 策略）」，并指引用户如何自查 `ConsentPromptBehaviorAdmin`。
   - ⚪ **2026-10-12 复核：未跑** ✗ —— 本批真机证据全在**写通道与只读态**（`A`/`B`/`C` 段），**没有** UI 文案与用户手册的核对样本 ⇒ 本行保持 `[ ]`，不许写成通过。
+    - 🔴 **2026-10-15 判定：仍是缺口（保持 `[ ]`）** —— ① **UI 侧零命中**：`packages/*/src` 里 `ConsentPromptBehaviorAdmin` / `不会请你确认` / `可能不会请你` 全部 0 命中，最接近的只有 `src/client/page.ts:253` 的档位标签 `ask（每次写操作都弹 UAC）`（那是**档位说明**，不是「本机可能不弹」的告知）；`elevation` 视图（`src/client/page.ts:248-258`）只有三档 + `note: '提权策略只改配置（remote.settings），不触发任何提权调用'`。② **用户手册整份不存在**：`packages/**/*.md` 只有两个 fixture `README.md`，仓库根也没有 README/用户手册 ⇒ 「并指引用户如何自查 `ConsentPromptBehaviorAdmin`」**无处落地**。⇒ 本判据要**新增** UI 文案 + 用户手册（属**实现**工作，待主人点头后另起一轮）。
 
 ## 真机验收清单（chrome-devtools MCP；⚠️ **UAC 可能不弹窗** —— 见 Phase 2b 的真机事实）
 

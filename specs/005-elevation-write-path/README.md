@@ -20,7 +20,7 @@ transitions:
 # 提权写路径：UAC 辅助进程 · 声明式所有权 · 防火墙最小放行
 
 **类型**: 需求驱动（requirements-first）
-**状态**: planned（2026-10-08 已 `planned`；**同日从 003-wsl-docker-ports 拆出**；**A-1 / A-2 均已定案**，未验证项见文末 **A-3**）
+**状态**: in-progress（**2026-10-09 转 `in-progress`**；2026-10-08 建 Spec 时曾为 `planned` —— 本行原写「planned」未随 frontmatter 的 `transitions` 更新，**2026-10-15 按 frontmatter 订正**；**同日从 003-wsl-docker-ports 拆出**；**A-1 / A-2 均已定案**，未验证项见文末 **A-3**）
 **优先级**: high
 **包名**: `dsh-wsl-docker-ports`（与 003 **同一个包**，本 Spec 只占其中「写路径与提权」这一交付面）
 
