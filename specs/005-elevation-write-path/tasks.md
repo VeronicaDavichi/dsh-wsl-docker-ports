@@ -126,7 +126,7 @@
   - ✅ **2026-10-12 内容回写已完成（本行据此勾掉）**：`requirements.md` 新增 **§5「真机结清记录（T0.1 / T3.2，2026-10-12）」**、`design.md` 新增 **§9 同名小节** —— 两处都写进 **T0.1 的提权链路真机结论**（`D-E-result.json` 的 `d1`：`exitCode 0` / `parsedFromOutFile.ok=true` / `cleanup.scriptRemoved=true & outRemoved=true` / `beforeRules=[] & afterRules=[]`）与 **T3.2 的「他人规则条数不变」证据**（portproxy `19` + sha `b9d38664…` / 防火墙 `816 / 0 / 2` / `TEMP dsh-ppp* 0`），并逐条附**证据路径**。⇒ 本条的两项内容要求（真机结论 + 规则不变证据）**都已有实物**，不再处于「判据已过、内容未齐」。
   - ⚠️ **回写的诚实边界（已一并写进那两节）**：`d1` 的脚本动作 `probe-readonly` 是**驱动自造、不在产品动作白名单**（`add|remove|fix`）⇒ 「产品自身链路跑出 `exit 0` 且零系统写入」这一形态**仍不可兼得**；`999` / `cancelled` 两条分支在本机**不可复现**（`ConsentPromptBehaviorAdmin=0`）。
 
-- [ ] T3.7 [REQ-3.4] 提权后端链（`gsudo → native`，A-3）
+- [x] T3.7 [REQ-3.4] 提权后端链（`gsudo → native`，A-3）
   - 内容：探测**用户自装**的 `gsudo`（用 `where.exe gsudo`，**不认 `sudo` 别名** —— gsudo 安装器会造同名别名）；有则走其 **stdio 回传**，并把 **exit code 999** 判为「提权失败」；`gsudo status` 显示**缓存活跃** ⇒ 回落 `Start-Process -Verb RunAs` + 临时文件；**不安装 / 不改 PATH / 不动 gsudo 配置**（尤其 `CacheMode`）。Windows 自带 `sudo` 仅 `elevationBackend: winsudo` 时启用（本机 23H2 无法验证 ⇒ 登记为未验证项）
   - 🔴 **「不认 `sudo` 别名」已由本机实测坐实（2026-10-09，只读）**：`Get-Command sudo -All` 在本机**只有一条**，指向 `D:\Program Files\gsudo\Current\sudo.exe`（`CompanyName = Gerardo Grignoli`、`ProductName = gsudo`、`FileVersion = 2.6.1.0`），而 **`%SystemRoot%\System32\sudo.exe` 不存在**（`Test-Path` = False，23H2 符合预期）⇒ **凡按命令名 `sudo` 探测者，在本机必然误判「Windows 自带 sudo 可用」并走进 winsudo 分支**（实际执行的还是 gsudo，语义完全不同）。本规则不是预防性洁癖，而是本机**真实陷阱**；探测必须走 `where.exe gsudo` / 按**路径 + 产品名**判定
   - 验证：真机各跑一次 —— ① `gsudo` 路径下 stdout / stderr / exit code 三样都拿得到（含故意失败 → **999**）② 造一个活跃缓存 → 回落 native 且**无临时文件残留** ③ `elevationBackend: native`（或未装 gsudo）仍成功
@@ -135,6 +135,13 @@
     ① ✅ **stdout / stderr / exit code 三样都拿得到**（含**故意失败 999**）：`B-driver.json` 的 `execs` 里 gsudo 调用 `keys=[ok,code,message,argv,exitCode,stderr,stdout]`、`stdoutLen=151`、`exitCode=1`；**`999` 的真机形态**见同批 `gsudoExitCollapse` = `child_0→0 / child_1→1 / child_2→1 / child_3→1 / child_7→1 / child_42→1 / child_999→1` ⇒ 只有 gsudo **自身**调用失败才是 `999`（子进程退出码会被 `pwsh -Command` 包装塌成 `1`；`design.md` §4 已留痕）。
     ② ✗ **未跑（越界）**：造一个**活跃 gsudo 凭据缓存**要改用户 gsudo 全局配置（违反「不装工具 / 不改 PATH / 不动用户 gsudo 配置」）⇒ 本轮**不执行**，**native 回落分支没有真机样本**。
     ③ ✅ **native 后端机制**：`B-driver.json` 的 `defect1` ⇒ `runElevateNative status="partial" / exitCode=2 / backend="native" / steps=[portproxy-delete ok=false] / cleanup 两文件已删`；「产品链退出码」由 `482f697` 修复并被真机复核（修前 `cancelled`、修后 `partial`/`failed` 正确）。
+    ④ ✅ **2026-10-15 ② 真机结清（判据 ② 由「越界未跑」转为已跑 ⇒ 本行据此勾掉）** —— 方法与实物：
+      - **造活跃缓存（含一条订正事实）**：`gsudo cache on` 实测**看不见** —— 凭据缓存按**控制台**绑定，随创建它的进程/控制台退出即消失（同一条 pwsh 里 `Available for this process: True` + `CacheSessionsCount: 1`，**下一条命令（新控制台）读回 `CacheAvailable:false / CacheSessionsCount:0`**）；探针实例自己两发生效后，我的新控制台读到 `CacheSessionsCount:2` 而 `CacheAvailable:false` ⇒ **控制台绑定被双向证实**。因此改用**主人本轮授权**的 `gsudo config CacheMode Auto`（⚠️ 它写的是 **HKLM 全局系统设置**、需提权；**已还原为 `Explicit`**，我早先误写的 `HKCU\Software\gsudo` 键也已删除、该键原本不存在）。
+      - **回落 native 真机发生**：`switch-scope` 6379（`lan→loopback`）那发走 **`gsudo`**（`status:"ok"` / `backend:"gsudo"` / `executed:[portproxy-delete,firewall-delete]` / `durationMs:7210`）—— 这一次 gsudo 调用在**实例自己的控制台**里按 `Auto` 自动建了缓存；**紧接的** `loopback→lan` 那发 `probeOf` **重新探测**并读出缓存活跃 ⇒ **`backend:"native"`**（`status:"ok"` / `executed:[portproxy-add,firewall-add]` / `durationMs:3940`）✅
+      - **零临时文件残留（有正证据，不是空断言）**：100 ms 轮询 `%TEMP%\dsh-ppp*` 抓到**两条链各自的**产物 —— gsudo 那发 `dsh-ppp-f615ac3fc991.ps1` 4961 B + `dsh-ppp-f615ac3fc991-out.json` 188 B；**native 那发 `dsh-ppp-0525b06f15a2.ps1` 4961 B + `dsh-ppp-0525b06f15a2-out.json` 179 B`；事后计数 **0**（`temp-poller3.log`）
+      - **顺带真机证实两条既有设计**：① **计划面的探测结果被缓存**（同一目标 `plan` 仍报 `elevation.backend:"gsudo"`，而 `apply` 面重探得 `native`）⇒ 正是「缓存的陈旧值**不可能造成一次错误的写**」（`backend.ts:343-350`）的口径；② **策略门 fail-safe**：`elevationPolicy` 未配置时 `plan` 报 `policy:"unknown"` 而 **`apply` 一律 `status:"disabled"` / `executed:[]` / `elevationPolicy:"none"`**（「未配置」被保守判成 `none` ⇒ 零提权零写入）
+      - **系统状态逐项还原**：portproxy **19 条、与改动前基线集合差异 0 缺失 / 0 多出**；防火墙 **总 821 / 入站 Allow 532 / 6379 相关 1 条（`WSL2 Port 6379`）**＝改动前基线（插件新建的 `dsh-wsl-docker-ports-6379` 已用 `gsudo netsh advfirewall firewall delete rule` 删除）；`%TEMP%` 净
+      - 证据目录：`C:\Users\EDY\dsh-probe-artifacts\20261015-statenote\`（`temp-poller3.log` / `cordis.patch.before-005.yml`）
 
 - [x] T3.6 [REQ-4.3] 红线断言：未注册 Agent 工具（来源约束的门禁）
   - 内容：本期**不注册任何 Agent 可调工具**；将来若注册，**必须先**补齐 REQ-4 的完整口径（错误语义、审批、日志）再放行，不得以「先能用」为由先行放行
