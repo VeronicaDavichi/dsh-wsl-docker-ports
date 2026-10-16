@@ -17,12 +17,14 @@
  *
  * **前置不满足 ⇒ `WriteBlock`，`steps` 恒为空元组**：不是「少做一步」，而是「一个动作都不产生」。
  *
- * ## 已知张力（本次按 REQ-1.2 字面实现，不自行放宽/收紧 —— 需集成方裁定）
+ * ## 已知张力的处置（2026-10-16 主人裁定 (a)：**只放宽 `fix`**）
  *
- * `fix` 的目标态是 `drift`，而 `drift` 的规则 `connectAddress == 旧 eth0 != 期望值`，
- * 按 REQ-1.2 的字面前置它**不满足删除条件** ⇒ 本实现会 `rule-not-owned` 拦下、零动作。
- * 这正是「REQ-1.2 的可删集合」与「REQ-1.3 的『本插件写入值』」之间的差集，而不建台账时后者
- * **不可判定**。`fix` 的分支代码保留（口径一旦裁定即生效），但当前实际路径是拦下。
+ * 原张力（原文留痕）：`fix` 的目标态是 `drift`，而 `drift` 的规则 `connectAddress == 旧 eth0
+ * != 期望值`，按 REQ-1.2 的字面前置它**不满足删除条件** ⇒ 本实现会 `rule-not-owned` 拦下、零动作；
+ * 这正是「REQ-1.2 的可删集合」与「REQ-1.3 的『本插件写入值』」之间的差集。2026-10-16 真机取证
+ * 确认它把 `fix`/`remove` **双双拦死**（真实漂移一条都修不了 ⇒ 原来的成功分支是死代码）⇒ 裁定：
+ * 声明集合内 + listen 形态为本插件 + `connectAddress` 是合法 IPv4 且 ≠ 当前 eth0 ⇒ 允许 `fix`
+ * 改回当前 eth0（判据 = `ownership.ts:fixableDriftRule()`），**`remove` 不放宽**；作用域**沿用既有规则**。
  */
 
 import { isManagedPort, type ManagedPorts } from '../diff/managed-ports.ts';
@@ -36,7 +38,7 @@ import {
   firewallRuleName,
   isPortNumber,
 } from './firewall.ts';
-import { listenAddressForScope, matchOwnership, type OwnershipMatch } from './ownership.ts';
+import { fixableDriftRule, isIpv4, listenAddressForScope, matchOwnership, type OwnershipMatch } from './ownership.ts';
 import { explainScope, needsExplicitRule } from './scope-note.ts';
 import type {
   WriteBlock,
@@ -47,13 +49,12 @@ import type {
   WriteStep,
 } from './types.ts';
 
-const IPV4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
-
-/** 是否是形态合法的 IPv4（不做 DNS、不做网段判定：只保证它能安全地进 argv / 脚本参数） */
-export function isIpv4(value: string): boolean {
-  if (!IPV4.test(value)) return false;
-  return value.split('.').every((part) => Number(part) <= 255);
-}
+/**
+ * 从前就在本文件的 IPv4 判据，2026-10-16 挪进 `ownership.ts`（与另外两道**规则形态**判据同族：
+ * 裁定 (a) 的 `fixableDriftRule` 要用它，而 `ownership.ts` 不能反过来 import 本文件 —— 会成环）。
+ * 这里**原样转出**，`write/index.ts` 的 `isIpv4` 出口与既有调用方一字不改。
+ */
+export { isIpv4 };
 
 /** 端口作用域：缺省 **loopback**（REQ-2.1） */
 export function resolveScope(scopes: Readonly<Record<string, Scope>> | undefined, port: number): Scope {
@@ -241,7 +242,7 @@ function planRemove(input: WritePlanInput, match: OwnershipMatch): WritePlanOutc
   );
 }
 
-/** `fix`：先 delete 再 add（design §2 第三行）—— 当前被 REQ-1.2 前置拦下，见文件头「已知张力」 */
+/** `fix`：先 delete 再 add（design §2 第三行）。目标 = `owned`，或裁定 (a) 放行的漂移规则（见文件头） */
 function planFix(input: WritePlanInput, match: OwnershipMatch): WritePlanOutcome {
   if (input.portState !== undefined && input.portState !== 'drift') {
     return block(
@@ -255,19 +256,32 @@ function planFix(input: WritePlanInput, match: OwnershipMatch): WritePlanOutcome
     return block('eth0-unknown', input.port, '取不到当前 eth0 ⇒ 无法判定新地址，不生成任何动作', '点「启动并核验」重试');
   }
   const owned = match.owned[0];
-  if (owned === undefined) {
+  const target = owned ?? fixableDriftRule(match, input.eth0Ip);
+  if (target === undefined) {
     const reasons = match.notOwned.map((detail) => detail.ownership.message).join('；');
     return block(
       'rule-not-owned',
       input.port,
-      `drift 规则不满足 REQ-1.2 的删除前置${reasons.length > 0 ? `：${reasons}` : ''}`,
-      '漂移规则的 connectAddress 是旧 eth0，而不建台账无法证明它是本插件写入的历史值 ⇒ 按字面口径不受理；需集成方裁定 REQ-1.2 与 REQ-1.3 的差集口径',
+      `drift 规则不满足可修复前置${reasons.length > 0 ? `：${reasons}` : ''}`,
+      '可修复前置（2026-10-16 裁定 (a)）= listenPort ∈ managedPorts + listenAddress ∈ {127.0.0.1, 0.0.0.0} + connectAddress 是合法 IPv4 且 ≠ 当前 eth0；其余形态（如 connectAddress 不是 IPv4）不修改，请手工处理',
+    );
+  }
+  // ⚠️ 作用域**沿用既有规则**，不用 `input.scope`（= 用户配置的 scopes，缺省 loopback）：drift 的 lan
+  // 规则若按 `input.scope` 重建会被**悄悄降级成 loopback**（2026-10-16 发现）—— `fix` 只改地址，换
+  // 作用域是 `switch-scope` 的显式动作（REQ-2.4）。脚本按 `plan.scope` 决定 listen 地址
+  // （`elevate/runner.ts:scriptCallFor`，不看步骤表）⇒ 这里必须给对，否则真机会去删另一个地址。
+  const scope = scopeFromRules([target]);
+  const notes = ['先精确删除旧地址的规则，再按新地址重建（两条都带 listenport）'];
+  if (owned === undefined) {
+    notes.push(
+      '口径（2026-10-16 裁定 (a)）：声明集合内、listenAddress 为本插件形态、connectAddress 是合法 IPv4 且 ≠ 当前 eth0 ⇒ 视为本插件历史写入 ⇒ 允许修复；作用域沿用既有规则（只改地址）' +
+        (scope === 'lan' ? '；脚本会在 lan 下顺带放行该端口入站 TCP（脚本固有行为，步骤清单不含该条）' : ''),
     );
   }
   return planOf(
-    input,
-    [portproxyDeleteStep(owned), portproxyAddStep(input.port, input.scope, input.eth0Ip)],
-    ['先精确删除旧地址的规则，再按新地址重建（两条都带 listenport）'],
+    { ...input, scope },
+    [portproxyDeleteStep(target), portproxyAddStep(input.port, scope, input.eth0Ip)],
+    notes,
   );
 }
 

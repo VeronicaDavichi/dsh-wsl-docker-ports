@@ -22,6 +22,14 @@
  *      这是保守方向（少做而不是误删），也正是本次实现要上报的口径张力（见 tasks/报告）；
  *      本文件不自行放宽（把旧地址当自己的）也不收紧（把它标成 conflict 断言「不是我的」）——
  *      `not-owned` 就是「无法证明」，语义上比 conflict 更弱，不会被 UI 当成「别人的规则」展示。
+ * 5. 🔴 **2026-10-16 主人裁定 (a)：只放宽 `fix`**（上面第 4 条的张力已裁定；`remove` **不受影响**）。
+ *    真机取证（`20261016-005-fix`）证明：drift 的 `fix` 与 `remove` **双双**被第 4 条拦成
+ *    `rule-not-owned` ⇒ 真实漂移一条都修不了，`planFix` 的成功分支是**死代码**。裁定 = 在
+ *    **声明集合内**且 listen 形态为本插件的前提下，`connectAddress` 是**合法 IPv4 且 ≠ 当前 eth0**
+ *    ⇒ 视为「本插件**历史**写入值」⇒ 允许 `fix` 把地址改回当前 eth0；`remove` 仍按 REQ-1.2 字面
+ *    只受理 `connectAddress == 期望值`（删除是破坏性的：删掉就没了；要先清漂移规则就 `fix` 再 `remove`）。
+ *    依据 = `stack-decision.md` 的端口所有权维度「**声明集合界定所有权**，不建台账」，
+ *    集合外端口一律零参与 ⇒ 取舍与代价写在下面 `fixableDriftRule()` 的注释里（不藏）。
  */
 
 import { expectedListenAddress, OUR_LISTEN_ADDRESSES } from '../diff/engine.ts';
@@ -81,9 +89,20 @@ export interface OwnershipInput {
   readonly expectedConnectAddress: string | null;
 }
 
+const IPV4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+
+/** 是否是形态合法的 IPv4（不做 DNS、不做网段判定：只保证它能安全地进 argv / 脚本参数） */
+export function isIpv4(value: string): boolean {
+  if (!IPV4.test(value)) return false;
+  return value.split('.').every((part) => Number(part) <= 255);
+}
+
 /**
  * REQ-1.2 的**字面**谓词：`listenPort ∈ managedPorts` **且** `connectAddress == 期望值`。
  * 单独导出是因为它是红线条款，必须能被逐字引用与断言（同时也被 T1.1 的用例直接测）。
+ *
+ * ⚠️ **只用于 `remove`（与 `switch-scope` 的归属判定）**；`fix` 走
+ * `fixableDriftRule()` 的放宽口径（2026-10-16 裁定 (a)，见文件头第 5 条）。
  */
 export function isDeletableRule(
   managedPorts: ManagedPorts,
@@ -185,6 +204,40 @@ export function matchOwnership(input: OwnershipInput): OwnershipMatch {
     notOwned,
     unmanaged,
   };
+}
+
+/**
+ * `fix` **专用**的放宽谓词 —— 2026-10-16 主人裁定 **(a)**（背景见文件头第 5 条）
+ *
+ * ## 判据（字面，逐条可断言）
+ *
+ * 1. 端口 ∈ `managedPorts`（`match.managed`；REQ-1.1 的声明式所有权）
+ * 2. 规则已在 `notOwned` 桶里 ⇒ 它必然已过 `listenPort === 端口` / `connectPort === listenPort` /
+ *    `listenAddress ∈ {127.0.0.1, 0.0.0.0}`（形态族）三道判据 —— 这里**再显式复用一次** listen 形态，
+ *    因为桶的构造若变化不该**静默**放宽这道门（防御性复算，不是重复）
+ * 3. `connectAddress` 是**合法 IPv4**（非 IPv4 的历史值不可判定）**且 ≠ 当前 eth0**（否则本该是 `owned`）
+ *
+ * ## 已知取舍（写在这里，不藏）
+ *
+ * 不建台账 ⇒ **无法**区分「本插件的旧地址规则」与「他人写在**已声明**端口上、恰好是本插件监听形态
+ * 的规则」。裁定取**声明式所有权**（`stack-decision.md`）：代价是这类**已声明端口**上的外来规则会被
+ * 当作历史漂移一并改地址；**声明集合外**的端口仍零参与（`commonGate` 的 `port-not-managed` 先拦）。
+ * 不选「按历史 eth0 白名单」的原因：我们不记历史，猜一个「旧地址清单」等于把台账做在代码里。
+ *
+ * @returns 可被 `fix` 重建的那条规则；没有则 `undefined`（`planFix` 照旧 `rule-not-owned` 拦下）
+ */
+export function fixableDriftRule(
+  match: OwnershipMatch,
+  expectedConnectAddress: string | null,
+): PortproxyRule | undefined {
+  if (expectedConnectAddress === null || !match.managed) return undefined;
+  return match.notOwned.find((detail) => {
+    const rule = detail.rule;
+    if (!OUR_LISTEN_ADDRESSES.includes(rule.listenAddress)) return false;
+    if (rule.listenPort !== match.port || rule.connectPort !== rule.listenPort) return false;
+    if (!isIpv4(rule.connectAddress)) return false;
+    return rule.connectAddress !== expectedConnectAddress;
+  })?.rule;
 }
 
 /** 某作用域下本插件会写的 listenAddress（转调 003 的 `expectedListenAddress`，不另立一份映射） */

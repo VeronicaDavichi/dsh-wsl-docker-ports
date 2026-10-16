@@ -209,15 +209,22 @@ test('T5.6 漂移：显示「旧 → 新」两个地址，不只说「漂移了�
   console.log(`  · 扫了 ${String(rows.length)} 行，漂移文本「${drift.text}」`);
 });
 
-test('T5.6 漂移修复：序列是「先删后加」，且被所有权闸门拦下时如实报原因', () => {
+test('T5.6 漂移修复：序列是「先删后加」；裁定 (a) 后受理，非 IPv4 的历史值仍如实报闸门原因', () => {
   const fix = buildDriftFixView({ port: 3306, scope: 'loopback', eth0Ip: ETH0, managedPorts: managedPorts([3306]), rules: [rule(3306, OLD_ETH0)] });
   assert.deepEqual(fix.steps.map((step) => step.kind), ['portproxy-delete', 'portproxy-add'], `实际 ${JSON.stringify(fix.steps.map((step) => step.kind))}`);
   assert.deepEqual(fix.steps.map((step) => step.order), [1, 2]);
   assert.ok(fix.steps.every((step) => step.commandText.includes('netsh')), '命令原文必须来自 005 的步骤构造器');
-  assert.ok(fix.blocked !== null, '漂移规则不被认作 own ⇒ 必须如实带出闸门原因');
-  assert.equal(fix.blocked?.reason, 'rule-not-owned');
+  // 旧口径（原文留痕）：「漂移规则不被认作 own ⇒ 必须如实带出闸门原因（reason=rule-not-owned）」。
+  // 2026-10-16 裁定 (a) 起：声明端口内 + 本插件 listen 形态 + connectAddress 是合法 IPv4 且 ≠ 当前 eth0
+  // ⇒ 视为本插件历史写入 ⇒ **受理**（`blocked` 为 null，UI 的「修复」按钮与命令原文直接可用）。
+  assert.equal(fix.blocked, null, '裁定 (a) 后漂移修复被受理 ⇒ 不带闸门原因');
   assert.equal(fix.from, OLD_ETH0);
-  console.log(`  · 扫了 ${String(fix.steps.length)} 步序列：${JSON.stringify(fix.steps.map((step) => step.kind))}；闸门 reason=${String(fix.blocked?.reason)}`);
+  console.log(`  · 扫了 ${String(fix.steps.length)} 步序列：${JSON.stringify(fix.steps.map((step) => step.kind))}；闸门=${fix.blocked === null ? '放行' : '拦下'}`);
+
+  // 负例控：同一条路径下，历史值不是合法 IPv4 ⇒ 仍必须如实带出闸门原因（放宽不许把「无法判定」也放过）
+  const notIp = buildDriftFixView({ port: 3306, scope: 'loopback', eth0Ip: ETH0, managedPorts: managedPorts([3306]), rules: [rule(3306, 'old-wsl-host')] });
+  assert.equal(notIp.blocked?.reason, 'rule-not-owned');
+  assert.deepEqual(notIp.steps.map((step) => step.kind), ['portproxy-delete', 'portproxy-add'], '被拦下时仍展示「修复会做什么」，但按钮不带闸门结果');
 });
 
 test('T5.6 中途失败：如实报出未改动项（不静默留半截）', () => {

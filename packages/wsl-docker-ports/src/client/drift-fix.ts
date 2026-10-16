@@ -17,10 +17,13 @@
  * 漂移修复序列（T5.6 / design §2 的 `fix` 行：**先 delete 再 add**）。
  *
  * ⚠️ **口径留痕**：命令原文一律来自 005 自己的步骤构造器（`portproxyDeleteStep` /
- * `portproxyAddStep`），本模块不渲染任何命令文本。`blocked` 是 005 的**所有权闸门**结果
- * （`plan.ts` 的 `fix` 分支当前恒被 REQ-1.2 的删除前置拦下：漂移规则的 `connectAddress`
- * 是旧 eth0，不建台账无法证明是本插件写的 ⇒ 序列**展示**、按钮**禁用**）。
- * 这样 UI 既回答了「修复会做什么」，也不会引导一个写路径必须拒绝的动作。
+ * `portproxyAddStep`），本模块不渲染任何命令文本。`blocked` 是 005 的**所有权闸门**结果。
+ * 🔴 **2026-10-16 主人裁定 (a) 后本段口径已变（原文留痕）**：原文写「`plan.ts` 的 `fix` 分支当前恒被
+ * REQ-1.2 的删除前置拦下：漂移规则的 `connectAddress` 是旧 eth0，不建台账无法证明是本插件写的 ⇒
+ * 序列**展示**、按钮**禁用**」。裁定后：声明集合内 + 本插件 listen 形态 + `connectAddress` 是**合法
+ * IPv4 且 ≠ 当前 eth0** ⇒ 视为本插件历史写入 ⇒ `fix` **受理**（`blocked === null`，序列即真实动作）；
+ * 仍被拦下的只剩「历史值不是合法 IPv4」这类**不可判定**形态，此时照旧只展示、带出原因。
+ * 唯一改动点：函数体一字未动（`outcome.ok ? outcome.steps : intended` 天然兼容两种结果）。
  */
 
 import type { ManagedPorts } from '../diff/managed-ports.ts';
