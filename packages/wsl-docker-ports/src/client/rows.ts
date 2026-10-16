@@ -259,6 +259,19 @@ export function buildUnsupportedRows(unsupported: readonly UnsupportedMapping[])
 export const UDP_TIP_TEXT = 'portproxy 不支持 UDP：容器的 UDP 端口映射无法转发，本插件不会用其他机制代偿。';
 
 /**
+ * 提权告知（005 T2b.3 / 判据 C）。**UI 只渲染这一份字面量**，用户手册
+ * （`packages/wsl-docker-ports/README.md` 的「提权与 UAC 自查」节）写同一套取值含义与同一条自查命令
+ * ⇒ **改一处必须同步另一处**；`tests/client/elevation-consent-notice.test.tsx` 逐字断言本常量出现在渲染结果里。
+ *
+ * 🔴 事实来源（2026-10-15 真机只读实测，非推断）：本机 `ConsentPromptBehaviorAdmin = 0x0`
+ * 而 `EnableLUA = 0x1` ⇒ UAC **没有**被整体关闭，但提权**不弹确认**（静默提权；`Get-Process consent` = 0，
+ * 代理曾零人工交互完成真写 + 真删）⇒ 「UAC = 人类闸门」在本机不成立，本页的「变更预览 + 确认」
+ * 才是唯一闸门。取值含义取自 Windows 官方定义（0–5），命令用 `reg query`（只读）。
+ */
+export const ELEVATION_CONSENT_NOTICE =
+  '⚠️ 本机提权可能不会请你确认：若系统 UAC 策略为「不提示直接提权」（ConsentPromptBehaviorAdmin = 0），提权链会静默执行 —— 此时本页的「变更预览 + 确认」就是你唯一的人类闸门。自查：reg query "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System" /v ConsentPromptBehaviorAdmin（0 = 不提示直接提权，2 = 安全桌面确认，5 = 默认；EnableLUA = 0 表示 UAC 整体关闭）。完整取值表与逐步自查见用户手册「提权与 UAC 自查」节。';
+
+/**
  * 外部规则只读区域（REQ-15.1）：**没有动作字段**，清单为空时返回 `null`（不渲染该区域）。
  */
 export function buildExternalRulesView(external: readonly ExternalRule[]): ExternalRulesView | null {

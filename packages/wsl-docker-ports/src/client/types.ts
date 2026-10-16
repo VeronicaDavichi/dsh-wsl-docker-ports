@@ -161,7 +161,7 @@ export interface PortsPageView {
   readonly managedPorts: ManagedPortsFormView;
   readonly distro: DistroPanelView;
   readonly exec: ExecControlView;
-  readonly elevation: { readonly testId: string; readonly value: 'none' | 'ask' | 'passby'; readonly options: readonly { readonly value: string; readonly label: string }[]; readonly enabled: boolean; readonly note: string };
+  readonly elevation: { readonly testId: string; readonly value: 'none' | 'ask' | 'passby'; readonly options: readonly { readonly value: string; readonly label: string }[]; readonly enabled: boolean; readonly note: string; readonly notice: string };
   readonly lastWrite: { readonly status: string; readonly message: string; readonly unapplied: readonly string[] } | null;
 }
 

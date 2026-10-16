@@ -16,7 +16,7 @@
  */
 
 import { PORT_STATES, type PortState, type Scope } from '../diff/types.ts';
-import { buildContainerRows, buildExternalRulesView, buildForwardActions, buildNatGuide, buildPresetOptions, buildScopeControl, buildDriftView, buildUnsupportedRows, managedPortsIssues, managedPortsText, natReason, stateLabel, stateTone, TESTID, UDP_TIP_TEXT, PORT_PRESETS } from './rows.ts';
+import { buildContainerRows, buildExternalRulesView, buildForwardActions, buildNatGuide, buildPresetOptions, buildScopeControl, buildDriftView, buildUnsupportedRows, managedPortsIssues, managedPortsText, natReason, stateLabel, stateTone, TESTID, UDP_TIP_TEXT, PORT_PRESETS, ELEVATION_CONSENT_NOTICE } from './rows.ts';
 import { buildDriftFixView } from './drift-fix.ts';
 import type { ManagedPortsFormView } from './types.ts';
 import type { DistroPanelData, ForwardWriteReport } from './host.ts';
@@ -255,6 +255,7 @@ export function buildPortsPageView(snapshot: PortsSnapshot, options: BuildPageOp
       ],
       enabled: true,
       note: '提权策略只改配置（remote.settings），不触发任何提权调用',
+      notice: ELEVATION_CONSENT_NOTICE,
     },
     lastWrite: options.lastWrite ?? null,
   };

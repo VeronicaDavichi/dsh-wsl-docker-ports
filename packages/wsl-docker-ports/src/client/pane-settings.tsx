@@ -17,6 +17,14 @@ import { TESTID } from './rows.ts';
 import type { ElevationPolicyValue } from './settings-pipe.ts';
 import type { ExecControlView, ManagedPortsFormView, DockerView, PortsPageView } from './types.ts';
 
+/**
+ * 提权告知块的 `data-testid`（005 T2b.3）。**刻意不进 `rows.ts` 的 `TESTID`** ——
+ * 那张表的口径是「requirements §2 的 **11 个控件**」（`tests/unit/client-rows.test.ts` 的 T5.4
+ * 逐字断言 `ids.length === 11`），而告知块是**静态段落、不是控件** ⇒ 按本文件既有的
+ * `WRITE_TOKEN_TESTID` 先例自己持有一份（2026-10-15 首次误放进 `TESTID`，被 T5.4 判红后改正）。
+ */
+export const ELEVATION_NOTICE_TESTID = 'elevation-consent-notice';
+
 /** 凭据块的 `data-testid`（008 T3.1 自己的一份；不进 `rows.ts` 的 `TESTID`，那里已 364/400 行） */
 export const WRITE_TOKEN_TESTID = {
   block: 'write-token',
@@ -129,6 +137,9 @@ export function ElevationBlock(props: {
         ))}
       </select>
       <p className="wdp-muted">{elevation.note}</p>
+      <p className="wdp-secondary wdp-gate" data-testid={ELEVATION_NOTICE_TESTID}>
+        {elevation.notice}
+      </p>
     </section>
   );
 }
