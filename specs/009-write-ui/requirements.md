@@ -36,7 +36,7 @@
 ### REQ-4 写前确认对话框（A 闸门）
 
 - **REQ-4.1** The 对话框 SHALL 逐条渲染服务端 `plan.ports[].steps[].commandText` 的**原文**（每个步骤一个元素，`textContent` 与服务端字符串 `===`），**SHALL NOT** 改写 / 拼接 / 换行重组；服务端拼好的多行版 `plan.commandText` **SHALL NOT** 被使用（那等于客户端参与生成命令文本）。
-- **REQ-4.2** The 对话框 SHALL 同时展示**影响面**（条数与作用域，`lan` 逐字给出「N 条 portproxy + N 条防火墙」）与 **`notes`**（服务端给的可读原因 / 拒绝理由）。
+- **REQ-4.2** The 对话框 SHALL 同时展示**影响面**（条数与作用域，`lan` 逐字给出「N 条 portproxy + N 条防火墙」）与 **`notes`**（服务端给的可读原因 / 拒绝理由）。**【2026-10-16 补（`fix` 扩面，见 REQ-7.2）】**`action = fix` 时影响面 **SHALL NOT** 说「新增 1 条 portproxy 规则」（它的步骤是**先删后加** ⇒ 净增 0 条）；SHALL 说明「先精确删除旧规则、再按当前地址重建、portproxy 净增 0 条」，且 `lan` 下 SHALL 把「防火墙的**实际**动作」指向服务端 `notes`（脚本按「动作 + 作用域」决定放行、**不看**步骤清单 ⇒ 客户端不得吞掉那条说明，否则等于漏报一次防火墙写入）。
 - **REQ-4.3** The 对话框组件 **SHALL 零副作用**：无 `fetch`、无 `settings`、无事件订阅 ⇒ 「未点确认 ⇒ 零网络请求」在**结构上**成立。
 - **REQ-4.4** GIVEN 用户未点确认（含点「取消」、关闭对话框），THEN `apply` SHALL **恰好 0 次**；取消后该计划**作废**（要执行必须重新预演）。
 
@@ -53,7 +53,7 @@
 ### REQ-7 信任边界（本 Spec 存在的第一理由）
 
 - **REQ-7.1** The 命令原文 **SHALL 只来自服务端 plan**；客户端 **SHALL** 只回传 `planId` + `ticket`（+ `confirmed: true`、`origin: 'user'`）与**声明式目标**；**SHALL NOT** 回传、拼接、构造任何命令文本 —— 「命令文本没有入口」靠**数据流方向**保证，不靠自觉。
-- **REQ-7.2** The 声明式目标 SHALL 只有 `{ action, ports, scope, declaration }` 四个字段（`action` ∈ {`add`, `remove`}；本页不做服务端的 `fix` / `switch-scope`）。
+- **REQ-7.2** The 声明式目标 SHALL 只有 `{ action, ports, scope, declaration }` 四个字段（`action` ∈ {`add`, `remove`, **`fix`**}）。**【2026-10-16 扩面（主人令「先走推荐」= 方案乙）；原文留痕**：「`action` ∈ {`add`, `remove`}；本页不做服务端的 `fix` / `switch-scope`」**】** **扩面理由**：005 已于同日按裁定 (a) 放宽 `fix` 的受理口径（声明集合内 + listen 形态为本插件 + `connectAddress` 为合法 IPv4 且 ≠ 当前 eth0），但彼时 `fix` **没有任何用户可达路径**（行内「修复」按钮的执行器未实现、本页又只有增删）⇒ 裁定 (a) 对用户不可见。**边界**：`switch-scope` **仍不做**；`fix` 的受理判据**全在服务端**（005 `planFix`），客户端照旧只回传声明式目标与票据，**SHALL NOT** 构造 / 拼接命令文本（REQ-7.1 一字不变）；`action = fix` 时客户端 **SHALL** 给出「作用域沿用既有规则、不受本页选择器影响」的可见说明（照选择器重建会把 lan 规则静默降级成 loopback）。
 - **REQ-7.3** The 客户端 **SHALL NOT** 新增任何执行 / 提权入口：配置管道的导出面 SHALL 只有 `readConfig` / `updateCount` / `writeDistro` / `writeElevationPolicy` / `writeManagedPorts` / `writeScope` / `writeWriteToken`，且 `run` / `invoke` / `exec` / `elevate` / `spawn` **零命中**（008 的 T5.7 判据，逐字保留）。
 
 ### REQ-8 `declaration` 与 `target` 的逐字一致

@@ -93,6 +93,58 @@ describe('T3.1 影响面：loopback vs lan（lan + add 逐字给「1 条 + 1 条
 });
 
 /**
+ * 2026-10-16 `fix` 扩面（009 `REQ-7.2`）：影响面**不许**沿用增删的措辞。
+ *
+ * 判据：`fix` ⇒ 出现「先精确删除旧规则，再按当前地址重建」+「净增 0 条」，且**不出现**「会新增 1 条 portproxy
+ * 规则」（它的步骤是**先删后加**，说「新增 1 条」是高报）；`lan` 下还须把「防火墙的实际动作」指向**服务端说明**
+ * （脚本按「动作 + 作用域」决定放行，不看步骤清单 —— 见 005 收口记录遗留 ⑫）。
+ */
+describe('2026-10-16 fix：影响面说「先删后加、净增 0」，不说「新增」', () => {
+  const FIX_LAN = (): ClientPlan =>
+    planWith({
+      action: 'fix',
+      scope: 'lan',
+      ports: [
+        {
+          port: 45999,
+          steps: [
+            { kind: 'portproxy-delete', commandText: CMD_PORT_PROXY },
+            { kind: 'portproxy-add', commandText: CMD_PORT_PROXY },
+          ],
+          notes: ['修复：先精确删除旧规则，再按当前 eth0 重建'],
+        },
+      ],
+      notes: ['脚本会在 lan 下顺带放行该端口入站 TCP（脚本固有行为，步骤清单不含该条）'],
+    });
+
+  it('lan + fix ⇒ 先删后加 / 净增 0 / 防火墙指向服务端说明；无「会新增 1 条 portproxy 规则」', () => {
+    const plan = FIX_LAN();
+    const text = buildImpactLines(plan).join('\n');
+    expect(text).toContain('修复 1 个端口的地址漂移');
+    expect(text).toContain('先精确删除旧规则，再按当前地址重建');
+    expect(text).toContain('净增 0 条');
+    expect(text).not.toContain('会新增 1 条 portproxy 规则');
+    expect(text).not.toContain('会删除 1 条 portproxy 规则 + 1 条防火墙规则');
+    expect(text).toContain('共 2 条（portproxy 2 条 + 防火墙 0 条）');
+    render(<WriteConfirmDialog plan={plan} busy={false} onConfirm={() => undefined} onCancel={() => undefined} />);
+    const rendered = screen.getByTestId(WRITE_TESTID.impact).textContent ?? '';
+    expect(rendered).toContain('净增 0 条');
+    expect(rendered).not.toContain('会新增 1 条 portproxy 规则');
+    // 服务端那条「脚本固有行为」说明**原样透出**：客户端不许把它吞掉（吞掉就等于漏报一次防火墙写入）
+    expect(screen.getByTestId(WRITE_TESTID.notes).textContent).toContain('脚本固有行为，步骤清单不含该条');
+    console.log('  · 扫了 fix+lan 影响面：不说「新增」、说「净增 0 条」，防火墙行为指向服务端说明');
+  });
+
+  it('loopback + fix ⇒ 只说重建回环规则；且明说作用域「沿用既有规则」（不谎称受选择器控制）', () => {
+    const text = buildImpactLines(planWith({ action: 'fix', scope: 'loopback' })).join('\n');
+    expect(text).toContain('沿用既有规则');
+    expect(text).toContain('不新增防火墙放行');
+    expect(text).not.toContain('会新增');
+    console.log('  · 扫了 fix+loopback 影响面：沿用既有规则、无「新增」字样');
+  });
+});
+
+/**
  * 009 缺陷 3（2026-10-12 真机）：计划**不可执行 / 零步骤**时，影响面不许高报。
  * 真机现象：同一个弹窗里既有「会新增 1 条 portproxy 规则 + 1 条防火墙规则」，又有「共 0 条」。
  * 判据：这两句**互斥**出现；不可执行时必须出现「不含可执行动作，不会改动任何规则」。

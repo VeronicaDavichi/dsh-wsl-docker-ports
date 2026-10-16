@@ -51,8 +51,16 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined;
 }
 
-/** 客户端可发起的写动作（服务端另有 `fix` / `switch-scope`；本页只做增删两类） */
-export type WriteActionInput = 'add' | 'remove';
+/**
+ * 客户端可发起的写动作。
+ *
+ * ⚠️ **2026-10-16（009 `REQ-7.2` 扩面：`add`/`remove` → `add`/`remove`/`fix`）**：加入 `fix`（修复
+ * `connectAddress` 地址漂移）—— 目的是让 005 裁定 (a) 真正**对用户可达**（此前本页只有增删，行内「修复」
+ * 按钮又没有执行器 ⇒ `fix` 一条用户路径都没有）。服务端另有 `switch-scope`，**本页仍不做**。
+ * 受理判据**全在服务端**（005 `planFix`：声明集合内 + listen 形态为本插件 + `connectAddress` 为合法 IPv4
+ * 且 ≠ 当前 eth0）；客户端照旧只回传声明式目标与票据，**不构造任何命令文本**（REQ-7.1 不变）。
+ */
+export type WriteActionInput = 'add' | 'remove' | 'fix';
 
 /** 作用域（与 `../diff/types.ts` 的 `Scope` 同值域，这里只用两个字面量） */
 export type WriteScopeInput = 'loopback' | 'lan';

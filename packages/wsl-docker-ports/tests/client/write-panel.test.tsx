@@ -172,6 +172,51 @@ describe('T3.1 确认 ⇒ 恰好一次 apply，且 body 只含白名单字段', 
   });
 });
 
+/**
+ * 2026-10-16 `fix` 扩面（009 `REQ-7.2`：`action ∈ {add, remove, fix}`）。
+ *
+ * 判据：① 面板能选到「修复」且**零请求**（选动作本身不发请求）；② `plan` 的请求体 = **声明式目标**（四键），
+ * `action === 'fix'`；③ 确认后 `apply` 的 `target` 与 `plan` 的体**逐字相同**（否则服务端重算必 `plan-mismatch`）；
+ * ④ 影响面**不说**「会新增 1 条 portproxy 规则」（`fix` 是先删后加）；⑤ 命令原文**不与**请求体混在一起。
+ */
+describe('2026-10-16 fix 扩面：面板选「修复」⇒ 声明式目标 action=fix，apply 同体', () => {
+  it('选 fix → 预演（1 次 plan，体四键）→ 确认（1 次 apply，target 逐字相同）；影响面不说「新增」', async () => {
+    const rig = createFetchRig([
+      { status: 200, payload: planPayload({ action: 'fix', scope: 'lan' }) },
+      { status: 200, payload: applyPayload() },
+    ]);
+    renderBlock(rig);
+    // ① 选动作：零请求 + 提示条出现（作用域沿用既有规则）
+    fireEvent.change(screen.getByTestId(WRITE_TESTID.action), { target: { value: 'fix' } });
+    expect((screen.getByTestId(WRITE_TESTID.action) as HTMLSelectElement).value).toBe('fix');
+    expect(screen.getByTestId(WRITE_TESTID.fixHint).textContent).toContain('沿用既有规则');
+    expect(rig.calls).toHaveLength(0);
+
+    // ② 预演：体就是目标本身（四键），action=fix
+    await preview('3306');
+    await screen.findByTestId(WRITE_TESTID.dialog);
+    expect(rig.planCalls()).toHaveLength(1);
+    const planBody = rig.planCalls()[0]?.body ?? {};
+    expect(Object.keys(planBody)).toEqual(['action', 'ports', 'scope', 'declaration']);
+    expect(planBody['action']).toBe('fix');
+    expect(planBody['ports']).toEqual([3306]);
+
+    // ④ 影响面：fix 不许说「新增 1 条 portproxy 规则」
+    const impact = screen.getByTestId(WRITE_TESTID.impact).textContent ?? '';
+    expect(impact).toContain('净增 0 条');
+    expect(impact).not.toContain('会新增 1 条 portproxy 规则');
+
+    // ③ 确认：apply 的 target 与 plan 体逐字相同；⑤ 命令原文不进请求体
+    fireEvent.click(screen.getByTestId(WRITE_TESTID.confirm));
+    await screen.findByTestId(WRITE_TESTID.result);
+    expect(rig.applyCalls()).toHaveLength(1);
+    expect(rig.applyCalls()[0]?.body['target']).toEqual(planBody);
+    expect(rig.applyCalls()[0]?.rawBody).not.toContain('netsh');
+    expect(rig.unexpected()).toBe(0);
+    console.log('  · 扫了 fix 一轮：选动作 0 请求 / plan 体四键 action=fix / apply 同体 / 影响面「净增 0 条」');
+  });
+});
+
 describe('T3.1 提权档联动：不可能成功的操作连按钮都不给点', () => {
   it('policy=none ⇒ 确认置灰，点了也零 apply', async () => {
     const rig = createFetchRig([{ status: 200, payload: planPayload({ policy: 'none' }) }]);

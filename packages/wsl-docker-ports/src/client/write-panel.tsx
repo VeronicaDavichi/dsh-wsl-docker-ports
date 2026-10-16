@@ -62,6 +62,14 @@ export function parsePortsText(text: string): { readonly ok: true; readonly port
   return { ok: true, ports: ports.sort((left, right) => left - right) };
 }
 
+/**
+ * `<select>` 的字符串 → 合法动作字面量（2026-10-16 `fix` 扩面，见 `write-channel.ts` 的同名注记）。
+ * 不认识的值一律回落 `add`：客户端**不造**服务端不认的动作（未知 `action` 会被服务端回 400）。
+ */
+export function toActionInput(value: string): WriteActionInput {
+  return value === 'remove' || value === 'fix' ? value : 'add';
+}
+
 export interface WriteChannelBlockProps {
   /** 写通道整包（`undefined` = 未接线 ⇒ 控件置灰 + 原因） */
   readonly write: WriteWiring | undefined;
@@ -169,10 +177,11 @@ export function WriteChannelBlock(props: WriteChannelBlockProps): ReactElement {
             data-write-control="1"
             disabled={!usable || busy}
             value={action}
-            onChange={(event) => setAction(event.target.value === 'remove' ? 'remove' : 'add')}
+            onChange={(event) => setAction(toActionInput(event.target.value))}
           >
             <option value="add">建立 / 校正转发</option>
             <option value="remove">移除转发</option>
+            <option value="fix">修复地址漂移（先删后加）</option>
           </select>
         </label>
         <label>
@@ -213,6 +222,12 @@ export function WriteChannelBlock(props: WriteChannelBlockProps): ReactElement {
           预演（只读，零写入）
         </button>
       </div>
+      {action === 'fix' ? (
+        <p className="wdp-muted" data-testid={WRITE_TESTID.fixHint}>
+          修复只改 connectAddress：作用域沿用既有规则（不受上面「作用域」选择影响 —— 改作用域是「切换作用域」，本页不做）；
+          命令是「先精确删除那条旧规则，再按当前地址重建」，且只对声明集合内、地址确实漂移的规则放行（判定全在服务端，客户端不判）。
+        </p>
+      ) : null}
       {!usable ? <p className="wdp-muted">{reason}</p> : null}
       {notice === null ? null : (
         <p className="wdp-error" data-testid={WRITE_TESTID.notice}>

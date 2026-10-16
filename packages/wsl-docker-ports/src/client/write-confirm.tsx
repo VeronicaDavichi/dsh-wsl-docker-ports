@@ -30,6 +30,7 @@ import type { ClientPlan } from './write-channel.ts';
 export const WRITE_TESTID = {
   block: 'write-channel',
   action: 'sel-write-action',
+  fixHint: 'write-fix-hint',
   ports: 'inp-write-ports',
   scope: 'sel-write-scope',
   preview: 'btn-write-plan',
@@ -112,17 +113,30 @@ export function buildImpactLines(plan: ClientPlan): readonly string[] {
   const firewallSteps = kinds.filter((kind) => kind.startsWith('firewall-')).length;
   const verb = plan.action === 'remove' ? '删除' : '新增';
   const executable = plan.ready && plan.planId !== null && kinds.length > 0;
+  /**
+   * `fix`（2026-10-16 扩面）**不能**沿用 `verb`：它的步骤是「先删后加」，说「会新增 1 条 portproxy 规则」
+   * 是**高报**（净增其实是 0）。作用域也**不由上面的选择器决定** —— 服务端 `planFix` 沿用**既有规则**的
+   * 作用域（照选择器重建会把 lan 规则静默降级成 loopback）。
+   */
+  const isFix = plan.action === 'fix';
   const actionLine = executable
-    ? plan.action === 'remove'
-      ? `动作：移除 ${String(plan.ports.length)} 个端口的转发（逐端口 1 条，无批量入口）`
-      : `动作：建立 / 校正 ${String(plan.ports.length)} 个端口的转发（逐端口 1 条，无批量入口）`
+    ? isFix
+      ? `动作：修复 ${String(plan.ports.length)} 个端口的地址漂移（逐端口：先精确删除旧规则，再按当前地址重建 ⇒ portproxy 净增 0 条）`
+      : plan.action === 'remove'
+        ? `动作：移除 ${String(plan.ports.length)} 个端口的转发（逐端口 1 条，无批量入口）`
+        : `动作：建立 / 校正 ${String(plan.ports.length)} 个端口的转发（逐端口 1 条，无批量入口）`
     : '动作：无 —— 服务端没有给出可执行的转发动作（既不新增、也不删除）。';
   const scopeLine = !executable
     ? `影响面：当前计划不含可执行动作，不会改动任何规则（portproxy 与防火墙都不动；服务端共 ${String(kinds.length)} 条步骤，全部不执行）。`
-    : plan.scope === 'lan'
-      ? `影响面：局域网（lan）—— 局域网内其他主机可访问这些端口；会${verb} 1 条 portproxy 规则 + 1 条防火墙规则` +
-        '（端口专属、非通配符，不碰所有权集合外的任何规则）。'
-      : '影响面：仅本机（loopback）—— 只写回环地址的 portproxy 规则，不新增防火墙放行，局域网内其他主机访问不到。';
+    : isFix
+      ? plan.scope === 'lan'
+        ? '影响面：局域网（lan）—— 沿用**既有规则**的作用域（不受上方「作用域」选择影响）；会先删除 1 条 portproxy 规则再重建 1 条（净增 0 条）；' +
+          '防火墙放行的**实际**动作见下方服务端说明（脚本在 lan 下按「动作 + 作用域」决定，不看步骤清单）。'
+        : '影响面：仅本机（loopback）—— 沿用既有规则的回环作用域，只重建回环地址的 portproxy 规则，不新增防火墙放行。'
+      : plan.scope === 'lan'
+        ? `影响面：局域网（lan）—— 局域网内其他主机可访问这些端口；会${verb} 1 条 portproxy 规则 + 1 条防火墙规则` +
+          '（端口专属、非通配符，不碰所有权集合外的任何规则）。'
+        : '影响面：仅本机（loopback）—— 只写回环地址的 portproxy 规则，不新增防火墙放行，局域网内其他主机访问不到。';
   const countLine = `服务端给出的步骤：共 ${String(kinds.length)} 条（portproxy ${String(portproxySteps)} 条 + 防火墙 ${String(firewallSteps)} 条）。`;
   return [actionLine, scopeLine, countLine];
 }
