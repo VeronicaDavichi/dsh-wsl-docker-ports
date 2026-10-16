@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-10-08
 priority: high
 tags:
@@ -10,17 +10,20 @@ tags:
 depends_on:
 - 003-wsl-docker-ports
 created_at: 2026-10-08T10:35:07.728372800Z
-updated_at: 2026-10-09T02:20:55.172792200Z
+updated_at: 2026-10-16T08:33:37.372308800Z
+completed_at: 2026-10-16T08:33:37.372308800Z
 transitions:
 - status: planned
   at: 2026-10-08T13:23:04.841303700Z
 - status: in-progress
   at: 2026-10-09T02:20:55.172792200Z
+- status: complete
+  at: 2026-10-16T08:33:37.372308800Z
 ---
 # 提权写路径：UAC 辅助进程 · 声明式所有权 · 防火墙最小放行
 
 **类型**: 需求驱动（requirements-first）
-**状态**: in-progress（**2026-10-09 转 `in-progress`**；2026-10-08 建 Spec 时曾为 `planned` —— 本行原写「planned」未随 frontmatter 的 `transitions` 更新，**2026-10-15 按 frontmatter 订正**；**同日从 003-wsl-docker-ports 拆出**；**A-1 / A-2 均已定案**，未验证项见文末 **A-3**）
+**状态**: **complete（2026-10-16 CLI 流转，`completed_at` = 2026-10-16T08:33:37Z）** —— **状态原文保留不改写**：in-progress（**2026-10-09 转 `in-progress`**；2026-10-08 建 Spec 时曾为 `planned` —— 本行原写「planned」未随 frontmatter 的 `transitions` 更新，**2026-10-15 按 frontmatter 订正**；**同日从 003-wsl-docker-ports 拆出**；**A-1 / A-2 均已定案**，未验证项见文末 **A-3**）。收口门读数与 8 条遗留项见 [tasks.md](./tasks.md) 的「✅ 收口记录」节。
 **优先级**: high
 **包名**: `dsh-wsl-docker-ports`（与 003 **同一个包**，本 Spec 只占其中「写路径与提权」这一交付面）
 
@@ -110,3 +113,6 @@ transitions:
 
 1. 主人复核本 Spec，重点：**REQ-3.4 提权后端链（A-3）**、**REQ-5 卸载清理边界**。**A-1（Agent 触发降级为 `ask`）与 A-2（卸载不清理）均已于 2026-10-08 定案**；新增未验证项 **A-3**（Windows 自带 `sudo`，需 24H2 机器实测）。
 2. 003 的 Phase 0 真机契约（`netsh` 编码、`--format`）通过后，本 Spec 可并行开工；真机验收需**人工点 UAC**。
+
+> ✅ **2026-10-16 收口订正（上文原文保留不改写）**：本 Spec 已按 CLI 流转为 **`complete`**（未勾项 **0** + 整包质量门全绿，读数与逐行标态见 [tasks.md](./tasks.md) 的「✅ 收口记录」）。上面两条的现状：第 1 条的 **A-3 仍是未验证项**（`winsudo` 分支需 24H2+，本机 23H2）；第 2 条的「人工点 UAC」在本机**不适用**（`ConsentPromptBehaviorAdmin = 0` ⇒ 提权静默，这也是 005 立论的订正依据）。
+> **随收口带走的 8 条遗留**（逐条有主、有原文、有下一步动作，**不并账**）：① `T3.2` 的第三动作 **`fix` 真机未跑**（唯一真机动作缺口）② **批量清理 plan 未接线**（`WriteAction` 无 `cleanup` 取值，`src/write/types.ts:22`）③ **eth0 漂移 × 自写规则**的裁决仍开放（当前保持现状）④ `winsudo` 分支不可验 ⑤ 001 的 `fail()` 应收 `stdout`（跨界）⑥ §P2 主 bundle **余量 0 B**（`nature: debt`，属 003/011 欠账）⑦ 写确认弹窗未同步这条 UAC 告知（`T2b.3` 刻意不动）⑧ 三条本机不可复现项（用户点「否」取消 / gsudo `999` / gsudo 下 `partial`）。

@@ -236,3 +236,60 @@
 ⇒ **两处未接线在真机上确认修好**：提权链不再静默退化 native（走 gsudo 的 stdio 回传 + exit code），`elevationAvailable` 不再把能提权的机器报成不可用；**结构化出口 `--json` 那一路在真机确实可用**。
 核对：探针全程零写入（`netsh` 始终 **19 条**）、临时目录已删、无提权、无弹窗。
 **仍然不可复现**：`999` / `cancelled`（本机 `ConsentPromptBehaviorAdmin=0` ⇒ 无「用户取消」事件）—— 本次改动未触及这两条分支。
+
+---
+
+## ✅ 收口记录（2026-10-16 · 状态 → `complete`）
+
+**准入**（本仓规则：未勾项 = 0 ⇒ 可做关闭评估）：本 Spec 勾 **22 / 未勾 0**。**状态流转用 CLI，不手改 frontmatter** ——
+
+    lean-spec update 005-elevation-write-path --status complete
+    ✓ Updated: 005-elevation-write-path  Fields: status → complete
+    ✓ Successfully updated 1 spec(s), 0 errors          （exit 0）
+
+复核（`lean-spec view`）：`Status: complete`；frontmatter 新增 `completed_at: 2026-10-16T08:33:37.372308800Z` 与 `transitions` 第三条 `{status: complete, at: 同上}`（前两条 `planned` / `in-progress` 原样保留）。`board`：**planned 1 / in-progress 0 / complete 10**。
+
+### 整包质量门（收口轮实测 · HEAD = `497ee26` · cwd = `packages/wsl-docker-ports`，**直跑二进制**不用 `pnpm run`）
+
+| 门 | 读数 | exit |
+|---|---|---|
+| `node_modules/.bin/tsc.CMD -p tsconfig.json` | 无输出 | **0** |
+| `node --test --test-concurrency=1 "tests/**/*.test.ts"` | **tests 430 / pass 430 / fail 0** | **0** |
+| `node node_modules/vitest/vitest.mjs run` | **Test Files 15 / Tests 133** | **0** |
+| `node scripts/check-exports.mjs` | **25 项断言 / 失败 0** | **0** |
+| `node packages/wsl-shared/scripts/check-size.mjs` | 最大 **396 行**（`tests/client/write-result.test.tsx`）< 400 | **0** |
+| `build` 三步（`tsc -p tsconfig.build.json` → `scripts/build-client.mjs` → `tsc -p tsconfig.client.json`） | `lib/client.js` **44,621 B** / `lib/client.ports.js` **111,947 B** | **0** |
+| `node scripts/verify-client-loader.mjs` | **40 项断言 / 失败 0**（含 §P2 造价判据：主 44,621 / 上限 44,621，**余 0 B**，性质 = debt） | **0** |
+| `node scripts/assert-client-split.mjs` | **17 项断言 / 失败 0** | **0** |
+| `node scripts/verify-host-entry.mjs` | **18 项断言 / 失败 0** | **0** |
+
+日志原件：`C:\Users\EDY\dsh-probe-artifacts\20261016-t2b3-live\gates-005-closure.log`。
+
+### 真机验收清单 9 行逐行标态（**不并账**：可执行断言 ≠ 真机样本）
+
+| # | 场景 | 标态 |
+|---|---|---|
+| 1 | 加一条转发（loopback）| ⚪ **本机不可执行**（不是「未做」）：`localhostForwarding=true` ⇒ loopback 下 plan `steps:[]`、apply `no-actions`（`A2`/`A3`，`notes` 逐字「无需 portproxy 规则…」）|
+| 2 | 加一条转发（lan）| ✅ 真机 `A7`：规则 `0.0.0.0 45999 172.20.201.152 45999` + 防火墙 `dsh-wsl-docker-ports-45999` **均出现** |
+| 3 | 移除自己那条 | ✅ 真机 `A9`：`executed=[portproxy-delete, firewall-delete]`、45999 残留 **0**、他人 19 条 sha 不变 |
+| 4 | **漂移修复（`fix`）** | ✗ **真机未跑** —— 见遗留 ①，**这是本次收口唯一的真机动作缺口** |
+| 5 | 拒绝 UAC | ⚪ 本机不可复现（`ConsentPromptBehaviorAdmin=0` ⇒ 无「取消」事件）；覆盖 = `T2.3` 的可执行断言 + 2026-10-12 真机旁证（「无文案 / 非 0 退出 / 零回传 ⇒ `cancelled`」，且「**有回传绝不判取消**」已修）|
+| 6 | 提权策略 `none` | ✅ 真机 2026-10-09：`status=disabled`、六个 spy 全 **0**、零弹窗；+ `T2.4` 断言（`none` ⇒ 执行器调用数 0、零快照零写文件）|
+| 7 | Agent 触发 + `passby` | ✅ 可执行断言（`T2.5`：`agent`+`passby` ⇒ 确认调用数 **1** 且**确认事件在提权之前**；被拒 ⇒ 执行器 **0** 次）；真机侧**未造** Agent 场景 ⚪ |
+| 8 | 半成品防护（回滚）| ✅ 可执行断言（`rolledBack` / `T2.5 ⑥`）；真机侧取到 `B-driver.json` 的 native `partial`（1 步失败 + 两临时文件已删）⚪，而「**人为让防火墙步骤失败 ⇒ portproxy 被回滚**」的真机形态**未跑** |
+| 9 | 卸载后再看规则 | ✅ 可执行断言（`T3.3`：`dispose()` 写调用 **0** 次 + 清单可复制 + 临时文件二次扫描归零）；真机「装过再卸」⚪ 未跑（本插件**从未**在主人的 profile 上安装过）|
+
+### 遗留与转移（**随收口带走 —— 逐条有主、有原文、有下一步**）
+
+1. 🔴 **`T3.2` 第三动作 `fix` 真机未跑**（2026-10-12 已自标，原文「若主人要求三者齐全 ⇒ 本条应回退为未完成」保留）。补法：在受管端口上先造一条 `connectAddress ≠ 当前 eth0` 的规则、再 `fix` 修回、最后 `remove` 复原 ⇒ **会真改系统状态**，故**先问再做**（本轮**没做**）。
+2. 🔴 **「批量清理 plan」未接线**（2026-10-09 集成缺口 ①，原文把落地时机写成「Phase 5 清理按钮接线 / 收口」）—— **本次收口没有把它做成**。实物证据：`src/write/types.ts:22` 仍是 `export type WriteAction = 'add' | 'remove' | 'fix' | 'switch-scope';`，**没有 `cleanup` 取值**；`plan.ts` 只有 `case 'fix'`，无清理 plan 生成。⇒ 单元层的清单 / 步骤 / 显式入口（`T3.3`）**已交付且有断言**，缺的只是**写通道图层**。**不阻塞本次状态流转**（`REQ-5.1–5.4` 的字面判据都不要求「清理必须经提权通道执行」），但它是**真实的未交付面**，登记待办。
+3. ⚠️ **eth0 漂移 × 本插件自己写过的规则**：三选项（保持现状 / 按「历史 eth0」放宽 / 清单里单列「疑似本插件旧规则，仅展示不删」）**仍需主人裁决**；当前**保持现状**（保守 = 少删）。
+4. ⚠️ **A-3 的 `winsudo` 分支本机不可验**（Windows 自带 `sudo` 需 24H2+，本机 23H2；`%SystemRoot%\System32\sudo.exe` 实测**不存在**）。
+5. ⚠️ **001 的 `fail()` 应收 `stdout`**（`T2.3` 订正时发现；改它不在 005 的文件范围内）⇒ 跨 Spec 登记。
+6. ⚠️ **§P2 主 bundle 余量 0 B**（44,621 / 上限 44,621，`nature: debt`，trace `#56`）：**任何往主包模块加字都会判红**；本轮 `T2b.3` 的文案落在 chunk（`client.ports.js`）故未触及 —— 属 003 / 011 的额度欠账，登记。
+7. ⚠️ **写确认弹窗未同步这条 UAC 告知**（`write-confirm.tsx`）：`T2b.3` 的范围只含「提权策略区块 + 用户手册」⇒ **刻意不动**（该文件的档位门已有 `policy=unknown ⇒ 置灰 + fail-safe` 断言），登记。
+8. ⚪ **本机不可复现项（条件已写死，不许当已验）**：用户点「否」取消（需 `ConsentPromptBehaviorAdmin != 0`）· gsudo 子进程 `999` 形态（需 gsudo 自身失败）· gsudo 后端下的 `partial` 判别（`pwsh -Command` 把 `2/3/7/42/999` 一律塌成 `1`）。
+
+### 本 Spec「完成」的含义（口径写死，避免后人误读）
+
+`complete` = **本 Spec 22 条任务的判据在现有证据下全部成立**（真机样本与可执行断言**分别标注**，见上表），**不等于**「写路径的所有集成面 100% 交付」—— 上面 8 条遗留就是那部分差额，它们**逐条有主、有原文、有下一步动作**。
