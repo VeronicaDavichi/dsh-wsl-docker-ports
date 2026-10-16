@@ -223,6 +223,7 @@
 - `audit` 恰 **2 条** `result:"applied"`（内存环 + 一行日志）；额外验拒绝路径：`confirmed:false` ⇒ **403 `confirm-required`** 且 **不留审计记录**（符合 2026-10-09 裁定）；
 - 命令原文（REQ-3.2）两条逐字：`netsh interface portproxy add v4tov4 listenport=5900 listenaddress=0.0.0.0 connectport=5900 connectaddress=172.20.201.152`
   与 `New-NetFirewallRule -DisplayName "dsh-wsl-docker-ports-5900" … -LocalPort 5900 …`；remove 侧为 `… delete v4tov4 listenport=5900 listenaddress=0.0.0.0` + `Remove-NetFirewallRule -DisplayName "dsh-wsl-docker-ports-5900"`。
+  > **【2026-10-16 补（收口遗留 ⑯；上面这行当时的读数保留不改写）】** remove 侧的防火墙命令原文**已变**：不再是 `Remove-NetFirewallRule -DisplayName "…"`（那是「删**所有组**的同名规则」，与 2026-10-16 收口的 ⑫「只清本组」不对称），现为**本组 + 本名**的管道形态 `Get-NetFirewallRule -Group "dsh-wsl-docker-ports" | Where-Object { $_.DisplayName -eq "dsh-wsl-docker-ports-5900" } | Remove-NetFirewallRule`。原因（真机实测）：cmdlet 的 `-DisplayName` 与 `-Group` **互斥**，同时给必抛 *Parameter set cannot be resolved*；只给 `-Group` 是删整组（红线）。口径与读数见 [005 tasks](../005-elevation-write-path/tasks.md) 的「第五次追加」与 005 `REQ-2.4 补`。
 
 **还原与红线**：`volatile-probe` 与快照 **四种哈希对比全 0**（74 文件，含与改动前基线的交叉验证）；
 收尾 `portproxy` **19**、我方防火墙 **0**、`listenport=5900` **0**、node 回 **14**、43311 空闲、

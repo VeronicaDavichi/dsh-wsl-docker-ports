@@ -15,8 +15,12 @@
  *
  * ## 只删自己建的
  *
- * 删除只按**本插件命名的 DisplayName**（`Remove-NetFirewallRule -DisplayName <name>`），
- * 绝不按端口扫、绝不按组全删。
+ * 删除按 **本插件组 + 本插件命名的 DisplayName**：
+ * `Get-NetFirewallRule -Group <group> | Where-Object { $_.DisplayName -eq <name> } | Remove-NetFirewallRule`
+ * —— 绝不按端口扫、绝不按组全删。
+ * **【2026-10-16 收口遗留 ⑯】** 原口径只带 `-DisplayName`（删**所有组**的同名规则）⇒ 与本轮 ⑫ 给
+ * `elevate/script.ts` 新写的「只清**本组**」不对称。现两处同形，且**人类可复制的清理清单**
+ * （`write/cleanup.ts:76` 直接取本步骤的 `commandText`）随之同步 —— 否则清单上的命令会比插件多删。
  */
 
 import type { WriteStep } from './types.ts';
@@ -96,7 +100,16 @@ export function buildFirewallAddStep(port: number): WriteStep {
   };
 }
 
-/** 删除本插件建的防火墙规则（**只按 DisplayName**，REQ-2.4 / design §3） */
+/**
+ * 删除本插件建的防火墙规则（**本组 + 本名**，REQ-2.4 / design §3；⑯ 2026-10-16）
+ *
+ * ⚠️ 为什么是管道而不是 `-DisplayName … -Group …`：PowerShell 的 NetFirewallRule cmdlet 里
+ * `-DisplayName`（ByDisplayName）与 `-Group`（ByQuery）**互斥**，同时给会抛
+ * *Parameter set cannot be resolved using the specified named parameters*（2026-10-16 真机实测，
+ * 提权脚本里那版写法当场把 `firewall-delete` 打成失败）；只给 `-Group` 则是「删整组」= 红线。
+ * ⇒ 唯一正确的形态是「先按组取 → 按名筛 → 删」，**提权脚本 `Remove-Firewall` 与这份给人复制的
+ * 命令原文逐字同形**（否则清理清单会比插件多删：删掉非本组的同名规则 = 碰了别人的对象）。
+ */
 export function buildFirewallDeleteStep(port: number): WriteStep {
   if (!isPortNumber(port)) throw new RangeError(`端口必须是 1..65535 的整数（收到 ${String(port)}）`);
   const displayName = firewallRuleName(port);
@@ -104,7 +117,7 @@ export function buildFirewallDeleteStep(port: number): WriteStep {
     kind: 'firewall-delete',
     port,
     params: { displayName },
-    commandText: `Remove-NetFirewallRule -DisplayName "${displayName}"`,
+    commandText: `Get-NetFirewallRule -Group "${FIREWALL_GROUP}" | Where-Object { $_.DisplayName -eq "${displayName}" } | Remove-NetFirewallRule`,
   };
 }
 

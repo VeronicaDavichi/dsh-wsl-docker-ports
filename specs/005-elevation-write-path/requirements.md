@@ -37,7 +37,7 @@
 - **REQ-2.1** 每个端口 SHALL 有 `scope ∈ { loopback, lan }`，**默认 `loopback`**。
 - **REQ-2.2** `loopback`：GIVEN `localhostForwarding = true`（NAT 缺省），THEN 系统 SHALL 显示「无需 portproxy 规则」，SHALL NOT 为该端口添加规则。
 - **REQ-2.3** `lan`：系统 SHALL 添加 `listenaddress=0.0.0.0` 的 portproxy 规则 **+ 仅放行该端口**的入站 TCP 防火墙规则；SHALL NOT 做全量放行（原脚本坑 #2）。
-- **REQ-2.4** 切到 `lan` SHALL 是逐端口显式操作（无隐式批量、无默认开启）；切回 `loopback` SHALL 移除该端口的 portproxy 与本插件建的防火墙规则。
+- **REQ-2.4** 切到 `lan` SHALL 是逐端口显式操作（无隐式批量、无默认开启）；切回 `loopback` SHALL 移除该端口的 portproxy 与本插件建的防火墙规则。**【2026-10-16 补（收口遗留 ⑯；上句原文一字未改，只在后面追加）】** 上句的「本插件建的防火墙规则」SHALL 界定到**本插件组**（`-Group dsh-wsl-docker-ports`）：删除 SHALL 只删**组内**的同名规则，SHALL NOT 删**非本组**的同名规则。⚠️ 实现约束（2026-10-16 真机实测）：PowerShell 的 NetFirewallRule cmdlet 里 `-DisplayName`（ByDisplayName）与 `-Group`（ByQuery）**分属互斥参数集**，同时给会抛 *Parameter set cannot be resolved using the specified named parameters*；只给 `-Group` 是删整组（红线）⇒ **唯一正确形态** = 「先按 `-Group` 取本组 → `Where-Object` 精确比 `DisplayName` → 管道给 `Remove-NetFirewallRule`」，且提权脚本与**给人复制的清理清单命令原文 SHALL 同形**（否则清单会比插件多删）。
 - **REQ-2.5** GIVEN `localhostForwarding = false`，THEN `loopback` 也需要显式规则；系统 SHALL 检测该键并在 UI 说明差异（**不静默**）。该键由本包自行读取（单消费者，不进 001）。
 - **REQ-2.6** 防火墙规则 SHALL 使用可识别名称（`dsh-wsl-docker-ports-<port>`）；GIVEN 同名规则已存在，THEN 系统 SHALL 报错，SHALL NOT 覆盖。**【2026-10-16 补（收口遗留 ⑫；上句原文一字未改，只在后面追加）】** 上句的**执行面**本轮补一条 SHALL：提权脚本的放行 SHALL **幂等** —— GIVEN **本插件组**（`-Group dsh-wsl-docker-ports`）内已存在同名规则，THEN 脚本 SHALL 先删除它再重建（终态恒为 **1** 条），SHALL NOT 叠出第二条同名规则；且 SHALL NOT 触碰**非本组**的同名规则（旧实现是无条件裸 `New-NetFirewallRule` ⇒ 真机实测同名放行按 1 → 2 累积，见 `tasks.md` 遗留 ⑫ 的读数）。应用侧的存在性闸门（`transport/apply.ts`）**行为不变**，但理由自此写清：它拦下整单是因为**无法证明那条同名规则是本插件建的**（REQ-1.2 口径），**不再是**「怕叠第二条」。
 
@@ -50,7 +50,7 @@
   - **后端优先级（2026-10-08 定案，见 A-3）**：① **`gsudo`**（**用户自装**；官方支持 StdOut/StdErr 捕获与退出码，**提权失败 exit code = 999**）→ 输出**直接经 stdio 回传**；② **`Start-Process -Verb RunAs`**（**永久回落，不依赖任何外部工具**）→ 输出经**临时文件**回传（完整性级别不同，无法管道回读）；③ **Windows 自带 `sudo`**（Win11 **24H2+**，须用户在「系统 > 高级」显式开启）→ **仅显式配置 `elevationBackend: winsudo` 时使用**（其默认模式 `forceNewWindow` **起新窗口、拿不到输出**，须为 `normal` / `disableInput` 才有意义 ⇒ 未验证前不进 `auto`）。
   - **SHALL NOT** 替用户安装任何工具（`gsudo` / winget / scoop 一律不碰）、**SHALL NOT** 改 PATH、**SHALL NOT** 执行 `gsudo config CacheMode …`（改的是用户全局配置）或 `sudo config --enable …`（需提权且属系统设置）。
   - GIVEN 检测到 `gsudo` **凭据缓存活跃**（`gsudo status` 的 `Credentials Cache.Available` 为真），THEN SHALL **回落到 ②**，SHALL NOT 调 `gsudo -k`（那是杀用户的缓存会话）—— 缓存活跃 = 免 UAC 提权，会抹掉本 Spec 依赖的系统闸门。
-- **REQ-3.5** GIVEN 用户拒绝 UAC / 超时 / 脚本失败，THEN 系统 SHALL 优雅失败：报告原因，SHALL NOT 留下半成品（portproxy 与防火墙要么都成、要么都不成），SHALL 清理全部临时文件。
+- **REQ-3.5** GIVEN 用户拒绝 UAC / 超时 / 脚本失败，THEN 系统 SHALL 优雅失败：报告原因，SHALL NOT 留下半成品（portproxy 与防火墙要么都成、要么都不成），SHALL 清理全部临时文件。**【2026-10-16 补（收口遗留 ⑮；上句原文一字未改，只在后面追加）】** 上句在 `fix` 分支上 SHALL 由**执行顺序**保证：`lan` 的放行步骤 SHALL 先于转发地址改动（放行幂等，见 REQ-2.6 补）。GIVEN 放行失败，THEN 转发地址 SHALL 一个字节都没动（可原样重试），SHALL NOT 出现「地址已改好却整单报失败、且重试被 `drift` 准入拦下」的半成品态。
 - **REQ-3.6** 临时 `.ps1` 与输出文件 SHALL 位于用户临时目录、文件名含随机段，且 SHALL 在成功、失败、超时三条路径上都被删除。
 - **REQ-3.7** 提权脚本 SHALL 只接受**结构化参数**（动作 / 端口 / 地址 / 作用域），SHALL NOT 接受任意命令文本。
 

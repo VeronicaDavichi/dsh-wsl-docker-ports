@@ -276,7 +276,15 @@ function Add-Firewall {
 
 function Remove-Firewall {
   try {
-    Remove-NetFirewallRule -DisplayName $displayName -ErrorAction SilentlyContinue | Out-Null
+    # 只删**本组**的同名规则（2026-10-16 收口遗留 ⑯）：与 Add-Firewall 的清理范围对称。
+    # ⚠️ PowerShell 的 NetFirewallRule cmdlet **没有** name+group 组合的参数集：-DisplayName 属
+    # ByDisplayName、-Group 属 ByQuery，**同时给会抛**「Parameter set cannot be resolved using the
+    # specified named parameters」（真机实测；只写 -Group 则是「删整组」= 红线）。所以必须走管道：
+    # 先按 -Group 取本组 → 再用 Where-Object 精确比 DisplayName → 管道交给 Remove-。
+    # -ErrorAction Stop：空管道**不报错**（本来就没有 = 正常）⇒ 真删不掉才如实算失败。
+    Get-NetFirewallRule -Group $group -ErrorAction SilentlyContinue |
+      Where-Object { $_.DisplayName -eq $displayName } |
+      Remove-NetFirewallRule -ErrorAction Stop
     Add-Step 'firewall-delete' $true ''
     return $true
   } catch {
@@ -302,9 +310,14 @@ switch ($Action) {
     if ($Scope -eq 'lan') { [void](Remove-Firewall) }
   }
   'fix' {
+    # 半成品防护（2026-10-16 收口遗留 ⑮ = REQ-3.5 在 fix 分支上没落地）：放行是**幂等**的
+    # （见 Add-Firewall）⇒ 放到**最前面**做。旧顺序是「先改地址、再补放行」，放行一失败就
+    # Complete $false 2，而地址其实**已经改好** ⇒ 报告说「失败」、机器却是半成品；而且 fix 的
+    # 准入要 drift，重试会被 state-precondition 拦下（半成品卡死，只能 remove 再 add）。
+    # 现在放行先做：它失败 ⇒ 一个字节都没动（可原样重试）；它成功后再动地址。
+    if ($Scope -eq 'lan' -and -not (Add-Firewall)) { Complete $false 2 }
     if (-not (Remove-Portproxy)) { Complete $false 1 }
     if (-not (Add-Portproxy)) { Complete $false 2 }
-    if ($Scope -eq 'lan' -and -not (Add-Firewall)) { Complete $false 2 }
   }
   default {
     Add-Step 'dispatch' $false "未知动作（白名单之外）：$Action"

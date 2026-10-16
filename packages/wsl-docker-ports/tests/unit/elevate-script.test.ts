@@ -202,3 +202,32 @@ test('T2.2 [⑫ 2026-10-16 收口] 放行幂等：先只清**本组**同名规�
   assert.equal(/LocalPort\s+(Any|\*)/u.test(script), false);
   assert.equal(/Remove-NetFirewallRule -DisplayName \*/u.test(script), false);
 });
+
+test('T2.3 [⑮⑯ 2026-10-16 收口] fix 先补放行（失败即「未动」）+ 删除只打本组同名', () => {
+  const script = buildElevateScript();
+
+  // ⑮ = REQ-3.5「不留半成品」在 `fix` 分支上落地：放行在地址步骤**之前** ⇒ 放行失败时机器一个字节
+  // 都没改（旧顺序是「先改地址再补放行」⇒ 报失败但地址已改好，且重试会被 state-precondition 卡死）。
+  const fixBranch = script.slice(script.indexOf("'fix' {"), script.indexOf('default {'));
+  const fw = fixBranch.indexOf('Add-Firewall');
+  const del = fixBranch.indexOf('Remove-Portproxy');
+  const add = fixBranch.indexOf('Add-Portproxy');
+  assert.ok(fw > 0, "fix 分支里必须有放行步骤");
+  assert.ok(del > fw && add > del, `fix 分支顺序必须是「放行 → 删旧地址 → 建新地址」（实际 ${String(fw)}/${String(del)}/${String(add)}）`);
+
+  // ⑯：删除按「本组 + 本名」的**管道**（与 `write/firewall.ts` 给人类复制的命令原文同形）
+  const rf = script.slice(script.indexOf('function Remove-Firewall'), script.indexOf('switch ($Action)'));
+  const iGroup = rf.indexOf('Get-NetFirewallRule -Group $group');
+  const iWhere = rf.indexOf('Where-Object { $_.DisplayName -eq $displayName }');
+  const iRemove = rf.indexOf('Remove-NetFirewallRule');
+  assert.ok(iGroup > 0 && iWhere > iGroup && iRemove > iWhere, `Remove-Firewall 必须是「按组取 → 按名筛 → 删」（实际 ${String(iGroup)}/${String(iWhere)}/${String(iRemove)}）`);
+  assert.equal(
+    /Remove-NetFirewallRule -DisplayName \$displayName/u.test(script),
+    false,
+    'PowerShell 的 -DisplayName 与 -Group 互斥（真机实测抛参数错）⇒ 不许写成组合过滤',
+  );
+
+  // 顺手复验 add 分支的半成品防护没被改坏：放行失败仍然回滚刚加的 portproxy（REQ-3.5）
+  const addBranch = script.slice(script.indexOf("'add' {"), script.indexOf("'remove' {"));
+  assert.ok(addBranch.indexOf('portproxy-rollback') > addBranch.indexOf('Add-Firewall'), 'add 的回滚顺序不变');
+});

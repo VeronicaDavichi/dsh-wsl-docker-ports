@@ -139,9 +139,9 @@ test('T3.3 ② 清单含端口 / 规则名 / 地址，且每一项都带**具体
   // SHALL NOT 只给一句「请手工清理」：每一项 ≥2 行**具体命令**，逐字可复制
   assert.equal(manifest.text, [
     'netsh interface portproxy delete v4tov4 listenport=5000 listenaddress=0.0.0.0',
-    'Remove-NetFirewallRule -DisplayName "dsh-wsl-docker-ports-5000"',
+    'Get-NetFirewallRule -Group "dsh-wsl-docker-ports" | Where-Object { $_.DisplayName -eq "dsh-wsl-docker-ports-5000" } | Remove-NetFirewallRule',
     'netsh interface portproxy delete v4tov4 listenport=6000 listenaddress=127.0.0.1',
-    'Remove-NetFirewallRule -DisplayName "dsh-wsl-docker-ports-6000"',
+    'Get-NetFirewallRule -Group "dsh-wsl-docker-ports" | Where-Object { $_.DisplayName -eq "dsh-wsl-docker-ports-6000" } | Remove-NetFirewallRule',
   ].join('\n'));
 
   for (const item of manifest.items) {
@@ -149,13 +149,13 @@ test('T3.3 ② 清单含端口 / 规则名 / 地址，且每一项都带**具体
     assert.match(item.portproxyCommand, new RegExp(`listenport=${String(item.port)}\\b`));
     assert.match(item.portproxyCommand, /listenaddress=\S+$/, '精确四元组：地址必填');
     assert.equal(item.portproxyCommand.includes('reset'), false, '删除永远不带 reset（REQ-1.4）');
-    assert.equal(item.firewallCommand, `Remove-NetFirewallRule -DisplayName "${item.ruleName}"`);
+    assert.equal(item.firewallCommand, `Get-NetFirewallRule -Group "dsh-wsl-docker-ports" | Where-Object { $_.DisplayName -eq "${item.ruleName}" } | Remove-NetFirewallRule`);
   }
   // 可复制性：text 的每一行都是命令，没有夹带说明文字（说明在 note 里）
   const lines = manifest.text.split('\n').filter((line) => line.trim().length > 0);
   assert.equal(lines.length, manifest.items.length * 2);
   for (const line of lines) {
-    assert.match(line, /^(netsh interface portproxy delete v4tov4 |Remove-NetFirewallRule -DisplayName ")/);
+    assert.match(line, /^(netsh interface portproxy delete v4tov4 |Get-NetFirewallRule -Group ")/);
   }
   assert.doesNotMatch(manifest.text, /请手工清理/, '底线：不许用一句空话代替命令');
   assert.match(manifest.note, /REQ-5\.1/);
@@ -208,8 +208,8 @@ test('REQ-5.4 显式清理只删本插件建的规则：地址不符 / 集合外
   assert.deepEqual(
     steps.filter((step) => step.kind === 'firewall-delete').map((step) => step.commandText),
     [
-      'Remove-NetFirewallRule -DisplayName "dsh-wsl-docker-ports-5000"',
-      'Remove-NetFirewallRule -DisplayName "dsh-wsl-docker-ports-6000"',
+      'Get-NetFirewallRule -Group "dsh-wsl-docker-ports" | Where-Object { $_.DisplayName -eq "dsh-wsl-docker-ports-5000" } | Remove-NetFirewallRule',
+      'Get-NetFirewallRule -Group "dsh-wsl-docker-ports" | Where-Object { $_.DisplayName -eq "dsh-wsl-docker-ports-6000" } | Remove-NetFirewallRule',
     ],
   );
   assert.equal(steps.some((step) => step.commandText.includes('reset')), false);

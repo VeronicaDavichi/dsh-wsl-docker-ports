@@ -92,12 +92,18 @@ test('T1.2 lan 的放行步骤在 portproxy 之后（先建规则再开门，顺
   assert.equal(commandsOf(planned, 'firewall-add').length, 1);
 });
 
-test('T1.2 删除只按 DisplayName（不按端口扫、不按组全删）', () => {
+test('T1.2 删除只按「本插件 DisplayName + 本插件组」（不按端口扫、不按组全删）', () => {
   const step = buildFirewallDeleteStep(5000);
 
   assert.equal(step.kind, 'firewall-delete');
   assert.deepEqual(step.params, { displayName: 'dsh-wsl-docker-ports-5000' });
-  assert.equal(step.commandText, 'Remove-NetFirewallRule -DisplayName "dsh-wsl-docker-ports-5000"');
+  // ⑯（2026-10-16）：命令原文必须是「按组取 → 按名筛 → 删」的管道（`-DisplayName` 与 `-Group`
+  // 在 cmdlet 里互斥，同时给会抛参数错 —— 真机实测），与提权脚本的 Remove-Firewall 及清理清单**同形**
+  assert.equal(
+    step.commandText,
+    'Get-NetFirewallRule -Group "dsh-wsl-docker-ports" | Where-Object { $_.DisplayName -eq "dsh-wsl-docker-ports-5000" } | Remove-NetFirewallRule',
+  );
+  assert.equal(step.commandText.includes('--All'), false, '不是「删整组」—— 是本组内的本名');
 });
 
 test('T1.2 端口参数非法一律拒（0 / 越界 / 非整数 / NaN）', () => {

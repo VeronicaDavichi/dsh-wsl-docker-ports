@@ -81,7 +81,7 @@ test('T1.3 lan → loopback：两条 delete（portproxy 先、防火墙后）', 
   assert.deepEqual(stepKinds(planned), ['portproxy-delete', 'firewall-delete']);
   assert.match(commandsOf(planned, 'portproxy-delete')[0] ?? '', /listenport=5000/);
   assert.match(commandsOf(planned, 'portproxy-delete')[0] ?? '', /listenaddress=0\.0\.0\.0/);
-  assert.equal(commandsOf(planned, 'firewall-delete')[0], 'Remove-NetFirewallRule -DisplayName "dsh-wsl-docker-ports-5000"');
+  assert.equal(commandsOf(planned, 'firewall-delete')[0], 'Get-NetFirewallRule -Group "dsh-wsl-docker-ports" | Where-Object { $_.DisplayName -eq "dsh-wsl-docker-ports-5000" } | Remove-NetFirewallRule');
 });
 
 test('T1.3 lan → loopback 只删自己建的防火墙规则：明确知道没有同名规则时不产生删除动作', () => {
