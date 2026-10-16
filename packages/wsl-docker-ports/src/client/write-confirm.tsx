@@ -31,6 +31,7 @@ export const WRITE_TESTID = {
   block: 'write-channel',
   action: 'sel-write-action',
   fixHint: 'write-fix-hint',
+  removeHint: 'write-remove-hint',
   ports: 'inp-write-ports',
   scope: 'sel-write-scope',
   preview: 'btn-write-plan',
@@ -119,6 +120,11 @@ export function buildImpactLines(plan: ClientPlan): readonly string[] {
    * 作用域（照选择器重建会把 lan 规则静默降级成 loopback）。
    */
   const isFix = plan.action === 'fix';
+  /**
+   * `remove`（2026-10-16 收口遗留 ⑬）同样**不由选择器决定作用域**：服务端 `planRemove` 沿用**既有
+   * 规则**的 listen address（照选择器删会去删另一个地址 ⇒ 真机上是「删不掉 + 防火墙留着」）。
+   */
+  const isRemove = plan.action === 'remove';
   const actionLine = executable
     ? isFix
       ? `动作：修复 ${String(plan.ports.length)} 个端口的地址漂移（逐端口：先精确删除旧规则，再按当前地址重建 ⇒ portproxy 净增 0 条）`
@@ -133,10 +139,15 @@ export function buildImpactLines(plan: ClientPlan): readonly string[] {
         ? '影响面：局域网（lan）—— 沿用**既有规则**的作用域（不受上方「作用域」选择影响）；会先删除 1 条 portproxy 规则再重建 1 条（净增 0 条）；' +
           '防火墙放行的**实际**动作见下方服务端说明（脚本在 lan 下按「动作 + 作用域」决定，不看步骤清单）。'
         : '影响面：仅本机（loopback）—— 沿用既有规则的回环作用域，只重建回环地址的 portproxy 规则，不新增防火墙放行。'
-      : plan.scope === 'lan'
-        ? `影响面：局域网（lan）—— 局域网内其他主机可访问这些端口；会${verb} 1 条 portproxy 规则 + 1 条防火墙规则` +
-          '（端口专属、非通配符，不碰所有权集合外的任何规则）。'
-        : '影响面：仅本机（loopback）—— 只写回环地址的 portproxy 规则，不新增防火墙放行，局域网内其他主机访问不到。';
+      : isRemove
+        ? plan.scope === 'lan'
+          ? '影响面：局域网（lan）—— 沿用**既有规则**的作用域（不受上方「作用域」选择影响）；会删除 1 条 portproxy 规则 + 1 条防火墙规则' +
+            '（端口专属、非通配符，不碰所有权集合外的任何规则）。'
+          : '影响面：仅本机（loopback）—— 沿用既有规则的回环作用域：只删回环地址的 portproxy 规则，不动防火墙放行。'
+        : plan.scope === 'lan'
+          ? `影响面：局域网（lan）—— 局域网内其他主机可访问这些端口；会${verb} 1 条 portproxy 规则 + 1 条防火墙规则` +
+            '（端口专属、非通配符，不碰所有权集合外的任何规则）。'
+          : '影响面：仅本机（loopback）—— 只写回环地址的 portproxy 规则，不新增防火墙放行，局域网内其他主机访问不到。';
   const countLine = `服务端给出的步骤：共 ${String(kinds.length)} 条（portproxy ${String(portproxySteps)} 条 + 防火墙 ${String(firewallSteps)} 条）。`;
   return [actionLine, scopeLine, countLine];
 }

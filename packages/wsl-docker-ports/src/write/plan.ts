@@ -235,11 +235,15 @@ function planRemove(input: WritePlanInput, match: OwnershipMatch): WritePlanOutc
       '删除前置 = listenPort ∈ managedPorts 且 connectAddress == 期望值（当前 eth0）；无法证明归属的规则一律不删（REQ-1.2）',
     );
   }
-  return planOf(
-    input,
-    removalSteps(input, owned, input.scope),
-    [`按 REQ-1.2 精确删除一条规则（listenport + listenaddress），并在同一步里只删本插件建的防火墙规则`],
-  );
+  // ⚠️ 作用域**沿用既有规则**（2026-10-16 收口遗留 ⑬，与 `fix` 的裁定 (a) 同一先例）：`plan.scope` 决定
+  // 脚本删哪个 listen address（`elevate/script.ts`：lan ⇒ `0.0.0.0`，否则 `127.0.0.1`）。留 `input.scope`
+  // 会让脚本去删**另一个**地址（真机上是「删不掉 + 防火墙放行留着」）。**所有权判据仍按 REQ-1.2 字面**
+  // （`owned` 只来自 `isDeletableRule`）⇒ 作用域跟规则走**不构成**放宽删除；逐条读数见 005 遗留 ⑬。
+  const scope = scopeFromRules([owned]);
+  return planOf({ ...input, scope }, removalSteps(input, owned, scope), [
+    '按 REQ-1.2 精确删除一条规则（listenport + listenaddress），并在同一步里只删本插件建的防火墙规则',
+    `作用域沿用既有规则（${scope}）：删的是那条规则**自己的** listen address，不受上方「作用域」选择影响`,
+  ]);
 }
 
 /** `fix`：先 delete 再 add（design §2 第三行）。目标 = `owned`，或裁定 (a) 放行的漂移规则（见文件头） */
@@ -273,10 +277,12 @@ function planFix(input: WritePlanInput, match: OwnershipMatch): WritePlanOutcome
   const scope = scopeFromRules([target]);
   const notes = ['先精确删除旧地址的规则，再按新地址重建（两条都带 listenport）'];
   if (owned === undefined) {
-    notes.push(
-      '口径（2026-10-16 裁定 (a)）：声明集合内、listenAddress 为本插件形态、connectAddress 是合法 IPv4 且 ≠ 当前 eth0 ⇒ 视为本插件历史写入 ⇒ 允许修复；作用域沿用既有规则（只改地址）' +
-        (scope === 'lan' ? '；脚本会在 lan 下顺带放行该端口入站 TCP（脚本固有行为，步骤清单不含该条）' : ''),
-    );
+    notes.push('口径（2026-10-16 裁定 (a)）：声明集合内、listenAddress 为本插件形态、connectAddress 是合法 IPv4 且 ≠ 当前 eth0 ⇒ 视为本插件历史写入 ⇒ 允许修复；作用域沿用既有规则（只改地址）');
+  }
+  // ⑫（2026-10-16 收口）：lan 下的放行**幂等**了（先清本组同名再建），但步骤清单仍不含该条（脚本按
+  // 「动作 + 作用域」派发）⇒ 必须说清，否则「共 2 条」会被读成「防火墙完全不动」。
+  if (scope === 'lan') {
+    notes.push('脚本会在 lan 下放行该端口入站 TCP（2026-10-16 收口 ⑫ 后已幂等：先只清**本插件的**同名规则再建 ⇒ 同名终态恒为一条、净增 0；非本组的同名规则一条都不动）—— 脚本固有行为，步骤清单不含该条');
   }
   return planOf(
     { ...input, scope },

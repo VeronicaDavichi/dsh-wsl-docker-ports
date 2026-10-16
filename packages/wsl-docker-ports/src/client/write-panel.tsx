@@ -228,6 +228,12 @@ export function WriteChannelBlock(props: WriteChannelBlockProps): ReactElement {
           命令是「先精确删除那条旧规则，再按当前地址重建」，且只对声明集合内、地址确实漂移的规则放行（判定全在服务端，客户端不判）。
         </p>
       ) : null}
+      {action === 'remove' ? (
+        <p className="wdp-muted" data-testid={WRITE_TESTID.removeHint}>
+          移除也沿用既有规则的作用域（删的是那条规则**自己的** listen address，不受上面「作用域」选择影响）：
+          只有满足 REQ-1.2 字面前置（集合内 + 地址匹配当前 eth0）的规则才可删，服务端判，客户端不判。
+        </p>
+      ) : null}
       {!usable ? <p className="wdp-muted">{reason}</p> : null}
       {notice === null ? null : (
         <p className="wdp-error" data-testid={WRITE_TESTID.notice}>

@@ -176,3 +176,29 @@ test('T2.1 脚本里不存在「全表清空」形态（拼接构造，避免守
   assert.equal(buildElevateScript().includes(forbidden), false);
   assert.equal(buildElevateScript().toLowerCase().includes('reset'), false, '脚本里连 reset 这个词都不该有');
 });
+
+test('T2.2 [⑫ 2026-10-16 收口] 放行幂等：先只清**本组**同名规则、再建（反复修复不叠条数）', () => {
+  const script = buildElevateScript();
+
+  // ① 顺序证据：查本组同名 → 删掉 → 再建
+  const probe = script.indexOf('$sameName = @(Get-NetFirewallRule -Group $group');
+  const clear = script.indexOf('$sameName | Remove-NetFirewallRule');
+  const build = script.indexOf('New-NetFirewallRule -DisplayName $displayName');
+  assert.ok(probe > 0, '本组同名探测必须在脚本里');
+  assert.ok(clear > probe && build > clear, '必须先清同名再建（旧写法是裸 New- ⇒ 真机叠出 1 → 2 条）');
+
+  // ② 清理范围**受限于本组 + 本名**：不碰非本组的同名规则（红线：不动非我方对象）
+  assert.match(script, /Get-NetFirewallRule -Group \$group -ErrorAction SilentlyContinue/);
+  assert.match(script, /Where-Object \{ \$_\.DisplayName -eq \$displayName \}/);
+
+  // ③ 只有真清掉了才记 `firewall-clean`（没清就不记 ⇒ 报告不注水）
+  assert.match(script, /Remove-NetFirewallRule -ErrorAction SilentlyContinue\n\s*Add-Step 'firewall-clean' \$true ''/u);
+
+  // ④ 红线未破：New- 仍是「带具体 -LocalPort 的单端口形态」，没有任何按端口/全表的清空形态
+  assert.match(
+    script,
+    /New-NetFirewallRule -DisplayName \$displayName -Direction Inbound -Action Allow -Protocol TCP -LocalPort \$Port -Profile Any -Group \$group/u,
+  );
+  assert.equal(/LocalPort\s+(Any|\*)/u.test(script), false);
+  assert.equal(/Remove-NetFirewallRule -DisplayName \*/u.test(script), false);
+});

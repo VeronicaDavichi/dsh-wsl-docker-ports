@@ -217,6 +217,24 @@ describe('2026-10-16 fix 扩面：面板选「修复」⇒ 声明式目标 actio
   });
 });
 
+/**
+ * ⑬（2026-10-16 收口）：选 `remove` 也要**当场说明**作用域不由选择器决定（否则用户会以为「选了 loopback
+ * 就只删回环那条」，而服务端其实沿用既有规则的 listen address）。
+ */
+describe('2026-10-16 remove：选「移除」⇒ 提示条明说作用域沿用既有规则（零请求）', () => {
+  it('选 remove → 提示条在场 + 0 请求', () => {
+    const rig = createFetchRig([]);
+    renderBlock(rig);
+    fireEvent.change(screen.getByTestId(WRITE_TESTID.action), { target: { value: 'remove' } });
+    expect((screen.getByTestId(WRITE_TESTID.action) as HTMLSelectElement).value).toBe('remove');
+    const hint = screen.getByTestId(WRITE_TESTID.removeHint).textContent ?? '';
+    expect(hint).toContain('沿用既有规则');
+    expect(hint).toContain('自己的');
+    expect(rig.calls).toHaveLength(0);
+    console.log('  · 扫了 remove 提示条：沿用既有规则 + 0 请求');
+  });
+});
+
 describe('T3.1 提权档联动：不可能成功的操作连按钮都不给点', () => {
   it('policy=none ⇒ 确认置灰，点了也零 apply', async () => {
     const rig = createFetchRig([{ status: 200, payload: planPayload({ policy: 'none' }) }]);

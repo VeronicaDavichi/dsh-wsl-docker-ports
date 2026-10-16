@@ -39,7 +39,7 @@
 - **REQ-2.3** `lan`：系统 SHALL 添加 `listenaddress=0.0.0.0` 的 portproxy 规则 **+ 仅放行该端口**的入站 TCP 防火墙规则；SHALL NOT 做全量放行（原脚本坑 #2）。
 - **REQ-2.4** 切到 `lan` SHALL 是逐端口显式操作（无隐式批量、无默认开启）；切回 `loopback` SHALL 移除该端口的 portproxy 与本插件建的防火墙规则。
 - **REQ-2.5** GIVEN `localhostForwarding = false`，THEN `loopback` 也需要显式规则；系统 SHALL 检测该键并在 UI 说明差异（**不静默**）。该键由本包自行读取（单消费者，不进 001）。
-- **REQ-2.6** 防火墙规则 SHALL 使用可识别名称（`dsh-wsl-docker-ports-<port>`）；GIVEN 同名规则已存在，THEN 系统 SHALL 报错，SHALL NOT 覆盖。
+- **REQ-2.6** 防火墙规则 SHALL 使用可识别名称（`dsh-wsl-docker-ports-<port>`）；GIVEN 同名规则已存在，THEN 系统 SHALL 报错，SHALL NOT 覆盖。**【2026-10-16 补（收口遗留 ⑫；上句原文一字未改，只在后面追加）】** 上句的**执行面**本轮补一条 SHALL：提权脚本的放行 SHALL **幂等** —— GIVEN **本插件组**（`-Group dsh-wsl-docker-ports`）内已存在同名规则，THEN 脚本 SHALL 先删除它再重建（终态恒为 **1** 条），SHALL NOT 叠出第二条同名规则；且 SHALL NOT 触碰**非本组**的同名规则（旧实现是无条件裸 `New-NetFirewallRule` ⇒ 真机实测同名放行按 1 → 2 累积，见 `tasks.md` 遗留 ⑫ 的读数）。应用侧的存在性闸门（`transport/apply.ts`）**行为不变**，但理由自此写清：它拦下整单是因为**无法证明那条同名规则是本插件建的**（REQ-1.2 口径），**不再是**「怕叠第二条」。
 
 ### REQ-3 UAC 提权　← 003 的 REQ-7
 

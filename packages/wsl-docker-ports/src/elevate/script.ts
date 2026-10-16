@@ -15,6 +15,9 @@
  * 3. 命令里**只有** `netsh` 的写动作（都带 `listenport=`）与 `New-NetFirewallRule` / 
  *    `Remove-NetFirewallRule` 的单端口形态 —— 没有任何「按端口/全表清空」的形态，
  *    也不调用 `netsh ... show`（`show` 没法带 `listenport`，主机侧快照已经有权威数据）。
+ *    唯一的防火墙**读**是 `Get-NetFirewallRule -Group $group`（按本插件组名过滤，不带任何端口通配），
+ *    只为把放行做成**幂等**（2026-10-16 收口遗留 ⑫：Windows 允许 `DisplayName` 重名，裸 `New-`
+ *    会在反复修复时叠出多条同名放行 —— 真机实测 `ourName` 1 → 2）。
  *
  * ## 退出码（design §4）
  *
@@ -253,6 +256,15 @@ function Remove-Portproxy {
 
 function Add-Firewall {
   try {
+    # 幂等（2026-10-16 收口遗留 ⑫）：$displayName 是固定的 "dsh-wsl-docker-ports-$Port"，而 Windows
+    # 允许 DisplayName 重名 ⇒ 裸 New- 会在**反复修复**（fix@lan 每次都会走到这里）时叠出多条同名放行
+    # （真机实测 ourName 1 → 2）。这里先只清**本组**（$group）的同名规则、再建 ⇒ 终态恒为一条；
+    # 非本组的同名规则**一条都不动**（不越所有权边界）。只有真清掉了才记 firewall-clean（不注水）。
+    $sameName = @(Get-NetFirewallRule -Group $group -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq $displayName })
+    if ($sameName.Count -gt 0) {
+      $sameName | Remove-NetFirewallRule -ErrorAction SilentlyContinue
+      Add-Step 'firewall-clean' $true ''
+    }
     New-NetFirewallRule -DisplayName $displayName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port -Profile Any -Group $group | Out-Null
     Add-Step 'firewall-add' $true ''
     return $true

@@ -146,8 +146,10 @@ test('T1.1 同端口既有他人规则 + 本插件规则 ⇒ conflict 优先，�
 
   // 但 remove 的可删集合只有 owned 那一条：它满足 REQ-1.2 前置 ⇒ 允许删「我自己那条」
   const planned = expectPlan(buildWritePlan(input('remove', [mine, foreign])));
-  assert.equal(planned.steps.length, 1);
+  assert.equal(planned.steps.length, 2, '[⑬ 2026-10-16] 作用域沿用既有规则（0.0.0.0 ⇒ lan）⇒ 步骤表也如实给 2 条');
   assert.equal(planned.steps[0]?.kind, 'portproxy-delete');
+  assert.deepEqual(planned.steps[0]?.params, { listenport: PORT, listenaddress: '0.0.0.0' });
+  assert.equal(planned.scope, 'lan', '[⑬] 旧口径留 input.scope（loopback）⇒ 脚本会去删 127.0.0.1（删不掉）且不删防火墙');
 });
 
 test('T1.1 REQ-1.2 的字面谓词：只有「集合内 + 地址匹配」才可删（其余一律 false）', () => {
@@ -231,4 +233,31 @@ test('T1.1 [裁定 (a)] 放宽的**边界**：六种情形仍旧不受理（门�
     buildWritePlan(input('fix', [rule('0.0.0.0', PORT, '172.20.201.99', PORT)], { portState: 'drift', eth0Ip: null })),
     'eth0-unknown',
   );
+});
+
+test('T1.1 [⑬ 2026-10-16 收口] `remove` 的作用域沿用**既有规则**（删的是那条规则自己的 listen address）', () => {
+  // ① 缺省配置（input.scope = loopback）+ lan 规则：作用域必须跟规则走，否则脚本会去删 127.0.0.1
+  const lanPlanned = expectPlan(buildWritePlan(input('remove', [rule('0.0.0.0', PORT, ETH0, PORT)])));
+  assert.equal(lanPlanned.scope, 'lan', '旧口径 = input.scope（loopback）⇒ 脚本删错地址、且不删防火墙放行');
+  assert.deepEqual(lanPlanned.steps.map((step) => step.kind), ['portproxy-delete', 'firewall-delete']);
+  assert.match(lanPlanned.steps[0]?.commandText ?? '', /listenaddress=0\.0\.0\.0/);
+  assert.match(lanPlanned.notes.join(' '), /作用域沿用既有规则（lan）/);
+
+  // ② 反向：选择器给了 lan，但规则本身是 loopback ⇒ 只删回环那条、**不**删防火墙
+  const loopPlanned = expectPlan(
+    buildWritePlan(input('remove', [rule('127.0.0.1', PORT, ETH0, PORT)], { scope: 'lan' })),
+  );
+  assert.equal(loopPlanned.scope, 'loopback');
+  assert.deepEqual(loopPlanned.steps.map((step) => step.kind), ['portproxy-delete']);
+  assert.match(loopPlanned.steps[0]?.commandText ?? '', /listenaddress=127\.0\.0\.1/);
+
+  // ③ 作用域跟规则走**不构成**放宽删除：所有权判据仍是 REQ-1.2 字面（漂移规则照样拦下）
+  const drifted = expectBlock(buildWritePlan(input('remove', [rule('0.0.0.0', PORT, '172.20.201.99', PORT)])), 'rule-not-owned');
+  assert.equal(drifted.steps.length, 0);
+
+  // ④ 明确知道「没有同名防火墙规则」时，lan 也只删转发（与 switch-scope 的既有口径一致）
+  const noFirewall = expectPlan(
+    buildWritePlan(input('remove', [rule('0.0.0.0', PORT, ETH0, PORT)], { existingFirewallNames: [] })),
+  );
+  assert.deepEqual(noFirewall.steps.map((step) => step.kind), ['portproxy-delete']);
 });

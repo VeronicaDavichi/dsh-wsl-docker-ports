@@ -114,7 +114,9 @@ describe('2026-10-16 fix：影响面说「先删后加、净增 0」，不说「
           notes: ['修复：先精确删除旧规则，再按当前 eth0 重建'],
         },
       ],
-      notes: ['脚本会在 lan 下顺带放行该端口入站 TCP（脚本固有行为，步骤清单不含该条）'],
+      notes: [
+        '脚本会在 lan 下放行该端口入站 TCP（2026-10-16 收口 ⑫ 后已幂等：先只清**本插件的**同名规则再建 ⇒ 同名终态恒为一条、净增 0）—— 脚本固有行为，步骤清单不含该条',
+      ],
     });
 
   it('lan + fix ⇒ 先删后加 / 净增 0 / 防火墙指向服务端说明；无「会新增 1 条 portproxy 规则」', () => {
@@ -141,6 +143,50 @@ describe('2026-10-16 fix：影响面说「先删后加、净增 0」，不说「
     expect(text).toContain('不新增防火墙放行');
     expect(text).not.toContain('会新增');
     console.log('  · 扫了 fix+loopback 影响面：沿用既有规则、无「新增」字样');
+  });
+});
+
+/**
+ * ⑬（2026-10-16 收口）：`remove` 的作用域同样**不由选择器决定** —— 服务端 `planRemove` 沿用**既有规则**
+ * 的 listen address（旧口径留 `input.scope` ⇒ 真机上是「删不掉 + 防火墙留着」）。影响面必须说出来，
+ * 否则用户会以为「选了 loopback 就只删回环那条」。
+ */
+describe('2026-10-16 remove：影响面明说「沿用既有规则的作用域」', () => {
+  it('lan + remove ⇒ 沿用既有规则 + 「会删除 1 条 …」（不说新增）', () => {
+    const plan = planWith({
+      action: 'remove',
+      scope: 'lan',
+      ports: [
+        {
+          port: 3306,
+          steps: [
+            { kind: 'portproxy-delete', commandText: CMD_PORT_PROXY },
+            { kind: 'firewall-delete', commandText: CMD_FIREWALL },
+          ],
+          notes: [],
+        },
+      ],
+      notes: [],
+    });
+    const text = buildImpactLines(plan).join('\n');
+    expect(text).toContain('沿用**既有规则**的作用域');
+    expect(text).toContain('会删除 1 条 portproxy 规则 + 1 条防火墙规则');
+    expect(text).not.toContain('会新增');
+    console.log('  · 扫了 remove+lan 影响面：沿用既有规则、说删除不说新增');
+  });
+
+  it('loopback + remove ⇒ 沿用既有规则的回环作用域、不动防火墙', () => {
+    const text = buildImpactLines(
+      planWith({
+        action: 'remove',
+        scope: 'loopback',
+        ports: [{ port: 3306, steps: [{ kind: 'portproxy-delete', commandText: CMD_PORT_PROXY }], notes: [] }],
+        notes: [],
+      }),
+    ).join('\n');
+    expect(text).toContain('沿用既有规则的回环作用域');
+    expect(text).toContain('不动防火墙放行');
+    expect(text).not.toContain('会新增');
   });
 });
 
