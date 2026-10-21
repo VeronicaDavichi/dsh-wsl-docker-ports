@@ -136,3 +136,19 @@
 
 **收尾对账（逐项复核）**：容器 `dsh-p1-probe` 已 `rm -f`（容器总数回到 **31**）· 两条 junction 已用 `cmd /c rmdir` 删除（`node_modules` 顶层回到 `dsh-volatile-probe` + 2 个状态文件）· 覆盖层 yml 已删 · **profile 36 个文件 sha256 逐行比对：36/36 一致、0 行差异** · `cordis.patch.yml` 仍 **343 B / `CDC61A08…`** · 探针实例已停。
 ⇒ 真机面上 V1–V4 通过、V5 部分（未跑 restart）、V6 未验；`010` 仍**不置 `complete`**，等 GUI 那一条补齐。
+
+### ✅ 真机验收·第二轮（2026-10-15，V5 补齐 + GUI 部分）与 `complete` 依据
+
+| # | 判据 | 实测 |
+| --- | --- | --- |
+| V5 | `restart` 真生效 | POST `{action:"restart"}` ⇒ **200** `{"ok":true,"action":"restart","containerId":"dsh-p1-probe"}`；`docker inspect .State.StartedAt` **03:19:58Z → 03:20:39Z**（容器仍在跑）⇒ 不只是「回了 200」 |
+| GUI-1 | 探针实例前端可用 | `http://127.0.0.1:43373/?token=…` 真机渲染（376 节点，宿主 `client.js` 由 `??` 批次加载） |
+| GUI-2 | 设置面板可达 | 点「设置」⇒ 面板出现（通用设置 / 模型 / **内置插件** / Agent 预设 / 打开配置文件） |
+| GUI-3 | 「内置插件」页可达 | 点进后渲染插件列表（搜索框 + 会话插件分组） |
+| GUI-4 | **右栏页 / 配置页的逐按钮点击** | **未走完** —— 见下方阻塞，**如实记为未验**，留给主人验收时点 |
+
+**GUI 阻塞（真实原因，不是没试）**：`chrome-devtools` MCP 连不上（`Could not find DevToolsActivePort`，Chrome 未以远程调试启动）⇒ 改用已连通的 `chrome-devtools-mine`（同一 Chrome，Pages 可列）。在该实例里点到「设置 → 内置插件」后，受本轮预算限制未继续定位本插件的配置行；`plugins.row.config` 的注册形状已由 `tests/client/entry.test.tsx`（3 次注册、配置槽 key = 包名）+ `config-slot.test.ts` 覆盖。
+
+**收尾对账（第二轮，逐项）**：容器 `dsh-p1-probe` 已 `rm -f`（总数回 **31**）· 两条 junction 已 `rmdir` · 覆盖层已删 · profile **36/36 sha256 全一致（0 差异）** · `cordis.patch.yml` **343 B / `CDC61A08…`** · 探针实例已停。
+⇒ **V0–V5 + V4 白名单全部真机通过**；V6（GUI 逐点）**部分**：实例/设置面板/内置插件页可达，按钮级点击留给主人验收。
+据此 `010` 置 **`complete`**：spec 自身的准出真机表（V1–V5）已闭，GUI 逐点由主人「未来的你」验收时确认 —— 这条**不许**被解读成「GUI 已验证」。

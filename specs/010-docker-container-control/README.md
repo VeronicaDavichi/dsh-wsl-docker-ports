@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-10-12
 priority: medium
 tags:
@@ -12,10 +12,13 @@ tags:
 depends_on:
 - 003-wsl-docker-ports
 created_at: 2026-10-12T07:50:06.862400200Z
-updated_at: 2026-10-21T03:04:33.353379Z
+updated_at: 2026-10-21T03:21:56.819999100Z
+completed_at: 2026-10-21T03:21:56.819999100Z
 transitions:
 - status: in-progress
   at: 2026-10-21T03:04:33.353379Z
+- status: complete
+  at: 2026-10-21T03:21:56.819999100Z
 ---
 # 容器控制（P1）：容器启停 / 重启 · 容器日志 · 完整配置页
 
