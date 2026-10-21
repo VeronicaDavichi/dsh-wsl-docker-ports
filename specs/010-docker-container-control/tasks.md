@@ -111,3 +111,11 @@
 - 未发生任何变更：探针 profile 只读未写（字节数 343 / sha256 `CDC61A08…`，与侦察前一致）· **未创建**任何试跑容器（`docker ps -a -q` 计数已复核）· 未起探针实例。
 - 主人已批准的 `docker run -d --name dsh-p1-probe alpine sleep 600` **仍未执行**，随时可跑 —— 只差「许可 profile 层安装」这一步。
 - 结论：`V1–V5` 保持**未验**，`010` 保持 `in-progress`；补齐它只需要下轮一个专门的安装/还原轮次（预计 1 轮，含 38 文件哈希对账）。
+
+### 🔎 侦察补充（2026-10-15，主人已批准 profile 层安装；本轮**只做只读侦察 + 基线快照**）
+
+- `volatile-probe` 的形态：`package.json` 的 `dsh.profile.bundles = ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-volatile-probe"]`，其中 `dsh-volatile-probe` 是 `link:%TEMP%\dsh-volatile-probe` 的**临时探针 bundle**；`patchReload: live`。
+- `cordis.patch.yml` 全文只有一条（宿主自己写的 `ui-settings-general` / `welcomeNoticeVersion`）⇒ **这个文件既是 patch 层又是 settings 落盘处**，往里加我们的条目会被宿主写入互相覆盖 ⇒ 激活必须走 `--patch` 覆盖层（临时 yml），**不动**这个文件。
+- `node_modules/` 顶层只有 1 条 junction（`dsh-volatile-probe`）+ 两个 pnpm 状态文件 ⇒ 装包 = 追加 `dsh-wsl-docker-ports` / `dsh-wsl-shared` 两条 junction，收尾删掉即可回到原状。
+- **基线快照已落盘**：`%TEMP%\p1-profile-baseline.txt` —— profile 内 **36 个文件**（不含 `node_modules`）的 sha256 全表；`cordis.patch.yml` = **343 B / `CDC61A08…`**。
+- **下一步配方（写死，下轮直接照做）**：① 两条 junction → ② `--patch` 临时 yml 写入 insert（`id: dsh-wsl-docker-ports` + `config.writeToken: <随机 32B hex>`）→ ③ `dsh --patch <yml> --profile volatile-probe --port 43371 --no-open` → ④ 五项检查（无 token ⇒ 401 且容器仍 Running / 带 token stop+start 生效 / `?tail=5` 夹紧 / 配置页注册 / 右栏按钮）→ ⑤ `docker rm -f dsh-p1-probe` + 删 junction + 删临时 yml → ⑥ 对 `p1-profile-baseline.txt` 逐行核 sha256，**36/36 一致**才算收尾。
