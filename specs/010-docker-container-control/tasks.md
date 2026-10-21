@@ -119,3 +119,20 @@
 - `node_modules/` 顶层只有 1 条 junction（`dsh-volatile-probe`）+ 两个 pnpm 状态文件 ⇒ 装包 = 追加 `dsh-wsl-docker-ports` / `dsh-wsl-shared` 两条 junction，收尾删掉即可回到原状。
 - **基线快照已落盘**：`%TEMP%\p1-profile-baseline.txt` —— profile 内 **36 个文件**（不含 `node_modules`）的 sha256 全表；`cordis.patch.yml` = **343 B / `CDC61A08…`**。
 - **下一步配方（写死，下轮直接照做）**：① 两条 junction → ② `--patch` 临时 yml 写入 insert（`id: dsh-wsl-docker-ports` + `config.writeToken: <随机 32B hex>`）→ ③ `dsh --patch <yml> --profile volatile-probe --port 43371 --no-open` → ④ 五项检查（无 token ⇒ 401 且容器仍 Running / 带 token stop+start 生效 / `?tail=5` 夹紧 / 配置页注册 / 右栏按钮）→ ⑤ `docker rm -f dsh-p1-probe` + 删 junction + 删临时 yml → ⑥ 对 `p1-profile-baseline.txt` 逐行核 sha256，**36/36 一致**才算收尾。
+
+### ✅ 真机验收（2026-10-15，探针实例 `volatile-probe` @43371，实跑）
+
+安装方式：profile `node_modules` 加 2 条 junction（`dsh-wsl-docker-ports` / `dsh-wsl-shared` → `packages/*`）+ `--patch` 覆盖层写 `- insert: id: dsh-wsl-docker-ports / config.writeToken: <32B hex>`；**未改** profile 的 `cordis.patch.yml`（那是 patch 层 + settings 落盘处，会被宿主覆盖）。
+
+| # | 判据 | 实测 |
+| --- | --- | --- |
+| V0 | 插件真加载 | `GET /dsh-wsl-docker-ports/snapshot` ⇒ **200 / 6,612 B** |
+| V1 | **无凭据（Agent 路径）⇒ 401 且容器状态不变** | POST `container/action {id,action:stop}` 无 Authorization ⇒ **401**；`docker inspect .State.Running` 仍 **true** ⇒ 「一次 docker 调用都没有」成立（不是靠文案） |
+| V2 | 带凭据 ⇒ 动作真生效 | stop ⇒ **200** `{"ok":true,"action":"stop","containerId":"dsh-p1-probe"}`、Running → **false**；start ⇒ **200**、Running → **true**（真机容器 `1cd49b403a00`，镜像 `langgenius/dify-agent-local-sandbox:1.16.1 --entrypoint sleep 600`，因离线无法拉 alpine） |
+| V3 | 日志：只给尾部且有界 | `?tail=5` ⇒ **200** `{"tail":5,…}`；`?tail=5000` ⇒ **200** 且 `"tail":200`（**上限夹紧在真机生效**） |
+| V4 | 入参白名单 | `id="a;b"` ⇒ **400**；`action="rm"` ⇒ **400**（都不进 docker） |
+| V5 | exec 白名单 | 只 `start/stop/restart`，代码与用例双证（真机未跑 `restart`，未验项） |
+| V6 | UI（右栏按钮 / 配置页注册 / 日志抽屉） | **未验** —— 本轮只做了 HTTP 面；chunk 与配置页的 GUI 证据留待下轮（chrome-devtools） |
+
+**收尾对账（逐项复核）**：容器 `dsh-p1-probe` 已 `rm -f`（容器总数回到 **31**）· 两条 junction 已用 `cmd /c rmdir` 删除（`node_modules` 顶层回到 `dsh-volatile-probe` + 2 个状态文件）· 覆盖层 yml 已删 · **profile 36 个文件 sha256 逐行比对：36/36 一致、0 行差异** · `cordis.patch.yml` 仍 **343 B / `CDC61A08…`** · 探针实例已停。
+⇒ 真机面上 V1–V4 通过、V5 部分（未跑 restart）、V6 未验；`010` 仍**不置 `complete`**，等 GUI 那一条补齐。
