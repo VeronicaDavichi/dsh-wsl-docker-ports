@@ -69,8 +69,8 @@ test('T6.7 服务导出：provide 一次、服务名对、卸载幂等', () => {
   assert.deepEqual(handle.gaps.filter((gap) => gap.what === 'provide'), [], 'provide 成功时不该有 provide 缺口');
   // 两条卸载钩子：插件自己的 `dispose` + 路由的 disposer（`route.ts` **无条件**登记，
   // 于是「服务晚到 / 从没到」都不存在漏卸载 —— 这正是缺陷 A 修复的附带要求）
-  // 008 起本插件拥有 2 条路由（只读 + 写通道）⇒ 卸载钩子 = 插件 dispose + 2 路由 disposer = 3 条
-  assert.equal(host.effects.length, 3, '卸载钩子应恰好 3 条（插件 dispose + 只读路由 + 写通道路由），实际 ' + String(host.effects.length));
+  // 008 起本插件拥有 2 条路由（只读 + 写通道），010 T7.1 再加 1 条（容器动作）⇒ 卸载钩子 = 插件 dispose + 3 路由 disposer = 4 条
+  assert.equal(host.effects.length, 4, '卸载钩子应恰好 4 条（插件 dispose + 只读路由 + 写通道路由 + 容器通道路由），实际 ' + String(host.effects.length));
   for (const disposer of host.effects) disposer();
   for (const disposer of host.effects) disposer();
   assert.equal(handle.effectCount(), 1, '插件自己只登记 1 条 effect');
@@ -110,7 +110,8 @@ test('T6.8 有 webServer ⇒ 路由真注册（prefix + 独占前缀），卸载
 
   assert.equal(handle.route.registered, true);
   assert.equal(handle.route.registrationCount(), 1);
-  assert.deepEqual(routes.map((item) => item.path).sort(), ['/dsh-wsl-docker-ports', '/dsh-wsl-docker-ports/write'], '两条路由都必须独占前缀且不带尾斜杠（宿主判据是 prefix + / 拼接；不蹭 002 的 /dsh-managed-terminal）');
+  // 010 T7.1 起第三条前缀（容器动作）：三条互不包含，宿主按「最长 prefix」分派才不会错位
+  assert.deepEqual(routes.map((item) => item.path).sort(), ['/dsh-wsl-docker-ports', '/dsh-wsl-docker-ports/container', '/dsh-wsl-docker-ports/write'], '三条路由都必须独占前缀且不带尾斜杠（宿主判据是 prefix + / 拼接；不蹭 002 的 /dsh-managed-terminal）');
   assert.equal(handle.gaps.some((gap) => gap.what === 'webServer'), false, '注册成功就不该有 webServer 缺口');
   assert.equal(fake.calls.length, 0, `装载期零外部命令，实际 ${String(fake.calls.length)} 条`);
   assert.equal(handle.route.requestCount(), 0, '装载期零请求');
@@ -156,8 +157,8 @@ test('T6.8-修A 装载期服务晚到（真机时序）⇒ 缺口是 pending、�
   assert.ok(before !== undefined, 'pending 也必须在 gaps 里可见（不静默）');
   assert.match(String(before?.reason), /inject/u, '文案要写清「已登记注入」');
   assert.equal(/未注册；.*ports-source-missing/u.test(String(before?.reason)), false, 'pending 不是缺失，不许套缺失的后果文案');
-  // 008 起两条路由各登记一次注入
-  assert.equal(pending.length, 2, '必须登记了 ctx.inject（旧代码：0 次 ⇒ 路由永不注册）');
+  // 008 起两条路由各登记一次注入；010 T7.1 起容器路由是第三条
+  assert.equal(pending.length, 3, '必须登记了 ctx.inject（旧代码：0 次 ⇒ 路由永不注册）');
 
   // ② `+755ms`：服务到位 ⇒ 注入回调跑 ⇒ 注册
   pending[0]?.({ get: (name: string) => (name === 'webServer' ? surface : undefined) });
@@ -302,7 +303,8 @@ test('T1.7/T1.4 写通道路由：装载期零外部命令、两条独占前缀�
 
   assert.equal(handle.writeRoute.registered, true, '写通道路由必须真注册（不是留个缺口）');
   assert.equal(handle.writeRoute.registrationCount(), 1);
-  assert.deepEqual(routes.map((item) => item.path).sort(), ['/dsh-wsl-docker-ports', '/dsh-wsl-docker-ports/write']);
+  // 010 T7.1 起多一条前缀（容器动作）：**前缀互不重叠**是硬判据（宿主对重复 (kind,path) 直接抛错）
+  assert.deepEqual(routes.map((item) => item.path).sort(), ['/dsh-wsl-docker-ports', '/dsh-wsl-docker-ports/container', '/dsh-wsl-docker-ports/write']);
   assert.equal(fake.calls.length, 0, '装载期零外部命令（T1.4 判据），实际 ' + String(fake.calls.length) + ' 条');
   assert.equal(handle.writeRoute.requestCount(), 0, '装载期零请求（现读只在请求处理里发生）');
 

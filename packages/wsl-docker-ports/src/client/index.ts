@@ -63,6 +63,8 @@ import type { PortsPaneProps } from './pane.tsx';
 import { PAGE_ID, PAGE_KIND, PAGE_TITLE, TAB_SLOT, TAB_TITLE_SLOT, portsTabDefinition, registerTabSeats } from './rows.ts';
 import { createRouteSource } from './route-source.ts';
 import { createSettingsPipe } from './settings-pipe.ts';
+import { registerConfigSlot } from './config-slot.ts';
+import type { ConfigSlotContext } from './config-slot.ts';
 import { installStylesWith } from './styles.ts';
 import { createWriteWiring } from './write-channel.ts';
 import type { WriteWiring } from './write-channel.ts';
@@ -186,6 +188,21 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
 
   // ③ 配置管道先建：路由来源每次刷新要用它读声明（**读**，不是写）
   const settings = createSettingsPipe(() => softGet<RemoteSettingsLike>(ctx, 'remote.settings'));
+
+  // ③′ 010 T7.3：插件配置页（宿主「插件」行的配置槽）。组件本体在 chunk 里（主包棘轮零余量），
+  //    这里只注册一个**取块座位**；`settings` 直接闭包进去 ⇒ 页面写走同一条 live 管道（不另造一条）。
+  //    关自动表单 + 槽位注册失败都只降级、不抛（配置页是可选的编辑入口，不该拖垮整包加载）。
+  const configSeat = (ownerProps: Record<string, unknown>): ReactElement =>
+    createElement(ChunkBoot, {
+      spec: PANE_CHUNK,
+      title: 'WSL Docker 端口转发 · 配置',
+      load: loadPortsChunk,
+      paneProps: { ...ownerProps, settings },
+    });
+  const configSlot = registerConfigSlot(ctx as unknown as ConfigSlotContext, configSeat as unknown as (props: never) => unknown);
+  if (!configSlot.registered) {
+    console.warn(`${CLIENT_LOG_TAG} 插件配置页未注册：${configSlot.reason ?? '原因未记录'}`);
+  }
 
   // ④ 取数面：显式注入 > 自建路由 > 降级
   const source: PortsSource | undefined =

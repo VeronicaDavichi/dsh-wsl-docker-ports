@@ -61,3 +61,41 @@
 2. `docker start|stop|restart` 在 WSL 内的**耗时 / 是否需提权 / 失败态文本**未知（真机待做）。
 3. 日志抽屉的**渲染上限**（`--tail 200` 在 UI 上的可读性）未定；若需要虚拟滚动，须登记为设计变更。
 4. 本 Spec 的 `requirements.md` / `design.md` / `tasks.md` 三份文件**均未经主人复核**。
+---
+
+## 🧾 2026-10-15 实现轮（T7.1 / T7.2 / T7.3）—— 证据与**未验项**（原文只追加，不删）
+
+### G-1 放行（`REQ-P1-1` 的前置，逐字）
+
+主人 2026-10-15 指令：**「还有一个spec没做，做完」**，并在同轮问到「配置页注册壳会让主包涨」时明确选择 **「授权上调 SSoT」**。
+⇒ 这就是 `T0.1` 要求的那句「主人书面放行」；本行记下原文与日期，`REQ-P1-1` 的 `G-1` 据此解除（不假装走过 7 行 P0 真机清单）。
+
+### 已交付（代码 + 离线判据，全部实跑）
+
+| 层 | 落点 | 状态 |
+| --- | --- | --- |
+| 宿主通道 | `src/docker/wire.ts`（前缀 `/dsh-wsl-docker-ports/container` · 动作白名单 start/stop/restart · `--tail` 夹紧 1..200 · 错误码→状态码单值映射） | ✅ 写就 + 类型绿 |
+| 宿主执行 | `src/docker/control.ts`（`argv` 数组、无 shell、**恰好一次** `execInDistro`、不重试、**不落盘**） | ✅ |
+| 宿主路由 | `src/docker/route.ts`（**鉴权最靠前** → 路径 → 方法 → 体 → 执行；401 时**不读体、不解析发行版、0 次 docker 调用**） | ✅ |
+| 装配 | `src/plugin.ts` / `src/host-face.ts`（第三条 prefix 路由，effect-scoped disposer） | ✅ |
+| 客户端 | `src/client/container-control.ts`（带插件凭据、不重试、不落盘）· `pane-tables.tsx` 行内 启动/停止/重启 + 日志抽屉 · `pane.tsx` 装配 | ✅ chunk 侧 |
+| 配置页 | `src/client/config-slot.ts`（`plugins.row.config` + `configure({auto:false}, ctx.fiber)`，失败降级不抛）· `config-page.tsx`（`elevationPolicy` **唯一写入口**，两段式确认；`scopes` 只读 + 指路） | ✅ 主包注册壳 / chunk 页本体 |
+
+### 判据（离线，本轮实测 exit code）
+
+- `tsc -p tsconfig.json` **0** · `tsc -p tsconfig.build.json` **0** · `tsc -p tsconfig.client.json` **0**
+- `node --test --test-concurrency=1 "tests/**/*.test.ts"` **459/459 pass, 0 fail**（新增 25 条：`docker-control` / `docker-route` / `config-slot`）
+- `vitest run` **15 文件 / 139 用例全过**
+- `check-exports` **25/0** · `check-size` **0**（最大 `src/write/plan.ts` 398 行）· `verify-client-loader` **40/0** · `assert-client-split` **17/0** · `verify-host-entry` **18/0**
+- 产物：`lib/client.js` **49,183 B**（SSoT 棘轮上调，留痕 **#57**；硬判据 65,536 B 未动，余 16,353 B）· `lib/client.ports.js` **135,190 B**
+- `pnpm`：**未使用**（`verify-deps-before-run` 会写回 lockfile ⇒ 一律直调 `node` / `.bin\tsc.CMD`）
+
+### 未验项（**不谎报「已完成」**）
+
+`V1`–`V5` 真机表**本轮未走**：需要起一次探针实例（`volatile-probe` + `--patch` 覆盖层 + 一次性容器）并用 chrome-devtools MCP 驱动 GUI。
+本轮把预算用在了离线判据与文档上 ⇒ 真机证据**空缺**，`010` 因此**不置 `complete`**（保持 `in-progress`）。
+
+### 发现（记录，不擅自扩范围）
+
+- **⑲ 待主人裁定**：配置页**只读展示** `scopes`、写入口留在右栏页（`REQ-12.2` 单字段单入口）。要不要在配置页再开逐端口编辑器 = 主人的取舍。
+- **行为变更（已随本轮回退到只读）**：右栏页的提权档选择器 010 起**只读 + 指路**（`elevation-readonly-pointer`），否则同一字段会有两个写入口。已改 3 条既有用例的断言（`pane.test.tsx` / `entry.test.tsx` / `entry-pending.test.tsx`），并在用例注释里写明原因。

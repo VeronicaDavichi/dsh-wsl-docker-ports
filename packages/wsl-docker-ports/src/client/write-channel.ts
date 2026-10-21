@@ -295,6 +295,12 @@ export interface WriteWiring {
   readonly channel: WriteChannel;
   readonly tokenStore: WriteTokenStore;
   readonly declaration: () => Promise<WriteDeclarationOutcome>;
+  /**
+   * 同源基址与 fetch（010 `T7.1` 起由**容器动作**复用）：容器通道与写通道是两条路，
+   * 但「发到哪个基址、用哪个 fetch」必须同源 ⇒ 从这一个入口转出去，不各造一份。
+   */
+  readonly baseUrl?: string | undefined;
+  readonly fetchImpl?: FetchLike | undefined;
 }
 
 export function createWriteWiring(options: {
@@ -311,5 +317,7 @@ export function createWriteWiring(options: {
     }),
     tokenStore: options.tokenStore,
     declaration: createDeclarationReader(options.settings),
+    baseUrl: options.baseUrl ?? '',
+    ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
   };
 }

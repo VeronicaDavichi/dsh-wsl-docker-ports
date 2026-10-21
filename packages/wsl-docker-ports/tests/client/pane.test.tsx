@@ -73,7 +73,7 @@ describe('T5.1 开页只读（NFR-2）', () => {
 });
 
 describe('T5.2 非 NAT：写控件全灰 + 修复指引', () => {
-  it('非 NAT 下没有任何可点的转发写控件，且提权策略控件仍可用（否则 none 会死锁）', async () => {
+  it('非 NAT 下没有任何可点的转发写控件；提权档 010 起只读 + 有指路文案（写入口在宿主配置页）', async () => {
     const test = harness(snapshot({ nat: NAT_NON_NAT, ports: [classification('missing', 3306)] }));
     const { container } = render(<PortsPane runtime={test.runtime} />);
     await screen.findByTestId('tbl-ports');
@@ -82,7 +82,10 @@ describe('T5.2 非 NAT：写控件全灰 + 修复指引', () => {
     const clickable = container.querySelectorAll('[data-write-control]:not([disabled])');
     expect(controls.length).toBeGreaterThan(0);
     expect(clickable).toHaveLength(0);
-    expect((screen.getByTestId('sel-elevation') as HTMLSelectElement).disabled).toBe(false);
+    // 010 T7.3 起提权档在右栏页**只读**（写入口收到宿主配置页）⇒ 非 NAT 时它也一样是灰的，
+    // 但**必须**给出指路文案，否则用户会以为「没地方改」
+    expect((screen.getByTestId('sel-elevation') as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.getByTestId('elevation-readonly-pointer').textContent ?? '').toContain('配置页');
 
     // 反向对照：NAT 下同一批控件真的有可点的，否则上面的 0 是「整体点不动」的假象
     const ok = harness(snapshot({ nat: NAT_OK, ports: [classification('missing', 3306)] }));

@@ -55,6 +55,8 @@ import type { LocalhostForwardingOutcome } from './read/localhost-forwarding.ts'
 import { probePortproxyRules } from './read/netsh-probe.ts';
 import type { PortproxyOutcome } from './read/netsh-probe.ts';
 import { registerPortsRoute } from './route.ts';
+import { registerContainerRoute } from './docker/route.ts';
+import type { ContainerRouteRegistration, ContainerTarget } from './docker/route.ts';
 import { attachWriteChannel, createDefaultLocalhostForwarding, createPluginFacts } from './transport/wire-plugin.ts';
 import type { PortsRouteRegistration } from './route.ts';
 import { createSnapshotBuilder } from './snapshot.ts';
@@ -201,6 +203,19 @@ export function applyWslDockerPorts(
   // ③ 写通道（008 T1.7 + T2.9）：接线在 wire-plugin.ts，此处只留一行（⇒ 不挤爆 400 行 SHALL）。🔴 透传的是 `config-read.ts` 的**活体读取函数**（不是值本身）：两个消费点都在 apply 之后才用（策略判决每次计划、凭据每次请求）⇒ 现读才吃得到 live 写入（缺省 ⇒ fail-safe：事实面 'unknown' ⇒ 不写；凭据未配置 ⇒ 401）
   const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({ executor, netsh: deps.netsh, probeEth0: () => service.probeEth0(false), probeElevation: () => availability.probe(), probeLocalhostForwarding: createDefaultLocalhostForwarding(), elevationPolicy: hostConfig.elevationPolicy }), executor, undefined, hostConfig.writeToken);
 
+  // ④ 容器控制（010 T7.1/T7.2）：**另一条通道**（REQ-P1-2：不经 /write/plan|apply），前缀 `/…/container`。
+  //    凭据与写通道**同一把**（`hostConfig.writeToken` 的活体读取）⇒ 未配置即 401 fail-safe，Agent 无凭据 ⇒ 0 次 docker 调用。
+  //    目标发行版**每次请求现解析**（`distro` 是 volatile，现读才吃得到 live 写入）。
+  const containerRoute: ContainerRouteRegistration = registerContainerRoute(ctx, {
+    writeToken: hostConfig.writeToken,
+    executor,
+    resolveTarget: async (): Promise<ContainerTarget> => {
+      const target = await resolveTarget();
+      if (!target.ok) return { ok: false, reason: target.code, message: target.message };
+      return { ok: true, name: target.resolved.name, distros: target.distros };
+    },
+  });
+
   /**
    * webServer 缺口：**每次读都按 `route` 的当前状态算**。
    *
@@ -249,6 +264,7 @@ export function applyWslDockerPorts(
     if (disposed) return;
     disposed = true;
     route.dispose(); // 幂等；`ctx.effect` 也会在卸载时调它
+    containerRoute.dispose();
   };
 
   if (typeof ctx.effect === 'function') {
@@ -275,6 +291,7 @@ export function applyWslDockerPorts(
     service,
     snapshotBuilder: builder,
     writeRoute: writeChannel.writeRoute,
+    containerRoute,
     route,
     get gaps(): readonly PluginGap[] {
       const out: PluginGap[] = [];

@@ -18,6 +18,7 @@ import * as entry from '../../src/client/index.ts';
 import type { ClientContextLike } from '../../src/client/host.ts';
 import type { PortsSnapshot } from '../../src/client/types.ts';
 import { PAGE_ID, PAGE_KIND, TAB_SLOT, TAB_TITLE_SLOT } from '../../src/client/rows.ts';
+import { CONFIG_SLOT_NAME } from '../../src/client/config-slot.ts';
 import { snapshot } from '../unit/client-fixtures.ts';
 
 interface FakeCtx {
@@ -214,7 +215,8 @@ describe('T5.1 注册形状（contract §C9/§C10）', () => {
       expect(result.styles).toBe('dsh-wsl-docker-ports/styles');
     }
 
-    expect(fake.injectNames).toEqual([['sidebarRightTabs', 'sidebarRight']]);
+    // 010 T7.3：先 `inject(['settings'])`（配置页关自动表单），再登记右栏懒注入
+    expect(fake.injectNames).toEqual([['settings'], ['sidebarRightTabs', 'sidebarRight']]);
     expect(fake.tabRegistrations).toHaveLength(1);
     const definition = fake.tabRegistrations[0] as Record<string, unknown>;
     expect(definition['id']).toBe(PAGE_ID);
@@ -224,12 +226,15 @@ describe('T5.1 注册形状（contract §C9/§C10）', () => {
     expect(definition['keepMounted']).toBe(true);
     expect((definition['title'] as (address: string) => string)('x')).toBeTypeOf('string');
 
-    expect(fake.slotRegistrations).toHaveLength(2);
-    const seats = fake.slotRegistrations.map((registration) => registration.options['name']);
-    expect(seats).toEqual([TAB_SLOT, TAB_TITLE_SLOT]);
-    expect(fake.slotRegistrations.every((registration) => registration.options['key'] === PAGE_ID)).toBe(true);
+    // 两个页内座位 + 010 T7.3 的配置槽（`plugins.row.config`）= 3 次注册
+    expect(fake.slotRegistrations).toHaveLength(3);
+    const paneSeats = fake.slotRegistrations.filter((registration) => registration.options['name'] !== CONFIG_SLOT_NAME);
+    expect(paneSeats.map((registration) => registration.options['name'])).toEqual([TAB_SLOT, TAB_TITLE_SLOT]);
+    expect(paneSeats.every((registration) => registration.options['key'] === PAGE_ID)).toBe(true);
+    // 配置槽的 key = 本包 patch 条目 id（不是 PAGE_ID）—— 两者混用会让宿主找不到配置行
+    expect(fake.slotRegistrations.find((registration) => registration.options['name'] === CONFIG_SLOT_NAME)?.options['key']).toBe('dsh-wsl-docker-ports');
     expect(fake.slotRegistrations.every((registration) => typeof registration.component === 'function')).toBe(true);
-    expect(fake.effects).toHaveLength(2);
+    expect(fake.effects).toHaveLength(3);
     console.log(`  · 扫了 ${String(fake.tabRegistrations.length)} 个页定义 / ${String(fake.slotRegistrations.length)} 个 seat / ${String(fake.effects.length)} 个 effect；priority=${JSON.stringify(definition['priority'])}`);
   });
 

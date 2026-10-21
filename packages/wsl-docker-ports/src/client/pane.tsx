@@ -17,9 +17,10 @@
  * 区域组件拆在 `pane-tables.tsx` / `pane-settings.tsx`（单文件 ≤ 400 行是 SHALL）。
  */
 
-import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 
 import type { Scope } from '../diff/types.ts';
+import { containerControlOf } from './container-control.ts';
 import type { ClientRuntime, ForwardAction } from './host.ts';
 import { buildPortsPageView, summarizeWriteReport } from './page.ts';
 import { ContainersBlock, DistroBlock, DockerFailureBlock, ExternalRulesBlock, PortsBlock, UnsupportedBlock } from './pane-tables.tsx';
@@ -260,6 +261,10 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
     setCheckedPresets(view.managedPorts.presets.filter((preset) => preset.checked).map((preset) => preset.name));
   }, [view]);
 
+  // 010 T7.1/T7.2：容器动作客户端（`write` 未接线 ⇒ `undefined` ⇒ 控件置灰并写明原因）。
+  // 🔴 必须放在**任何条件 return 之前**（下面 `view === null` 就 return 了）—— 否则 hook 数会变。
+  const containerControl = useMemo(() => containerControlOf(runtime), [runtime]);
+
   if (view === null) {
     return (
       <div className="wdp-page" data-plugin="dsh-wsl-docker-ports">
@@ -309,6 +314,7 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
     await writeSettings(async () => runtime.settings?.writeManagedPorts(mergeManagedPortsDecl(draft, ports)));
   };
 
+
   return (
     <div className="wdp-page" data-plugin="dsh-wsl-docker-ports">
       <PaneHeader view={view} busy={busy} onRefresh={() => void refresh(false, lastWrite)} onLaunch={() => void refresh(true, lastWrite)} />
@@ -325,7 +331,7 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
       {view.docker.ok === false ? (
         <DockerFailureBlock docker={view.docker} />
       ) : (
-        <ContainersBlock rows={view.containers} count={view.containerCount} />
+        <ContainersBlock rows={view.containers} count={view.containerCount} control={containerControl} onChanged={() => void refresh(false, lastWrite)} disabledReason={containerControl === undefined ? '容器动作未接线：宿主侧写整包不可用（只读面与配置面照常，动作控件置灰）' : undefined} />
       )}
       <PortsBlock
         rows={view.ports}
@@ -350,10 +356,7 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
         onToggle={(name, on) => setCheckedPresets((previous) => (on ? [...previous, name] : previous.filter((item) => item !== name)))}
         onSave={() => void savePorts()}
       />
-      <ElevationBlock
-        elevation={view.elevation}
-        onChange={(policy) => void writeSettings(async () => runtime.settings?.writeElevationPolicy(policy))}
-      />
+      <ElevationBlock elevation={view.elevation} />
       <WriteTokenBlock
         sessionPresent={tokenPresent}
         configured={configConfigured}

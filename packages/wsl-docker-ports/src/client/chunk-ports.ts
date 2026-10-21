@@ -23,3 +23,8 @@
  */
 
 export { PortsPane } from './pane.tsx';
+/**
+ * 010 `T7.3`：插件配置页（宿主「插件」行的配置槽）。
+ * 与右栏页同住这个 chunk —— 主包棘轮零余量，任何 UI 都只能长在 chunk 侧。
+ */
+export { ConfigPage } from './config-page.tsx';

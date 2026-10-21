@@ -116,9 +116,15 @@ export function ManagedPortsBlock(props: {
 
 export function ElevationBlock(props: {
   readonly elevation: PortsPageView['elevation'];
-  readonly onChange: (policy: ElevationPolicyValue) => void;
+  /**
+   * 010 `T7.3`：省略 = **只读**。
+   * 提权档的写入口已收到宿主的插件配置页（`client/config-page.tsx`）——
+   * 同一字段只留**一个**写入口（`REQ-12.2` / D-4），这里只展示 + 指路。
+   */
+  readonly onChange?: ((policy: ElevationPolicyValue) => void) | undefined;
 }): ReactElement {
   const { elevation, onChange } = props;
+  const readOnly = onChange === undefined;
   return (
     <section className="wdp-card">
       <h3>提权策略</h3>
@@ -126,9 +132,11 @@ export function ElevationBlock(props: {
         className="wdp-btn"
         data-testid={TESTID.elevation}
         data-settings-control="1"
-        disabled={!elevation.enabled}
+        disabled={!elevation.enabled || readOnly}
         value={elevation.value}
-        onChange={(event) => onChange(event.target.value as ElevationPolicyValue)}
+        onChange={(event) => {
+          if (onChange !== undefined) onChange(event.target.value as ElevationPolicyValue);
+        }}
       >
         {elevation.options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -137,6 +145,11 @@ export function ElevationBlock(props: {
         ))}
       </select>
       <p className="wdp-muted">{elevation.note}</p>
+      {readOnly ? (
+        <p className="wdp-secondary" data-testid="elevation-readonly-pointer">
+          只读：提权档的写入口已收到宿主的插件配置页（设置 → 插件 → dsh-wsl-docker-ports）。同一字段只留一个写入口。
+        </p>
+      ) : null}
       <p className="wdp-secondary wdp-gate" data-testid={ELEVATION_NOTICE_TESTID}>
         {elevation.notice}
       </p>

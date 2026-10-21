@@ -142,8 +142,10 @@ describe('缺陷 C（2026-10-09 真机）：右栏服务**晚到**时也必须�
       const result = entry.apply(f.ctx, { source: source() });
 
       // ① 必须登记了惰性注入 —— 旧代码在同步判空那一步就 return，这里 `pending` 是空的 ⇒ 红
-      expect(f.pending).toHaveLength(1);
-      expect(f.pending[0]?.names).toEqual(['sidebarRightTabs', 'sidebarRight']);
+      //    010 T7.3 起多一条 `inject(['settings'])`（配置页关自动表单用）⇒ 按**名字**找，不按序号
+      const sidebarPending = f.pending.find((item) => item.names.includes('sidebarRightTabs'));
+      expect(sidebarPending?.names).toEqual(['sidebarRightTabs', 'sidebarRight']);
+      expect(f.pending.some((item) => item.names.length === 1 && item.names[0] === 'settings')).toBe(true);
       expect(f.tabRegistrations).toHaveLength(0);
       // ② 此刻没注册就如实说「还没注册」（不是「缺失」）
       expect(result.registered).toBe(false);
@@ -174,10 +176,10 @@ describe('缺陷 C（2026-10-09 真机）：右栏服务**晚到**时也必须�
 
       // `+240ms`（真机：@1051ms apply ⇒ @1317ms 到齐，远在窗口内）：服务到位 ⇒ 注入回调 fire
       arrive(f.services, f.tabRegistrations);
-      f.pending[0]?.callback(f.ctx);
+      f.pending.find((item) => item.names.includes('sidebarRightTabs'))?.callback(f.ctx);
 
       expect(f.tabRegistrations).toHaveLength(1);
-      expect(f.slotRegistrations.map((registration) => registration.options['name'])).toEqual([TAB_SLOT, TAB_TITLE_SLOT]);
+      expect(f.slotRegistrations.map((registration) => registration.options['name']).filter((name) => name !== 'plugins.row.config')).toEqual([TAB_SLOT, TAB_TITLE_SLOT]);
       expect((f.tabRegistrations[0] as Record<string, unknown>)['id']).toBe(PAGE_ID);
       // 告警被撤销（否则窗口到点还会冒一条已经过时的 warn）
       expect(clock.pendingCount()).toBe(0);
@@ -226,7 +228,7 @@ describe('缺陷 C（2026-10-09 真机）：右栏服务**晚到**时也必须�
       expect(warn.mock.calls.length).toBe(1);
 
       arrive(f.services, f.tabRegistrations);
-      f.pending[0]?.callback(f.ctx);
+      f.pending.find((item) => item.names.includes('sidebarRightTabs'))?.callback(f.ctx);
 
       expect(f.tabRegistrations).toHaveLength(1);
       expect(info.mock.calls.length).toBe(1);

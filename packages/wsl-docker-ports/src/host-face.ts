@@ -33,6 +33,7 @@ import type { PortsRouteRegistration } from './route.ts';
 import type { SnapshotBuilder, SnapshotDeps } from './snapshot.ts';
 import type { PlanFacts } from './transport/plan.ts';
 import type { WriteRouteRegistration } from './transport/routes.ts';
+import type { ContainerRouteRegistration } from './docker/route.ts';
 
 /** 一条「降级原因」（不静默：装载后可直接读出来定位，口径同 002 的 `PluginGap`） */
 export interface PluginGap {
@@ -116,6 +117,8 @@ export interface WslDockerPortsPluginHandle {
   readonly route: PortsRouteRegistration;
   /** 008 写通道路由注册结果（pending 不是失败，与 route 同理） */
   readonly writeRoute: WriteRouteRegistration;
+  /** 010 容器动作路由注册结果（`pending` 不是失败；与 `route` / `writeRoute` 各占一个前缀） */
+  readonly containerRoute: ContainerRouteRegistration;
   /**
    * 本次装载的降级原因（空数组 = 一切齐备）。
    * ⚠️ **活视图**：`webServer` 那条按 `route` 的当前状态现算 —— 惰性注入的回调后到并注册成功后，
