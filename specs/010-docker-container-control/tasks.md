@@ -99,3 +99,15 @@
 
 - **⑲ 待主人裁定**：配置页**只读展示** `scopes`、写入口留在右栏页（`REQ-12.2` 单字段单入口）。要不要在配置页再开逐端口编辑器 = 主人的取舍。
 - **行为变更（已随本轮回退到只读）**：右栏页的提权档选择器 010 起**只读 + 指路**（`elevation-readonly-pointer`），否则同一字段会有两个写入口。已改 3 条既有用例的断言（`pane.test.tsx` / `entry.test.tsx` / `entry-pending.test.tsx`），并在用例注释里写明原因。
+
+### ⛔ V1–V5 阻塞（2026-10-15，实侦察后如实登记）
+
+想去跑真机表，第一步就卡住：**`~/.dsh/profiles/volatile-probe` 里根本没装这个插件**
+（`package.json` 里搜不到 `wsl-docker-ports`；该 profile 的 `cordis.patch.yml` 只有 **343 B** —— 正是 2026-10-09 记录的「宿主自己写 `welcomeNoticeVersion`」那 343 B，不是我们的配置）。
+
+⇒ 要让插件在被探测的实例里加载，必须先**在 profile 层装包**（junction 链接 `wsl-docker-ports` + `wsl-shared`、改该 profile 的 `package.json` / `pnpm-lock.yaml`、跑一次 install），事后再**逐字节还原**。
+这是「往 profile 里装插件」的写操作，边界与 2026-10-09 的白名单事故同源 ⇒ **本轮没有擅自开工**。
+
+- 未发生任何变更：探针 profile 只读未写（字节数 343 / sha256 `CDC61A08…`，与侦察前一致）· **未创建**任何试跑容器（`docker ps -a -q` 计数已复核）· 未起探针实例。
+- 主人已批准的 `docker run -d --name dsh-p1-probe alpine sleep 600` **仍未执行**，随时可跑 —— 只差「许可 profile 层安装」这一步。
+- 结论：`V1–V5` 保持**未验**，`010` 保持 `in-progress`；补齐它只需要下轮一个专门的安装/还原轮次（预计 1 轮，含 38 文件哈希对账）。
