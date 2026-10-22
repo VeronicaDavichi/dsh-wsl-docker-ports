@@ -340,7 +340,7 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
       {view.docker.ok === false ? (
         <DockerFailureBlock docker={view.docker} />
       ) : (
-        <ContainersBlock rows={view.containers} count={view.containerCount} control={containerControl} onChanged={() => void refresh(false, lastWrite)} disabledReason={containerControl === undefined ? '容器动作未接线：宿主侧写整包不可用（只读面与配置面照常，动作控件置灰）' : undefined} />
+        <ContainersBlock rows={view.containers} count={view.containerCount} control={containerControl} onChanged={() => void refresh(false, lastWrite)} disabledReason={containerControl === undefined ? '容器动作未接线：宿主侧写整包不可用（只读面与配置面照常，动作控件置灰）' : undefined} note={view.containerListNote} />
       )}
       <PortsBlock
         rows={view.ports}
@@ -390,4 +390,5 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
     </div>
   );
 }
+
 

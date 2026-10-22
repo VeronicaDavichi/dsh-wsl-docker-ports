@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { PortsPane } from '../../src/client/pane.tsx';
 import { PORT_STATES } from '../../src/diff/types.ts';
-import { externalRulesFromFixture, classification, NAT_NON_NAT, NAT_OK, rule, snapshot, unsupportedMapping, ETH0, OLD_ETH0 } from '../unit/client-fixtures.ts';
+import { externalRulesFromFixture, classification, container, NAT_NON_NAT, NAT_OK, rule, snapshot, unsupportedMapping, ETH0, OLD_ETH0 } from '../unit/client-fixtures.ts';
 import { harness } from './pane-harness.ts';
 
 afterEach(() => {
@@ -245,3 +245,37 @@ describe('T5.4 失败态与漂移', () => {
     console.log(`  · 漂移行：${drift}；修复序列：${fix.slice(0, 60)}…`);
   });
 });
+
+describe('010 收口 2026-10-22：已停止的容器也必须列在表里', () => {
+  it('stopped 容器出现在容器表 + 标题给出「共 N，运行中 M」+ 停止/重启置灰', async () => {
+    const test = harness(
+      snapshot({
+        docker: {
+          ok: true,
+          emptyAfterRetry: false,
+          argv: ['docker', 'ps', '-a', '--format', '{{json .}}'],
+          containers: [container('db-running'), container('db-stopped', [], 'exited')],
+        },
+      }),
+    );
+    render(<PortsPane runtime={test.runtime} />);
+    await screen.findByTestId('tbl-containers');
+
+    // 标题：两个容器都在，运行中只有 1 个
+    const head = screen.getByTestId('tbl-containers').closest('section')?.querySelector('h3')?.textContent ?? '';
+    expect(head).toContain('共 2');
+    expect(head).toContain('运行中 1');
+
+    // stopped 的行真的渲染出来（不是被 docker 层丢掉）
+    expect(screen.getByTestId('container-start-db-stopped-id')).toBeTruthy();
+    expect(screen.getByTestId('container-stop-db-stopped-id')).toBeTruthy();
+
+    // 不在运行 ⇒ 停止/重启无意义 ⇒ 置灰；运行中的行则相反
+    expect((screen.getByTestId('container-stop-db-stopped-id') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('container-restart-db-stopped-id') as HTMLButtonElement).disabled).toBe(true);
+    // 台架未接线 write ⇒ 所有动作统一置灰（另有用例覆盖接线后的可点性）；本用例只钉「行在不在、状态判得对不对」
+    expect((screen.getByTestId('container-start-db-stopped-id') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+

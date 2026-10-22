@@ -70,8 +70,15 @@ export function managedPorts(ports: readonly number[]): ManagedPorts {
   return ports.map((port) => ({ start: port, end: port }));
 }
 
-export function container(name: string, ports: DockerContainer['ports'] = []): DockerContainer {
-  return { id: `${name}-id`, names: name, image: `img/${name}:latest`, state: 'running', status: 'Up 2 hours', ports };
+export function container(name: string, ports: DockerContainer['ports'] = [], state = 'running'): DockerContainer {
+  return {
+    id: `${name}-id`,
+    names: name,
+    image: `img/${name}:latest`,
+    state,
+    status: state === 'running' ? 'Up 2 hours' : 'Exited (0) 3 minutes ago',
+    ports,
+  };
 }
 
 export function unsupportedMapping(name: string, port: number): UnsupportedMapping {
@@ -159,3 +166,5 @@ export function countFunctions(value: unknown, path = '$', hits: string[] = []):
   }
   return hits;
 }
+
+

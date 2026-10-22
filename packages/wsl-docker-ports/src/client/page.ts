@@ -227,6 +227,7 @@ export function buildPortsPageView(snapshot: PortsSnapshot, options: BuildPageOp
     docker: snapshot.docker,
     containers,
     containerCount: containers.length,
+  containerListNote: snapshot.docker.ok ? (snapshot.docker.containerListNote ?? null) : null,
     ports: buildPortRows(snapshot, gate),
     counts,
     portsNote: snapshot.diff.ok === false ? '取不到 eth0：本条判决都不给（不降级、不把全部规则误标为漂移）' : null,
@@ -265,3 +266,4 @@ export function buildPortsPageView(snapshot: PortsSnapshot, options: BuildPageOp
 export function countSum(counts: Readonly<Record<PortState, number>>): number {
   return PORT_STATES.reduce((total, state) => total + counts[state], 0);
 }
+

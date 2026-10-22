@@ -150,6 +150,9 @@ export interface PortsPageView {
   readonly docker: DockerView;
   readonly containers: readonly ContainerRowView[];
   readonly containerCount: number;
+  /** 列表是否**只含运行中**（docker ps -a 失败时的回落说明）；
+ull = 全部容器都列了 */
+  readonly containerListNote: string | null;
   readonly ports: readonly PortRowView[];
   readonly counts: Readonly<Record<PortState, number>>;
   readonly portsNote: string | null;
@@ -169,3 +172,4 @@ export interface PortsPageView {
 export type ExternalRuleRow = ExternalRule;
 /** 不可转发映射的构造输入 */
 export type UnsupportedMappingRow = UnsupportedMapping;
+

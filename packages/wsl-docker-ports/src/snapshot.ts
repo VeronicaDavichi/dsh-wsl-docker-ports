@@ -115,7 +115,7 @@ export function natGateOf(outcome: NetworkingModeOutcome): NatGateView {
 /** docker 探针结果 → 快照里的 docker 视图（成功/失败两态；失败**不带** argv，形状由 wire 钉死） */
 function dockerViewOf(outcome: DockerPsOutcome): DockerView {
   if (outcome.ok) {
-    return { ok: true, containers: outcome.containers, emptyAfterRetry: outcome.emptyAfterRetry, argv: outcome.argv };
+    return { ok: true, containers: outcome.containers, emptyAfterRetry: outcome.emptyAfterRetry, argv: outcome.argv, ...(outcome.containerListNote === undefined ? {} : { containerListNote: outcome.containerListNote }) };
   }
   return { ok: false, reason: outcome.reason, message: outcome.message, hint: outcome.hint, raw: outcome.raw };
 }
@@ -151,13 +151,27 @@ export function createSnapshotBuilder(deps: SnapshotDeps): SnapshotBuilder {
         }
 
         // ④ docker：失败照旧进快照（REQ-2.3 的三类失败各有引导文案）
+        //
+        // 2026-10-22：**先试 `docker ps -a`（含已停止）**，失败就退回只看运行中并留下原因。
+        // 为什么必须回落：本机实测只要存在一个坏容器（`rw layer snapshot not found`），
+        // `docker ps -a` 就整体退出码 1 ⇒ 如果不回落，主人会因为「一个坏容器」丢掉整张容器表
+        // —— 那比「看不到 stopped」严重得多。
+        const probeOptions = {
+          ...(deps.docker ?? {}),
+          ...(options.allowColdStart === undefined ? {} : { allowColdStart: options.allowColdStart }),
+        };
+        const allOutcome = target === null ? null : await probeDockerPs(deps.executor, target.name, target.distros, { ...probeOptions, allContainers: true });
+        const probeTarget = target === null ? null : { name: target.name, distros: target.distros };
         const dockerOutcome: DockerPsOutcome | null =
-          target === null
-            ? null
-            : await probeDockerPs(deps.executor, target.name, target.distros, {
-                ...(deps.docker ?? {}),
-                ...(options.allowColdStart === undefined ? {} : { allowColdStart: options.allowColdStart }),
-              });
+          allOutcome === null || allOutcome.ok
+            ? allOutcome
+            : await (async (): Promise<DockerPsOutcome> => {
+                if (probeTarget === null) return allOutcome;
+                const runningOnly = await probeDockerPs(deps.executor, probeTarget.name, probeTarget.distros, { ...probeOptions, allContainers: false });
+                // 两个都失败 ⇒ 报**原始**失败（`-a` 的原因更有信息量），不静默装作成功
+                if (!runningOnly.ok) return allOutcome;
+                return { ...runningOnly, containerListNote: `列表只含运行中的容器：docker ps -a 失败（${allOutcome.message}）` };
+              })();
 
         // ⑤ eth0：取不到 ⇒ null ⇒ 引擎给 `diff.ok:false`（T5.4 分支，一条判决都不给）
         const eth0Source: Eth0Source | null =
@@ -226,3 +240,4 @@ export function createSnapshotBuilder(deps: SnapshotDeps): SnapshotBuilder {
     },
   };
 }
+

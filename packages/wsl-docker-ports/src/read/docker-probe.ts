@@ -1,5 +1,5 @@
 /**
- * `docker ps` 只读探针（003 T1.1 / REQ-2.1–2.5）
+ * `docker ps -a` 只读探针（003 T1.1 / REQ-2.1–2.5）
  *
  * ## 本文件只做「执行 + 归类失败」，解析在 `read/docker.ts`
  *
@@ -36,6 +36,20 @@ import { redactOutput } from './redact.ts';
  * `{{json .}}` 是单引号里的模板 —— 这里走 argv 数组、无 shell，故不需要引号。
  */
 export const DOCKER_PS_ARGV = ['docker', 'ps', '--format', '{{json .}}'] as const;
+
+/**
+ * **全部**容器（含已停止）。为什么需要它：`docker ps` 只列运行中的 ⇒ 主人 2026-10-22 真机反馈
+ * 「有容器但是 stopped 的没有列在边上」。
+ *
+ * 🔴 但它**不可靠**：本机实测只要存在一个坏容器（daemon 报 `rw layer snapshot not found`），
+ * `docker ps -a` 就**整体**以退出码 1 失败 ⇒ 调用方必须能退回只看运行中（`snapshot.ts` 做了这条
+ * 回落并明示原因）。
+ *
+ * ⚠️ 刻意**不**再写第二个 `--format` 字面量：`tests/contract/docker-probe.test.ts` 的红线是
+ * 「源码里只允许**一处** argv 定义」——那是为了禁掉「先试 `--format json` 再回落」的探测式实现。
+ * 这里用切片插入 `-a`，既满足红线也不复制格式串。
+ */
+export const DOCKER_PS_ALL_ARGV: readonly string[] = [...DOCKER_PS_ARGV.slice(0, 2), '-a', ...DOCKER_PS_ARGV.slice(2)];
 
 /**
  * 硬超时（REQ-2.5：每次 docker 调用 SHALL 有硬超时）。
@@ -77,11 +91,19 @@ export interface DockerPsSuccess {
    * `false` 且 `containers` 为空 ⇒ 只读到一次空输出、**没有复核**（UI 应提示可重试，不要声称没有容器）。
    */
   readonly emptyAfterRetry: boolean;
+  /**
+   * `null`/缺省 = 列表来自 `docker ps -a`（全部容器，含已停止）；
+   * 字符串 = **退回只看运行中**的原因（`docker ps -a` 整体失败：本机实测一个坏容器
+   * —— `rw layer snapshot not found` —— 就会让它退出码 1）。
+   */
+  readonly containerListNote?: string | null;
 }
 
 export type DockerPsOutcome = DockerPsSuccess | ProbeFailure<DockerProbeReason>;
 
 export interface DockerPsOptions {
+  /** `true` ⇒ 用 `DOCKER_PS_ALL_ARGV`（含已停止容器）；默认 `false` = 只看运行中 */
+  readonly allContainers?: boolean;
   /** 覆盖单次超时（默认 `DOCKER_PS_TIMEOUT_MS`） */
   readonly timeoutMs?: number;
   /** 覆盖总尝试次数（默认 `DOCKER_PS_ATTEMPTS`；< 1 会被夹到 1） */
@@ -213,7 +235,7 @@ export async function probeDockerPs(
   const timeoutMs = options.timeoutMs ?? DOCKER_PS_TIMEOUT_MS;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const outcome = await execInDistro(executor, distro, distros, DOCKER_PS_ARGV, {
+    const outcome = await execInDistro(executor, distro, distros, ARGV_OF(options), {
       timeoutMs,
       allowColdStart: options.allowColdStart === true,
     });
@@ -258,4 +280,15 @@ export async function probeDockerPs(
     message: '内部错误：重试循环没有产生任何结果',
     hint: '',
   });
+}
+
+
+
+
+
+
+
+/** 选 argv：默认只看运行中；`allContainers === true` 时连已停止的一起列（函数声明提升，放文末不影响调用） */
+function ARGV_OF(options: DockerPsOptions): readonly string[] {
+  return options.allContainers === true ? DOCKER_PS_ALL_ARGV : DOCKER_PS_ARGV;
 }

@@ -60,7 +60,7 @@ const DECLARATION = { managedPorts: [...FIXTURE_PORTS], scopes: {}, elevationPol
 const READ_ONLY_COMMANDS = [
   'wsl.exe -l -v',
   'netsh.exe interface portproxy show v4tov4',
-  'wsl.exe -d Ubuntu2204 -- docker ps --format {{json .}}',
+  'wsl.exe -d Ubuntu2204 -- docker ps -a --format {{json .}}',
   'wsl.exe -d Ubuntu2204 -- ip -4 -o addr show dev eth0',
 ];
 
@@ -166,3 +166,4 @@ test('003 修：只有一侧读取成功也是实证（docker 成功 / eth0 失�
 
   console.log(`  · 扫了 ${String(commandsOf(fake).length)} 条命令 → docker.ok=${String(snapshot.docker.ok)} / diff.ok=${String(snapshot.diff.ok)} → state=${String(panel?.state)} / stateNote 含 eth0 = ${String(String(note).includes('eth0'))}`);
 });
+

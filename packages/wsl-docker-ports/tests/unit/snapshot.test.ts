@@ -143,7 +143,7 @@ test('T6.8 判据①：路由返回的快照与 diff 输入一致（19 条真规
   assert.deepEqual(commands, [
     'wsl.exe -l -v',
     'netsh.exe interface portproxy show v4tov4',
-    'wsl.exe -d Ubuntu2204 -- docker ps --format {{json .}}',
+    'wsl.exe -d Ubuntu2204 -- docker ps -a --format {{json .}}',
     'wsl.exe -d Ubuntu2204 -- ip -4 -o addr show dev eth0',
   ], `命令集必须恰好这 4 条**只读**命令，实际 ${JSON.stringify(commands)}`);
   assert.equal(commands.some((line) => /portproxy (add|delete|reset)|Start-Process|gsudo/u.test(line)), false, '只读路径不得出现任何写/提权命令');
@@ -274,3 +274,4 @@ test('T6.8 快照可 JSON 往返（传输契约必须是纯数据）', async () 
   assert.equal(functions.includes('<fn>'), false);
   console.log(`  · 扫了 ${String(functions.length)} 字节 JSON（往返逐字相等）`);
 });
+

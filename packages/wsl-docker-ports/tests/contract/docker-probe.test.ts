@@ -81,3 +81,5 @@ test('T1.1 [REQ-2.5] 静态断言：不存在「先试 `--format json` 再回落
   assert.equal(argvLiterals.length, 1, '只允许一处 argv 定义 —— 有第二处就说明存在回落路径');
   assert.deepEqual(DOCKER_PS_ARGV, ['docker', 'ps', '--format', '{{json .}}']);
 });
+
+

@@ -208,3 +208,30 @@
 
 **回归**：`tsc -p tsconfig.json` 0 · `node --test` **459/459/0** · `vitest` **139/139** ·
 `assert-client-split` **①a 49,183 ≤ 65,536 ✅ / ①b 49,183 ≤ 49,183（余 0）✅** · `check-size` exit 0（最大 `src/write/plan.ts` 398 行）· 产物 主包 **49,183 B（零增长）** / chunk **135,971 B**。
+
+### 🔴 2026-10-22 第四处真机反馈：「有容器但 stopped 的没列出来」⇒ `docker ps -a`（带回落）
+
+**反馈**：「有容器但是stopped的没有列在边上」。
+
+**根因**：读路径一直用 `docker ps`（**只列运行中**）⇒ 已停止/已创建容器根本进不了快照。
+
+**修（分两层，缺一不可）**：
+1. `read/docker-probe.ts`：新增 `DOCKER_PS_ALL_ARGV`（`docker ps -a …`）+ `DockerPsOptions.allContainers`；**默认仍是只看运行中**，
+   只有显式传 `allContainers: true` 才用 `-a`。⚠️ 刻意**不**写第二个 `--format` 字面量（用切片插入 `-a`）——
+   红线用例「源码里只允许一处 argv 定义」照旧为绿。
+2. `snapshot.ts`：**先试 `-a`；失败就退回只看运行中，并把原因写进快照**（`containerListNote`），
+   经 `wire.ts` → `client/types.ts` → `page.ts` → 容器卡以 `data-testid="container-action-note-all"` 显示。
+   为什么必须有这条回落（真机实测）：本机存在一个坏容器 `/dify-api`（`b7353269d733`，`State=exited`，daemon 报
+   `rw layer snapshot not found`）⇒ **`docker ps -a` 整体退出码 1**。若不回落，一个坏容器会让**整张容器表消失**，
+   比「看不到 stopped」严重得多。
+3. UI：标题改为「容器（共 N，运行中 M）」；未运行的容器 **停止/重启置灰**（`title` 说明「请用启动」），运行中的 **启动置灰**。
+
+**真机实测（`accept-docker-ports` @43391，实跑）**：
+- 快照：`docker.ok=True`、`argv = wsl.exe -d Ubuntu2204 -- docker ps --format {{json .}}`（**已回落**）、
+  `containerListNote = 列表只含运行中的容器：docker ps -a 失败（…退出码 1…）`、容器数 0（此刻本机无运行中容器）
+- GUI：`[data-testid="container-action-note-all"]` 文案与上句一致、标题「容器（共 0，运行中 0）」
+- 直连复核：`wsl -d Ubuntu2204 -- docker ps -a --format '{{json .}}'` ⇒ **exit 1** + `rw layer snapshot not found for container b7353269d733…`；
+  同一环境 `docker ps --format …` ⇒ **exit 0** ⇒ 证明回落是**必要**而非防御性摆设
+
+**回归**：`tsc` 0 · `node --test` **459/459/0** · `vitest` **15 文件 / 140 用例** · 主包 **49,183 B（零增长）** / chunk **136,966 B**
+**环境**：验证用的 `dsh-stop-probe` 已 `rm -f`，容器数回到 **31**；未删改主人任何容器（含那个坏掉的 `/dify-api`）。

@@ -91,6 +91,9 @@ export function ContainersBlock(props: {
   readonly onChanged?: (() => void) | undefined;
   /** 控件不可用的原因（`control === undefined` 时展示） */
   readonly disabledReason?: string | undefined;
+  /** 「列表只含运行中」的回落说明（docker ps -a 失败时）；
+ull/缺省 = 全部容器 */
+  readonly note?: string | null | undefined;
 }): ReactElement {
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -134,7 +137,14 @@ export function ContainersBlock(props: {
 
   return (
     <section className="wdp-card">
-      <h3>容器（{props.count}）</h3>
+      <h3>
+        容器（共 {props.count}，运行中 {props.rows.filter((row) => row.state.toLowerCase() === 'running').length}）
+      </h3>
+      {props.note === undefined || props.note === null ? null : (
+        <p className="wdp-secondary wdp-gate" data-testid={CONTAINER_TESTID.note + '-all'}>
+          {props.note}
+        </p>
+      )}
       {disabled ? (
         <p className="wdp-secondary" data-testid={CONTAINER_TESTID.note}>
           {props.disabledReason ?? '容器动作未接线：只能浏览（宿主没有提供容器控制通道）'}
@@ -170,7 +180,8 @@ export function ContainersBlock(props: {
                   type="button"
                   className="wdp-btn"
                   data-testid={`${CONTAINER_TESTID.start}-${row.id}`}
-                  disabled={disabled || busy !== null}
+                  disabled={disabled || busy !== null || row.state.toLowerCase() === 'running'}
+                  title={row.state.toLowerCase() === 'running' ? '已在运行：不需要启动' : undefined}
                   onClick={() => void run(row.id, 'start')}
                 >
                   启动
@@ -179,7 +190,8 @@ export function ContainersBlock(props: {
                   type="button"
                   className="wdp-btn"
                   data-testid={`${CONTAINER_TESTID.stop}-${row.id}`}
-                  disabled={disabled || busy !== null}
+                  disabled={disabled || busy !== null || row.state.toLowerCase() !== 'running'}
+                  title={row.state.toLowerCase() !== 'running' ? '未在运行：停止无意义' : undefined}
                   onClick={() => void run(row.id, 'stop')}
                 >
                   停止
@@ -188,7 +200,8 @@ export function ContainersBlock(props: {
                   type="button"
                   className="wdp-btn"
                   data-testid={`${CONTAINER_TESTID.restart}-${row.id}`}
-                  disabled={disabled || busy !== null}
+                  disabled={disabled || busy !== null || row.state.toLowerCase() !== 'running'}
+                  title={row.state.toLowerCase() !== 'running' ? '未在运行：请用「启动」' : undefined}
                   onClick={() => void run(row.id, 'restart')}
                 >
                   重启
@@ -368,3 +381,5 @@ export function ExternalRulesBlock({ external }: { readonly external: ExternalRu
     </section>
   );
 }
+
+

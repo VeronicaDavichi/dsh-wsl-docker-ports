@@ -150,7 +150,15 @@ export interface NatGuideView {
 
 /** docker 读侧结果（REQ-2.3：三类失败必须可区分，SHALL NOT 用空列表冒充没有容器） */
 export type DockerView =
-  | { readonly ok: true; readonly containers: readonly DockerContainer[]; readonly emptyAfterRetry: boolean; readonly argv: readonly string[] }
+  | {
+      readonly ok: true;
+      readonly containers: readonly DockerContainer[];
+      readonly emptyAfterRetry: boolean;
+      readonly argv: readonly string[];
+      /** 
+ull/缺省 = 来自 docker ps -a；字符串 = 退回只看运行中的原因（010 真机反馈） */
+      readonly containerListNote?: string | null;
+    }
   | { readonly ok: false; readonly reason: string; readonly message: string; readonly hint: string; readonly raw: string | null };
 
 /** 目标发行版（T5.8；由宿主从 `wsl -l -v` + 解析结果给出） */
@@ -260,3 +268,4 @@ export function buildSnapshotQuery(declaration: SnapshotDeclaration, allowColdSt
   if (allowColdStart) params.set(QUERY_ALLOW_COLD_START, '1');
   return params.toString();
 }
+
