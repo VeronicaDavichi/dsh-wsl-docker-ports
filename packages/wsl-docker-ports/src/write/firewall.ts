@@ -48,14 +48,26 @@ export interface FirewallArgs {
   readonly localPort: number;
   readonly profile: 'Any';
   readonly group: string;
+  /**
+   * 012（2026-10-22）：限定来源网段（`<网络地址>/<PrefixLength>`）。
+   *
+   * **缺省（不出现）= 010 及之前的逐字行为**（不限制 `-RemoteAddress`），
+   * 只有用户显式选了具体监听 IP 时才带上 —— 那时放行范围收窄成该网卡所在网段。
+   */
+  readonly remoteAddress?: string;
 }
 
 /**
  * 放行参数：**唯一**的构造入口。注意 `localPort` 是 `number`（不是字符串）——
  * 类型层就排除了 `Any` / `5000-5003` 这类东西被塞进来。
+ *
+ * `remoteAddress` 传 `undefined` ⇒ 返回值里**没有**这个键（既有 `deepEqual` 断言逐字不变）。
  */
-export function firewallAllowArgs(port: number): FirewallArgs {
+export function firewallAllowArgs(port: number, remoteAddress?: string): FirewallArgs {
   if (!isPortNumber(port)) throw new RangeError(`端口必须是 1..65535 的整数（收到 ${String(port)}）`);
+  if (remoteAddress !== undefined && !isCidr(remoteAddress)) {
+    throw new RangeError(`-RemoteAddress 必须是 <IPv4>/<0..32> 的网段（收到 ${remoteAddress}）`);
+  }
   return {
     displayName: firewallRuleName(port),
     direction: 'Inbound',
@@ -64,6 +76,7 @@ export function firewallAllowArgs(port: number): FirewallArgs {
     localPort: port,
     profile: 'Any',
     group: FIREWALL_GROUP,
+    ...(remoteAddress === undefined ? {} : { remoteAddress }),
   };
 }
 
@@ -77,13 +90,32 @@ export function firewallAllowCommandText(args: FirewallArgs): string {
     `-Protocol ${args.protocol}`,
     `-LocalPort ${String(args.localPort)}`,
     `-Profile ${args.profile}`,
+    ...(args.remoteAddress === undefined ? [] : [`-RemoteAddress "${args.remoteAddress}"`]),
     `-Group "${args.group}"`,
   ].join(' ');
 }
 
-/** `lan` 的单端口放行步骤（REQ-2.3） */
-export function buildFirewallAddStep(port: number): WriteStep {
-  const args = firewallAllowArgs(port);
+/**
+ * 把「选中的监听 IP + 网卡掩码长度」折成 `RemoteAddress` 网段（012 决策 3）。
+ *
+ * 例：`192.168.31.129` + `24` ⇒ `192.168.31.0/24`；`10.1.2.3` + `32` ⇒ `10.1.2.3/32`。
+ * 地址/掩码非法 ⇒ `null`（调用方**必须**据此拦下整个动作：拿不到网段却仍建规则 =
+ * 放行范围退化成「所有来源」，那正是 012 要收窄的东西）。
+ */
+export function cidrFor(address: string, prefixLength: number): string | null {
+  if (!isIpv4Literal(address)) return null;
+  if (!Number.isInteger(prefixLength) || prefixLength < 0 || prefixLength > 32) return null;
+  const parts = address.split('.').map((part) => Number(part));
+  const ip = ((parts[0] as number) * 0x1000000 + (parts[1] as number) * 0x10000 + (parts[2] as number) * 0x100 + (parts[3] as number)) >>> 0;
+  const mask = prefixLength === 0 ? 0 : (0xffffffff << (32 - prefixLength)) >>> 0;
+  const base = (ip & mask) >>> 0;
+  const octets = [base >>> 24, (base >>> 16) & 0xff, (base >>> 8) & 0xff, base & 0xff];
+  return `${octets.join('.')}/${String(prefixLength)}`;
+}
+
+/** `lan` 的单端口放行步骤（REQ-2.3）；`remoteAddress` 缺省 ⇒ 010 行为不变 */
+export function buildFirewallAddStep(port: number, remoteAddress?: string): WriteStep {
+  const args = firewallAllowArgs(port, remoteAddress);
   return {
     kind: 'firewall-add',
     port,
@@ -95,6 +127,7 @@ export function buildFirewallAddStep(port: number): WriteStep {
       localPort: args.localPort,
       profile: args.profile,
       group: args.group,
+      ...(args.remoteAddress === undefined ? {} : { remoteAddress: args.remoteAddress }),
     },
     commandText: firewallAllowCommandText(args),
   };
@@ -133,4 +166,20 @@ export function firewallNameExists(port: number, existingNames: readonly string[
  */
 export function looksLikeWildcardAllow(text: string): boolean {
   return /-LocalPort\s+(?:"?\*"?|Any|any|0-65535|\d+-\d+)/.test(text);
+}
+
+/** 严格点分四段 IPv4（与 `read/local-addresses.ts` 同口径；写侧独立一份，避免 read → write 反向依赖） */
+function isIpv4Literal(value: string): boolean {
+  const parts = value.split('.');
+  if (parts.length !== 4) return false;
+  return parts.every((part) => /^\d{1,3}$/u.test(part) && Number(part) >= 0 && Number(part) <= 255);
+}
+
+/** `<IPv4>/<0..32>`（`cidrFor` 的产物与 `-RemoteAddress` 的入参都过这一关） */
+function isCidr(value: string): boolean {
+  const separator = value.lastIndexOf('/');
+  if (separator <= 0) return false;
+  const prefix = Number(value.slice(separator + 1));
+  if (!Number.isInteger(prefix) || prefix < 0 || prefix > 32) return false;
+  return isIpv4Literal(value.slice(0, separator));
 }

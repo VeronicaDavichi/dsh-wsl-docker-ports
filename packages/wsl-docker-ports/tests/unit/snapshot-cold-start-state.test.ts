@@ -56,12 +56,22 @@ function commandsOf(fake: ReturnType<typeof routingExecutor>): string[] {
 
 const DECLARATION = { managedPorts: [...FIXTURE_PORTS], scopes: {}, elevationPolicy: 'none' } as const;
 
+/**
+ * 012（2026-10-22）新增的**唯一**一条命令：候选监听地址枚举（只读 `Get-NetIPAddress`）。
+ *
+ * 逐字写在这里（不从 `src/read/local-addresses.ts` 取）—— 否则「命令集合没变」这条棘轮
+ * 会跟着被测代码一起漂移。改动它必须先想清楚「为什么读侧要多跑一条命令」。
+ */
+const LOCAL_ADDRESSES_COMMAND =
+  "powershell.exe -NoProfile -NonInteractive -Command $ErrorActionPreference = 'Stop'; Get-NetIPAddress -AddressFamily IPv4 | ForEach-Object { \"$($_.InterfaceAlias)|$($_.IPAddress)|$($_.PrefixLength)\" }";
+
 /** 修复前的既有命令集合（判据 ⑤ 的逐字基线：修复**不许**改动任何一条命令） */
 const READ_ONLY_COMMANDS = [
   'wsl.exe -l -v',
   'netsh.exe interface portproxy show v4tov4',
   'wsl.exe -d Ubuntu2204 -- docker ps -a --format {{json .}}',
   'wsl.exe -d Ubuntu2204 -- ip -4 -o addr show dev eth0',
+  LOCAL_ADDRESSES_COMMAND,
 ];
 
 test('003 修：冷启动实证 ⇒ distro.state 必须记为 Running 且留痕（同响应不许自相矛盾）', async () => {
@@ -113,7 +123,12 @@ test('003 修：反冷启动闸门未变 —— 缺省时一条 `wsl.exe -d` 都
   const commands = commandsOf(fake);
 
   // ── 判据 ⑤：闸门在**执行之前**返回 ⇒ 发行版内命令一条都没被 spawn（这条就是「不引入冷启动」）
-  assert.deepEqual(commands, ['wsl.exe -l -v', 'netsh.exe interface portproxy show v4tov4'], `闸门必须在执行前返回，实际 ${JSON.stringify(commands)}`);
+  // 012：第三条是 Windows 侧的只读网卡枚举（与 WSL 状态无关，故闸门挡下时它照样跑）
+  assert.deepEqual(
+    commands,
+    ['wsl.exe -l -v', 'netsh.exe interface portproxy show v4tov4', LOCAL_ADDRESSES_COMMAND],
+    `闸门必须在执行前返回，实际 ${JSON.stringify(commands)}`,
+  );
   assert.equal(commands.filter((line) => line.includes(' -d ')).length, 0, '缺省路径 SHALL NOT 冷启动发行版（001 REQ-2.4）');
 
   // ── 被挡下的事实要如实传到两个视图里（不许因为「状态调和」就把失败吞掉）

@@ -23,6 +23,7 @@ import type { DistroPanelData, ForwardWriteReport } from './host.ts';
 import type {
   DistroPanelView,
   ExecControlView,
+  ListenAddressControlView,
   NatGatePanelView,
   PortRowView,
   PortsPageView,
@@ -153,6 +154,51 @@ function scopeFor(snapshot: PortsSnapshot, port: number): Scope {
   return snapshot.scopes[String(port)] ?? 'loopback';
 }
 
+/** 默认监听项（012 决策 2：**缺省仍是 `0.0.0.0`**，行为与 010 逐字一致） */
+export const LISTEN_ADDRESS_ANY = '0.0.0.0';
+/** 默认项文案（012 验收 A1 要逐字出现） */
+export const LISTEN_ADDRESS_ANY_LABEL = '0.0.0.0（所有网卡）';
+
+/**
+ * 监听地址下拉（012 REQ-1.1/2.1）。
+ *
+ * 三个决定都写在这儿，避免渲染侧各自解释：
+ * 1. **缺省值恒 `0.0.0.0`** —— 选了「局域网」但没选网卡 = 010 的行为（不静默换地址）；
+ * 2. **候选只来自快照**（`localAddresses`，已按决策 1 过滤）—— 不在客户端猜网卡；
+ * 3. **读失败/无候选 ⇒ 只剩默认项 + `note` 原因**（REQ-2.1 降级；「读不到」绝不显示成「没有网卡」）。
+ */
+export function buildListenAddressControl(
+  snapshot: PortsSnapshot,
+  port: number,
+  scope: Scope,
+  gate: WriteGate,
+): ListenAddressControlView {
+  const candidates = snapshot.localAddresses.filter((entry) => entry.address !== LISTEN_ADDRESS_ANY);
+  const options = [
+    { value: LISTEN_ADDRESS_ANY, label: LISTEN_ADDRESS_ANY_LABEL },
+    ...candidates.map((entry) => ({
+      value: entry.address,
+      label: `${entry.address}（${entry.ifAlias}，/${String(entry.prefixLength)}）`,
+    })),
+  ];
+  const note =
+    snapshot.localAddressesError !== null
+      ? `读不到物理网卡 IPv4 清单：${snapshot.localAddressesError}（只剩默认 0.0.0.0）`
+      : candidates.length === 0
+        ? '没有检测到候选的物理网卡 IPv4（只剩默认 0.0.0.0：等价于在全部网卡上监听）'
+        : null;
+  const disabledReason = !gate.allowed ? gate.reason : scope !== 'lan' ? '仅「局域网」作用域需要选监听地址（loopback 恒 127.0.0.1）' : null;
+  return {
+    testId: 'sel-listen-address',
+    port,
+    value: LISTEN_ADDRESS_ANY,
+    options,
+    enabled: gate.allowed && scope === 'lan',
+    disabledReason,
+    note,
+  };
+}
+
 /** 端口行（五态 + 动作 + 漂移 + 逐端口作用域） */
 export function buildPortRows(snapshot: PortsSnapshot, gate: WriteGate): PortRowView[] {
   if (snapshot.diff.ok === false) return [];
@@ -168,6 +214,7 @@ export function buildPortRows(snapshot: PortsSnapshot, gate: WriteGate): PortRow
       reasonText: classification.reason === 'wsl-localhost-forwarding' ? 'WSL 自带 localhost 转发 ⇒ 该端口无需显式规则' : classification.reason === 'no-docker-mapping' ? 'docker 已不再映射该端口，规则仍在' : null,
       scopeMismatch: classification.scopeMismatch,
       scopeControl: buildScopeControl(classification.port, scope, portGate),
+      listenAddress: buildListenAddressControl(snapshot, classification.port, scope, portGate),
       actions: buildForwardActions(classification, portGate),
       drift: buildDriftView(classification),
       fix:

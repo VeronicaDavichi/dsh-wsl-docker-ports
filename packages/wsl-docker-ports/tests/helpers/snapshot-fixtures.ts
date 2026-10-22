@@ -32,6 +32,8 @@ export interface FixtureFailureOverrides {
   readonly eth0?: boolean;
   readonly docker?: boolean;
   readonly netsh?: boolean;
+  /** 012：`false` = 让候选监听地址枚举失败（构造「只剩默认项 + 原因文案」的降级态） */
+  readonly localAddresses?: boolean;
   /**
    * `wsl -l -v` 一次性快照里目标发行版的状态（缺省 `Running`）。
    * `'Stopped'` = 造冷启动场景（见 `WSL_LIST_STOPPED`）。
@@ -45,6 +47,13 @@ export interface FixtureFailureOverrides {
 export function routingExecutor(overrides: FixtureFailureOverrides = {}): ReturnType<typeof createFakeExecutor> {
   return createFakeExecutor((call) => {
     const line = [call.file, ...call.argv].join(' ');
+    if (line.startsWith('powershell.exe')) {
+      // 012：候选监听地址枚举（**真机 fixture 的字节**，过滤后只剩 192.168.31.129）
+      if (!line.includes('Get-NetIPAddress')) return failure('Unexpected', { stderr: `未预期的 PowerShell 调用：${line}` });
+      return overrides.localAddresses === false
+        ? failure('CommandNotFound', { stderr: 'powershell.exe 不在 PATH' })
+        : ok(readFixture('get-netipaddress.raw'));
+    }
     if (line.startsWith('wsl.exe -l -v')) return ok(overrides.wslState === 'Stopped' ? WSL_LIST_STOPPED : WSL_LIST);
     if (line.includes('show v4tov4')) {
       return overrides.netsh === false

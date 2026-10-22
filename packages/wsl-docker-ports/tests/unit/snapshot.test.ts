@@ -140,13 +140,20 @@ test('T6.8 判据①：路由返回的快照与 diff 输入一致（19 条真规
   // ── 🔴 判据①的强形态：**独立复算** —— 用同一批事实直接喂 diff()，与路由返回的判决逐字相等
   // （顺序：先把「本次 build 跑了哪些命令」钉死，再做复算 —— 复算自己也会调探针）
   const commands = fake.calls.map((call) => [call.file, ...call.argv].join(' '));
-  assert.deepEqual(commands, [
+  assert.deepEqual(commands.slice(0, 4), [
     'wsl.exe -l -v',
     'netsh.exe interface portproxy show v4tov4',
     'wsl.exe -d Ubuntu2204 -- docker ps -a --format {{json .}}',
     'wsl.exe -d Ubuntu2204 -- ip -4 -o addr show dev eth0',
-  ], `命令集必须恰好这 4 条**只读**命令，实际 ${JSON.stringify(commands)}`);
-  assert.equal(commands.some((line) => /portproxy (add|delete|reset)|Start-Process|gsudo/u.test(line)), false, '只读路径不得出现任何写/提权命令');
+  ], `命令集的前 4 条必须逐字不变，实际 ${JSON.stringify(commands)}`);
+  // 012（2026-10-22）：第 5 条 = 候选监听地址的**只读**枚举（新增的唯一一条命令）
+  assert.equal(commands.length, 5, `命令集必须恰好 5 条只读命令（含 012 的网卡枚举），实际 ${JSON.stringify(commands)}`);
+  assert.match(
+    commands[4] ?? '',
+    /^powershell\.exe -NoProfile -NonInteractive -Command .*Get-NetIPAddress/u,
+    '第 5 条必须是 powershell 的只读 Get-NetIPAddress 枚举',
+  );
+  assert.equal(commands.some((line) => /portproxy (add|delete|reset)|Start-Process|gsudo|Set-NetIPAddress|New-NetIPAddress/u.test(line)), false, '只读路径不得出现任何写/提权命令');
 
   const distros = await listDistros(fake.executor);
   assert.equal(distros.ok, true);
@@ -275,3 +282,29 @@ test('T6.8 快照可 JSON 往返（传输契约必须是纯数据）', async () 
   console.log(`  · 扫了 ${String(functions.length)} 字节 JSON（往返逐字相等）`);
 });
 
+
+test('012 判据③：候选监听地址进快照；读失败只降级这两个字段（REQ-2.1）', async () => {
+  const good = await createSnapshotBuilder(depsOf(routingExecutor())).build(DECLARATION, {});
+  const bad = await createSnapshotBuilder(depsOf(routingExecutor({ localAddresses: false }))).build(DECLARATION, {});
+  assert.equal(good.ok, true);
+  assert.equal(bad.ok, true, '枚举失败是**快照内**的降级态，不是路由级错误（REQ-2.1 不允许整页不可用）');
+  if (!good.ok || !bad.ok) return;
+
+  // ── 成功态：真 fixture 过滤后只剩物理网卡那一条
+  assert.deepEqual(good.snapshot.localAddresses.map((entry) => entry.address), ['192.168.31.129']);
+  assert.equal(good.snapshot.localAddressesError, null, '成功态不许带原因');
+  assert.match(good.snapshot.localAddresses[0]?.ifAlias ?? '', /以太网 4/u);
+  assert.equal(good.snapshot.localAddresses[0]?.prefixLength, 24);
+
+  // ── 失败态：列表为空，但**必须**带原因（静默空列表 = 谎报「没有网卡」）
+  assert.deepEqual(bad.snapshot.localAddresses, []);
+  assert.match(bad.snapshot.localAddressesError ?? '', /powershell-missing/u);
+
+  // ── 降级不连坐：docker / 规则 / 判决 / 端口行都照常
+  assert.equal(bad.snapshot.diff.ok, true, '规则照读 ⇒ 判决不受影响');
+  assert.equal(bad.snapshot.docker.ok, true);
+  const page = buildPortsPageView(bad.snapshot);
+  assert.equal(page.ports.length, 19, `失败态端口判决仍 19 行，实际 ${String(page.ports.length)}`);
+  assert.ok(page.ports.every((row) => row.listenAddress.options[0]?.value === '0.0.0.0'), '每行的下拉仍以默认项打头');
+  console.log(`  · 成功态候选 ${String(good.snapshot.localAddresses.length)} 个；失败态 error=${JSON.stringify(bad.snapshot.localAddressesError?.slice(0, 40))}、端口仍 ${String(page.ports.length)} 行`);
+});

@@ -19,6 +19,7 @@ import { DEFAULT_LOG_TAIL } from '../docker/wire.ts';
 import type { ContainerControl } from './container-control.ts';
 import type { ContainerRowView, DistroPanelView, DockerView, ExternalRulesView, ForwardActionView, PortRowView, UnsupportedRowView } from './types.ts';
 import { TESTID } from './rows.ts';
+import { ListenAddressCell } from './pane-listen.tsx';
 
 /** 容器动作的测试锚点（**故意不放进 `rows.ts`**：那是主包侧模块，加一个键就涨主包字节） */
 export const CONTAINER_TESTID = {
@@ -269,9 +270,12 @@ export function PortsBlock(props: {
   readonly note: string | null;
   readonly scopeDraft: Readonly<Record<string, Scope>>;
   readonly onScope: (port: number, scope: Scope) => void;
+  /** 012：监听地址的本地草稿（键 = 端口号字符串；缺省回落到 `row.listenAddress.value`） */
+  readonly listenDraft: Readonly<Record<string, string>>;
+  readonly onListenAddress: (port: number, address: string) => void;
   readonly onForward: (action: ForwardActionView['kind'], row: PortRowView) => void;
 }): ReactElement {
-  const { rows, note, scopeDraft, onScope, onForward } = props;
+  const { rows, note, scopeDraft, onScope, listenDraft, onListenAddress, onForward } = props;
   return (
     <section className="wdp-card">
       <h3>端口转发（五态）</h3>
@@ -313,6 +317,12 @@ export function PortsBlock(props: {
                     </option>
                   ))}
                 </select>
+                <ListenAddressCell
+                  control={row.listenAddress}
+                  scope={scopeDraft[String(row.port)] ?? row.scopeControl.value}
+                  draft={listenDraft[String(row.port)]}
+                  onChange={(address) => onListenAddress(row.port, address)}
+                />
               </td>
               <td>
                 <PortRowActions row={row} onForward={onForward} />

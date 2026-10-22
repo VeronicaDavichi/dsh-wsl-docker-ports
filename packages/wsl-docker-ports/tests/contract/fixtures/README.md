@@ -7,6 +7,27 @@
 | --- | --- | --- |
 | `netsh-portproxy-v4tov4.raw` | `netsh.exe interface portproxy show v4tov4` | **纯 ASCII**（高位字节 **0%**；表头英文 `Listen on ipv4:`）、**CRLF**、**19 条**规则 |
 | `docker-ps.redacted.jsonl` | `wsl -d Ubuntu2204 -- timeout 20 docker ps --format '{{json .}}'` | UTF-8、**JSON Lines**（每容器一行）、**6** 个容器 |
+| `get-netipaddress.raw` | `powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference = 'Stop'; Get-NetIPAddress -AddressFamily IPv4 \| ForEach-Object { \"$($_.InterfaceAlias)\|$($_.IPAddress)\|$($_.PrefixLength)\" }"` | UTF-8、**CRLF**、**8 行**（`别名\|地址\|掩码长度`）、采集于 **2026-10-22** |
+
+## `get-netipaddress.raw`（012 决策 1 的事实基础）
+
+**原始 8 行**（未过滤）：
+
+    vEthernet (WSL (Hyper-V firewall))|172.20.192.1|20
+    以太网 4|192.168.31.129|24
+    本地连接* 2|169.254.211.167|16
+    aTrustVNIC|2.0.0.1|24
+    本地连接* 1|169.254.83.246|16
+    蓝牙网络连接|169.254.130.120|16
+    WLAN|169.254.48.96|16
+    Loopback Pseudo-Interface 1|127.0.0.1|8
+
+过滤后**只剩** `192.168.31.129`（以太网 4，/24）—— 另外 7 行分别被网段（`172.16/12`、`169.254/16`、`127/8`）
+与网卡别名（`vEthernet` / `aTrust` / `Loopback` / `蓝牙`）排除。这张表就是 012 验收 A1 的**逐条依据**：
+`172.20.201.152`（WSL eth0）、`172.20.192.1`（WSL vEthernet）、`127.0.0.1` 都**不许**出现在下拉里。
+
+⚠️ 这是**只读**采集（`Get-NetIPAddress`），不含任何可识别用户身份的信息（内网地址与网卡别名除外，
+而它们本来就是 001/003 文档里的既有真机事实）。
 
 ## 采集时实测到的三条硬事实（已写进 `src/read/docker.ts` 的注释与 003 的 design）
 

@@ -28,6 +28,8 @@ export function routingExecutor(): ReturnType<typeof createFakeExecutor> {
     if (line.startsWith('wsl.exe -l -v')) return ok(WSL_LIST);
     // ⚠️ 顺序要紧：防火墙探针的命令行里含 `dsh-wsl-docker-ports`（**含 `docker` 子串**）⇒ 必须先判 powershell
     if (line.startsWith('powershell.exe') && line.includes('Get-NetFirewallRule')) return ok(FIREWALL_NAMES);
+    // 012：候选监听地址（真机 fixture；过滤后只剩 192.168.31.129）
+    if (line.startsWith('powershell.exe') && line.includes('Get-NetIPAddress')) return ok(readFixture('get-netipaddress.raw'));
     if (line.includes('show v4tov4')) return ok(readFixture('netsh-portproxy-v4tov4.raw'));
     if (line.includes('docker')) return ok(readFixture('docker-ps.redacted.jsonl'));
     if (line.includes('addr show dev eth0')) return ok(ETH0_TEXT);

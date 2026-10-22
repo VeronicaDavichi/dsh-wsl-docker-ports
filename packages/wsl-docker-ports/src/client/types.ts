@@ -77,11 +77,33 @@ export interface PortRowView {
   /** 事实位：监听地址与声明作用域不一致（design §3 订正②；**不**改 state） */
   readonly scopeMismatch: boolean;
   readonly scopeControl: ScopeControlView;
+  /** 012 REQ-1.1：监听地址下拉（仅「局域网」作用域渲染；`loopback` 恒 127.0.0.1） */
+  readonly listenAddress: ListenAddressControlView;
   readonly actions: readonly ForwardActionView[];
   readonly drift: DriftView | null;
   readonly fix: DriftFixView | null;
   readonly needsRule: boolean;
   readonly containerNames: readonly string[];
+}
+
+/**
+ * 监听地址下拉（012 REQ-1.1/2.1）。
+ *
+ * - `options` = 默认项 `0.0.0.0（所有网卡）` + 候选物理网卡 IPv4（标签带别名与 `/PrefixLength`）；
+ * - 枚举失败 ⇒ `options` 只剩默认项，`note` 带上**原因文案**（读不到 ≠ 没有网卡）；
+ * - `enabled` 只受写闸门管（作用域不是 lan 时由渲染侧整块不显示，见 `pane-tables.tsx`）。
+ */
+export interface ListenAddressControlView {
+  /** 恒为 `sel-listen-address`（012 验收 A1 的选取器） */
+  readonly testId: string;
+  readonly port: number;
+  /** 当前值（缺省 `0.0.0.0`；用户选择是客户端本地草稿，暂不回写服务端配置） */
+  readonly value: string;
+  readonly options: readonly { readonly value: string; readonly label: string }[];
+  readonly enabled: boolean;
+  readonly disabledReason: string | null;
+  /** 读不到网卡清单 / 一个候选都没有时的原因文案（正常时 `null`） */
+  readonly note: string | null;
 }
 
 /** 不可转发的映射（REQ-9.2：标「不支持」，**不许**直接忽略，也不代偿） */

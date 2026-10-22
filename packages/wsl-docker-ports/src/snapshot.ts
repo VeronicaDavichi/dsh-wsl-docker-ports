@@ -53,6 +53,8 @@ import { probeDockerPs } from './read/docker-probe.ts';
 import type { DockerPsOptions, DockerPsOutcome } from './read/docker-probe.ts';
 import { createEth0Source } from './read/eth0-source.ts';
 import type { Eth0SourceOptions, Eth0Source } from './read/eth0-source.ts';
+import { probeLocalAddresses } from './read/local-addresses.ts';
+import type { LocalAddressesOptions } from './read/local-addresses.ts';
 import { readLocalhostForwarding } from './read/localhost-forwarding.ts';
 import type { LocalhostForwardingDeps } from './read/localhost-forwarding.ts';
 import { probePortproxyRules } from './read/netsh-probe.ts';
@@ -68,6 +70,8 @@ export interface SnapshotDeps {
   readonly netsh?: NetshProbeOptions | undefined;
   readonly docker?: DockerPsOptions | undefined;
   readonly eth0?: Eth0SourceOptions | undefined;
+  /** 012：候选监听地址探针（`timeoutMs` 可覆盖；**不注入探针本身**，改用假执行器走真解析） */
+  readonly localAddresses?: LocalAddressesOptions | undefined;
   /** 覆盖 nat 判定（默认 001 的 `readNetworkingMode()`）；测试用来构造 mirrored / unreadable 形状 */
   readonly readNetworkingMode?: (() => Promise<NetworkingModeOutcome>) | undefined;
   /** 提权是否可用（**只影响写控件门禁**；默认 `false` = 保守）。由 `plugin.ts` 注入 005 的探测 */
@@ -191,6 +195,12 @@ export function createSnapshotBuilder(deps: SnapshotDeps): SnapshotBuilder {
         const forwarding = await readLocalhostForwarding(deps.localhostForwarding ?? {});
         const localhostForwarding = forwarding.ok ? forwarding.enabled : null;
 
+        // ⑥.b 候选监听地址（012 REQ-1.1/2.1）：**读失败只降级这一栏**（列表空 + 原因），页面其余照旧。
+        //     排在这里的理由与 netsh 不同：它不是判决输入，失败绝不升级成路由级错误。
+        const localAddressesOutcome = await probeLocalAddresses(deps.executor, deps.localAddresses ?? {});
+        const localAddresses = localAddressesOutcome.ok ? localAddressesOutcome.addresses : [];
+        const localAddressesError = localAddressesOutcome.ok ? null : localAddressesOutcome.message;
+
         // ⑦ 声明解析（宿主只把它当声明；事实一律现读）+ 纯判决
         const parsed = parseManagedPorts(declaration.managedPorts);
         const managedPorts = parsed.ok ? parsed.ports : EMPTY_MANAGED;
@@ -202,6 +212,9 @@ export function createSnapshotBuilder(deps: SnapshotDeps): SnapshotBuilder {
           eth0Ip,
           localhostForwarding: localhostForwarding ?? false,
           scopes,
+          // 012 决策 1/2：候选清单里的 IP **不是**冲突（否则用户刚选的具体 IP 会被判 conflict）；
+          // 但也不会因此被当成「本插件默认形态」—— 判决仍按五态事实给，只是不再报形态冲突。
+          allowedListenAddresses: localAddresses.map((entry) => entry.address),
         });
 
         return {
@@ -231,6 +244,8 @@ export function createSnapshotBuilder(deps: SnapshotDeps): SnapshotBuilder {
             // 🔴 诚实值：本轮**没有**实现 iphlpsvc 探测（Spec 未要求，且它不在任何判据里）⇒
             // 一律 `null`（= 未探测）。不写 `true`/`false` 是因为那两个值都会变成一条**没测过**的断言。
             iphlpsvcRunning: null,
+            localAddresses,
+            localAddressesError,
           },
         };
       } catch (error) {

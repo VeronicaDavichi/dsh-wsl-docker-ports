@@ -121,6 +121,20 @@ export interface DiffInput {
   readonly localhostForwarding: boolean;
   /** 逐端口作用域；键是端口号的字符串形式（配置里的写法），缺省 = `loopback` */
   readonly scopes?: Readonly<Record<string, Scope>>;
+  /**
+   * 012 决策 1：**额外**可认作「本插件监听地址」的候选 IP（Windows 物理网卡 IPv4）。
+   *
+   * 只放宽**形态冲突**判据（`OUR_LISTEN_ADDRESSES` 仍是那两个默认值）；不改变五态事实，
+   * 也不把候选 IP 当成「默认形态」去写（写入的地址永远来自用户显式选择，见 `write/plan.ts`）。
+   */
+  readonly allowedListenAddresses?: readonly string[];
+  /**
+   * 012 逐端口监听地址选择（键 = 端口号字符串，值 = 具体 IP）。
+   *
+   * 只影响 `lan`：`expectedListenAddress('lan', 选中值)` 用它替掉默认 `0.0.0.0`，
+   * 于是「用户选了 `192.168.31.129` 的规则」不会因为「不是 0.0.0.0」被判 `scopeMismatch`。
+   */
+  readonly listenAddresses?: Readonly<Record<string, string>>;
 }
 
 export interface DiffResult {

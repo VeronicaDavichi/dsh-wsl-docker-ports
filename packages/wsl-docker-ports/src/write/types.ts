@@ -44,6 +44,11 @@ export interface WritePlan {
   readonly port: number;
   readonly scope: Scope;
   readonly eth0Ip: string;
+  /**
+   * 012（2026-10-22）：本次规划实际使用的监听地址（仅当用户显式选了具体 IP 时出现）。
+   * 缺省不出现 ⇒ 010 及之前的所有断言与形状逐字不变。
+   */
+  readonly listenAddress?: string;
   /** 有序步骤：顺序即执行顺序（REQ-2.3 要求「portproxy add + 防火墙 add」这个次序） */
   readonly steps: readonly WriteStep[];
   /** 必须让用户看见的解释（REQ-2.5「不静默」；如 `localhostForwarding=false` 的差异说明） */
@@ -59,7 +64,9 @@ export type WriteBlockReason =
   | 'state-conflict'
   | 'state-precondition'
   | 'rule-not-owned'
-  | 'firewall-rule-exists';
+  | 'firewall-rule-exists'
+  /** 012：选中的监听地址/掩码算不出网段 ⇒ 零动作（不允许退化成「放行所有来源」） */
+  | 'listen-address-invalid';
 
 /**
  * 被拦下的规划。**`steps` 恒为空** —— 这是 REQ-1.2 / REQ-1.3 的安全形态：
@@ -102,4 +109,14 @@ export interface WritePlanInput {
   readonly localhostForwarding?: boolean;
   /** 已存在的防火墙规则名（REQ-2.6 同名冲突判定）；不给则该门不启用 */
   readonly existingFirewallNames?: readonly string[];
+  /**
+   * 012（2026-10-22）：用户为**本端口**显式选择的监听地址（仅 `lan` 有意义）。
+   *
+   * 不给 ⇒ 逐字同 010（`lan` = `0.0.0.0`）。给了 ⇒ `portproxy-add` 的 `listenaddress` 用它，
+   * 且 `firewall-add` 追加 `-RemoteAddress <网段>`（网段由 `listenAddressPrefixLength` 算，
+   * 缺省 `/32`）。算不出网段 ⇒ `listen-address-invalid` 拦下、零步骤。
+   */
+  readonly listenAddress?: string;
+  /** 选中地址的掩码长度（来自候选清单的 `PrefixLength`；缺省 `32` = 只放行该地址本身） */
+  readonly listenAddressPrefixLength?: number;
 }

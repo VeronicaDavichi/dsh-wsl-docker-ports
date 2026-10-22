@@ -36,13 +36,11 @@ import {
   buildFirewallDeleteStep,
   firewallNameExists,
   firewallRuleName,
-  isPortNumber,
 } from './firewall.ts';
-import { fixableDriftRule, isIpv4, listenAddressForScope, matchOwnership, type OwnershipMatch } from './ownership.ts';
+import { block, blockListenAddress, commonGate, conflictGate, matchOf, remoteAddressOf } from './guards.ts';
+import { fixableDriftRule, isIpv4, listenAddressForScope, type OwnershipMatch } from './ownership.ts';
 import { explainScope, needsExplicitRule } from './scope-note.ts';
 import type {
-  WriteBlock,
-  WriteBlockReason,
   WritePlan,
   WritePlanInput,
   WritePlanOutcome,
@@ -66,30 +64,26 @@ export function scopeFromRules(rules: readonly PortproxyRule[]): Scope {
   return rules.some((rule) => rule.listenAddress === listenAddressForScope('lan')) ? 'lan' : 'loopback';
 }
 
-function block(
-  reason: WriteBlockReason,
-  port: number,
-  message: string,
-  hint: string,
-  conflictRules: readonly PortproxyRule[] = [],
-): WriteBlock {
-  return { ok: false, reason, port, message, hint, steps: [], conflictRules };
-}
-
-/** `netsh interface portproxy add v4tov4 …`（**必带 listenport**，design §2 红线） */
-export function portproxyAddStep(port: number, scope: Scope, eth0Ip: string): WriteStep {
-  const listenAddress = listenAddressForScope(scope);
+/**
+ * `netsh interface portproxy add v4tov4 …`（**必带 listenport**，design §2 红线）
+ *
+ * 012（2026-10-22）：`listenAddress` 是**用户显式选择**（仅 `lan` 有意义）；缺省 ⇒ 逐字同 010
+ * （`lan` = `0.0.0.0`、`loopback` = `127.0.0.1`）。地址是否合法由调用方先验（`cidrFor` 同一个门），
+ * 这里只管拼装 —— 与 `firewallAllowArgs` 的分工一致。
+ */
+export function portproxyAddStep(port: number, scope: Scope, eth0Ip: string, listenAddress?: string): WriteStep {
+  const address = listenAddressForScope(scope, listenAddress);
   return {
     kind: 'portproxy-add',
     port,
     params: {
       listenport: port,
-      listenaddress: listenAddress,
+      listenaddress: address,
       connectport: port,
       connectaddress: eth0Ip,
     },
     commandText:
-      `netsh interface portproxy add v4tov4 listenport=${String(port)} listenaddress=${listenAddress}` +
+      `netsh interface portproxy add v4tov4 listenport=${String(port)} listenaddress=${address}` +
       ` connectport=${String(port)} connectaddress=${eth0Ip}`,
   };
 }
@@ -121,48 +115,12 @@ function planOf(
     port: input.port,
     scope: input.scope,
     eth0Ip: input.eth0Ip ?? '',
+    // 012：只有用户显式选了具体 IP 才出现这个键（缺省 = 010 的逐字形状）
+    ...(input.listenAddress === undefined ? {} : { listenAddress: input.listenAddress }),
     steps,
     notes,
     commandText: steps.map((step) => step.commandText).join('\n'),
   };
-}
-
-/** 端口 + 合法端口号 + 声明集合（所有动作共用的三道门） */
-function commonGate(input: WritePlanInput): WriteBlock | null {
-  if (!isPortNumber(input.port)) {
-    return block('state-precondition', input.port, `端口不是 1..65535 的整数：${String(input.port)}`, '检查端口声明');
-  }
-  if (!isManagedPort(input.managedPorts, input.port)) {
-    return block(
-      'port-not-managed',
-      input.port,
-      `端口 ${String(input.port)} 不在 managedPorts 声明集合内：不进五态、不可操作、不可修复（REQ-1.1）`,
-      '先在端口声明里显式声明该端口（集合外规则一律不碰）',
-    );
-  }
-  return null;
-}
-
-/** 形态冲突 ⇒ 只报告、零动作（REQ-1.3 / design §2 的 conflict 行） */
-function conflictGate(match: OwnershipMatch, input: WritePlanInput): WriteBlock | null {
-  if (match.conflicts.length === 0) return null;
-  const details = match.conflicts.map((detail) => detail.ownership.message).join('；');
-  return block(
-    'state-conflict',
-    input.port,
-    `端口 ${String(input.port)} 上有 ${String(match.conflicts.length)} 条形态不符的既有规则：${details}`,
-    '这些规则既非本插件形态、也无法证明是本插件写入的 ⇒ 不修改、不删除，请用户手工处理（REQ-1.3）',
-    match.conflicts.map((detail) => detail.rule),
-  );
-}
-
-function matchOf(input: WritePlanInput): OwnershipMatch {
-  return matchOwnership({
-    port: input.port,
-    rules: input.rules,
-    managedPorts: input.managedPorts,
-    expectedConnectAddress: input.eth0Ip,
-  });
 }
 
 /** `add`：只用于 `missing`；`lan` 追加单端口放行（REQ-2.3） */
@@ -204,8 +162,10 @@ function planAdd(input: WritePlanInput, match: OwnershipMatch): WritePlanOutcome
     );
   }
 
-  const steps: WriteStep[] = [portproxyAddStep(input.port, input.scope, input.eth0Ip)];
-  if (input.scope === 'lan') steps.push(buildFirewallAddStep(input.port));
+  const remote = remoteAddressOf(input, input.scope);
+  if (remote === 'invalid') return blockListenAddress(input);
+  const steps: WriteStep[] = [portproxyAddStep(input.port, input.scope, input.eth0Ip, input.listenAddress)];
+  if (input.scope === 'lan') steps.push(buildFirewallAddStep(input.port, remote ?? undefined));
   return planOf(input, steps, notes);
 }
 
@@ -275,6 +235,8 @@ function planFix(input: WritePlanInput, match: OwnershipMatch): WritePlanOutcome
   // 作用域是 `switch-scope` 的显式动作（REQ-2.4）。脚本按 `plan.scope` 决定 listen 地址
   // （`elevate/runner.ts:scriptCallFor`，不看步骤表）⇒ 这里必须给对，否则真机会去删另一个地址。
   const scope = scopeFromRules([target]);
+  const listen = scope === 'lan' ? input.listenAddress : undefined;
+  if (remoteAddressOf(input, scope) === 'invalid') return blockListenAddress(input);
   const notes = ['先精确删除旧地址的规则，再按新地址重建（两条都带 listenport）'];
   if (owned === undefined) {
     notes.push('口径（2026-10-16 裁定 (a)）：声明集合内、listenAddress 为本插件形态、connectAddress 是合法 IPv4 且 ≠ 当前 eth0 ⇒ 视为本插件历史写入 ⇒ 允许修复；作用域沿用既有规则（只改地址）');
@@ -286,7 +248,7 @@ function planFix(input: WritePlanInput, match: OwnershipMatch): WritePlanOutcome
   }
   return planOf(
     { ...input, scope },
-    [portproxyDeleteStep(target), portproxyAddStep(input.port, scope, input.eth0Ip)],
+    [portproxyDeleteStep(target), portproxyAddStep(input.port, scope, input.eth0Ip, listen)],
     notes,
   );
 }
@@ -327,9 +289,14 @@ function planSwitchScope(input: WritePlanInput, match: OwnershipMatch): WritePla
       );
     }
     // T1.3 的顺序要求：切到 lan = **portproxy add + 防火墙 add**（两步，不夹带别的动作）
+    const remote = remoteAddressOf(input, 'lan');
+    if (remote === 'invalid') return blockListenAddress(input);
     return planOf(
       input,
-      [portproxyAddStep(input.port, 'lan', input.eth0Ip), buildFirewallAddStep(input.port)],
+      [
+        portproxyAddStep(input.port, 'lan', input.eth0Ip, input.listenAddress),
+        buildFirewallAddStep(input.port, remote ?? undefined),
+      ],
       [
         `逐端口显式切到 lan：只影响 ${String(input.port)}（REQ-2.4，无隐式批量）`,
         `提权脚本在 add 前会清掉同端口另一 listen address 的残留规则（只可能是本插件写的 127.0.0.1/0.0.0.0），保证该端口最终只有一条规则`,

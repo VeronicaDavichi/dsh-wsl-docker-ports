@@ -63,9 +63,33 @@ import {
  */
 export const OUR_LISTEN_ADDRESSES: readonly string[] = ['127.0.0.1', '0.0.0.0'];
 
-/** 某作用域下本插件会写的监听地址 */
-export function expectedListenAddress(scope: Scope): string {
-  return scope === 'lan' ? '0.0.0.0' : '127.0.0.1';
+/**
+ * 某作用域下本插件会写的监听地址。
+ *
+ * 012（2026-10-22）：`lan` 不再恒为 `0.0.0.0` —— 用户可在候选清单里显式选一块物理网卡
+ * （`listenAddress`）；**缺省行为逐字不变**（`0.0.0.0`，010 及之前的所有断言照旧）。
+ * `loopback` 恒 `127.0.0.1`（loopback 没有「用哪块网卡」的自由度）。
+ */
+export function expectedListenAddress(scope: Scope, listenAddress?: string): string {
+  if (scope !== 'lan') return '127.0.0.1';
+  return listenAddress !== undefined && listenAddress.trim() !== '' ? listenAddress : '0.0.0.0';
+}
+
+/**
+ * 这个 `listenAddress` 是不是本插件（可能）写的？
+ *
+ * - `{127.0.0.1, 0.0.0.0}` **永远**算（两个默认形态）；
+ * - 其余只算**当前候选清单里的 IP**（012 决策 1）：用户刚把端口指到 `192.168.31.129` 时，
+ *   那条规则不能被判成 `conflict`，否则「选了具体 IP」立刻变成「只报告、动不了」。
+ *
+ * 注意**没**放宽到「任何 IPv4」：清单外地址仍然 `conflict`（`write/ownership.ts` 同源调用）。
+ *
+ * 🔴 写侧（`write/ownership.ts`）**刻意没有**跟着放宽：012 决策 4 = 存量规则不迁移 ⇒
+ * 关于候选 IP 的规则在**只读面**不再报冲突（否则用户刚选的 IP 会被判成 conflict），
+ * 但在**写入面**仍按「形态不是本插件会写的 ⇒ 只报告不改动」拦下（fail-closed）。
+ */
+export function isOurListenAddress(value: string, allowed: readonly string[] = []): boolean {
+  return OUR_LISTEN_ADDRESSES.includes(value) || allowed.includes(value);
 }
 
 /**
@@ -101,8 +125,9 @@ function withVerdict(
   expected: ExpectedForward | null,
   rules: readonly PortproxyRule[],
   verdict: Verdict,
+  listenAddress?: string,
 ): PortClassification {
-  const listen = expected === null ? null : expectedListenAddress(expected.scope);
+  const listen = expected === null ? null : expectedListenAddress(expected.scope, listenAddress);
   return {
     port,
     state: verdict.state,
@@ -120,35 +145,49 @@ function classifyExpected(
   forward: ExpectedForward,
   rules: readonly PortproxyRule[],
   eth0Ip: string,
+  listenAddress: string | undefined,
+  allowedListenAddresses: readonly string[],
 ): PortClassification {
   // ① 没有任何规则：只有在**确实需要**规则时才是 `missing`
   if (rules.length === 0) {
     return forward.needsRule
-      ? withVerdict(forward.port, forward, rules, { state: 'missing' })
-      : withVerdict(forward.port, forward, rules, {
-          state: 'ok',
-          reason: 'wsl-localhost-forwarding',
-        });
+      ? withVerdict(forward.port, forward, rules, { state: 'missing' }, listenAddress)
+      : withVerdict(
+          forward.port,
+          forward,
+          rules,
+          {
+            state: 'ok',
+            reason: 'wsl-localhost-forwarding',
+          },
+          listenAddress,
+        );
   }
 
-  // ② 形状不符（目标端口不是我们声明的那个 / 监听地址不是我们会写的那两种）⇒ conflict，只报告
+  // ② 形状不符（目标端口不是我们声明的那个 / 监听地址既不是我们会写的那两种、也不是候选清单里的 IP）⇒ conflict，只报告
   const conflicts = rules.filter(
-    (rule) => rule.connectPort !== forward.port || !OUR_LISTEN_ADDRESSES.includes(rule.listenAddress),
+    (rule) => rule.connectPort !== forward.port || !isOurListenAddress(rule.listenAddress, allowedListenAddresses),
   );
   if (conflicts.length > 0) {
-    return withVerdict(forward.port, forward, rules, { state: 'conflict', conflicts });
+    return withVerdict(forward.port, forward, rules, { state: 'conflict', conflicts }, listenAddress);
   }
 
   // ③ 形状对、地址不对 ⇒ drift（旧 → 新）；**优先于 ok**，否则陈旧规则会被藏起来
   const stale = rules.find((rule) => rule.connectAddress !== eth0Ip);
   if (stale !== undefined) {
-    return withVerdict(forward.port, forward, rules, {
-      state: 'drift',
-      drift: { from: stale.connectAddress, to: eth0Ip },
-    });
+    return withVerdict(
+      forward.port,
+      forward,
+      rules,
+      {
+        state: 'drift',
+        drift: { from: stale.connectAddress, to: eth0Ip },
+      },
+      listenAddress,
+    );
   }
 
-  return withVerdict(forward.port, forward, rules, { state: 'ok' });
+  return withVerdict(forward.port, forward, rules, { state: 'ok' }, listenAddress);
 }
 
 /** 五态计数（显式字面量而不是遍历 `PORT_STATES`：漏一个键会被编译器当场抓住） */
@@ -156,6 +195,14 @@ function countStates(ports: readonly PortClassification[]): Record<PortState, nu
   const counts: Record<PortState, number> = { ok: 0, missing: 0, drift: 0, conflict: 0, extra: 0 };
   for (const classification of ports) counts[classification.state] += 1;
   return counts;
+}
+
+/** 012 的逐端口监听地址选项（两个可选面；缺省 = 010 及之前的逐字行为） */
+export interface ClassifyOptions {
+  /** 允许的额外监听地址（候选物理网卡 IP） */
+  readonly allowedListenAddresses?: readonly string[];
+  /** 逐端口选中的监听地址（键 = 端口号字符串） */
+  readonly listenAddresses?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -170,7 +217,10 @@ export function classifyPorts(
   rules: readonly PortproxyRule[],
   eth0Ip: string,
   managedPorts: ManagedPorts,
+  options: ClassifyOptions = {},
 ): PortClassification[] {
+  const allowed = options.allowedListenAddresses ?? [];
+  const listenAddresses = options.listenAddresses ?? {};
   const rulesByPort = new Map<number, PortproxyRule[]>();
   for (const rule of rules) {
     const bucket = rulesByPort.get(rule.listenPort);
@@ -182,7 +232,15 @@ export function classifyPorts(
   const classified = new Set<number>();
   for (const forward of forwards) {
     classified.add(forward.port);
-    classifications.push(classifyExpected(forward, rulesByPort.get(forward.port) ?? [], eth0Ip));
+    classifications.push(
+      classifyExpected(
+        forward,
+        rulesByPort.get(forward.port) ?? [],
+        eth0Ip,
+        listenAddresses[String(forward.port)],
+        allowed,
+      ),
+    );
   }
 
   const extraByPort = new Map<number, PortproxyRule[]>();
@@ -224,7 +282,10 @@ export function diff(input: DiffInput): DiffOutcome {
     };
   }
 
-  const ports = classifyPorts(forwards, input.rules, input.eth0Ip, input.managedPorts);
+  const ports = classifyPorts(forwards, input.rules, input.eth0Ip, input.managedPorts, {
+    allowedListenAddresses: input.allowedListenAddresses ?? [],
+    listenAddresses: input.listenAddresses ?? {},
+  });
   const result: DiffResult = {
     ports,
     expected: forwards,

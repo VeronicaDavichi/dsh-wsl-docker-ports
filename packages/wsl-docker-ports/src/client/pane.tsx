@@ -132,6 +132,8 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
   const [draft, setDraft] = useState('');
   const [checkedPresets, setCheckedPresets] = useState<readonly string[]>([]);
   const [scopeDraft, setScopeDraft] = useState<Readonly<Record<string, Scope>>>({});
+  /** 012：监听地址的本地草稿（键 = 端口号）。⚠️ 持久化/写请求本轮**未接线**（常驻主包零余量），见交付报告 */
+  const [listenDraft, setListenDraft] = useState<Readonly<Record<string, string>>>({});
   const [lastWrite, setLastWrite] = useState<LastWriteView | null>(null);
   /**
    * 写通道凭据的**本地**状态（T3.1 契约 1/2）：
@@ -350,6 +352,8 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
           setScopeDraft((previous) => ({ ...previous, [String(port)]: scope }));
           void writeSettings(async () => runtime.settings?.writeScope(port, scope));
         }}
+        listenDraft={listenDraft}
+        onListenAddress={(port, address) => setListenDraft((previous) => ({ ...previous, [String(port)]: address }))}
         onForward={(action, row) => void runForward(action, row)}
       />
       <p className="wdp-muted" data-testid={TESTID.udpTip}>

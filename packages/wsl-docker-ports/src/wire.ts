@@ -24,6 +24,7 @@
 import type { WslDistro, WslDistroState } from 'dsh-wsl-shared';
 import type { DiffFailure, DiffResult, Scope } from './diff/types.ts';
 import type { DockerContainer } from './read/docker.ts';
+import type { LocalAddressEntry } from './read/local-addresses.ts';
 
 /**
  * 具名 HTTP 路由的**独占前缀**（不蹭 002 的 `/dsh-managed-terminal/`）。
@@ -206,6 +207,16 @@ export interface PortsSnapshot {
   /** 002 的 `managedTerminal` 服务是否已加载（**只影响文案**，控件恒禁用 —— REQ-10.3） */
   readonly execAvailable: boolean;
   readonly iphlpsvcRunning: boolean | null;
+  /**
+   * 012 REQ-1.1/2.1：候选监听地址（Windows 物理网卡 IPv4，已按决策 1 过滤）。
+   *
+   * `[]` 且 `localAddressesError === null` = **枚举成功但确实没有候选**（UI 只剩默认项）；
+   * `[]` 且 `localAddressesError !== null` = **读不到**（UI 只剩默认项 + 原因文案）。
+   * 两者在页面上都必须给出**不同**的文案 —— 与 `dockerView` 的「失败 vs 空列表」同一先例。
+   */
+  readonly localAddresses: readonly LocalAddressEntry[];
+  /** 枚举失败的原因（`null` = 读成功）；**失败不影响页面其余部分**（REQ-2.1 降级） */
+  readonly localAddressesError: string | null;
 }
 
 /* ───────────────────────── 编码 / 解码（互为逆，两侧共用） ───────────────────────── */

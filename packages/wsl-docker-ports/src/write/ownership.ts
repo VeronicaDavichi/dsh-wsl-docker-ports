@@ -240,7 +240,14 @@ export function fixableDriftRule(
   })?.rule;
 }
 
-/** 某作用域下本插件会写的 listenAddress（转调 003 的 `expectedListenAddress`，不另立一份映射） */
-export function listenAddressForScope(scope: Scope): string {
-  return expectedListenAddress(scope);
+/**
+ * 某作用域下本插件会写的 listenAddress（转调 003 的 `expectedListenAddress`，不另立一份映射）。
+ *
+ * 012（2026-10-22）：多接一个可选的**用户选择** —— `lan` + 具体 IP 时应写那个 IP；
+ * 不传 ⇒ 逐字同 010（`lan` = `0.0.0.0`）。⚠️ 本文件里其余判据（`OWNERSHIP` 的形态族、
+ * `fixableDriftRule`）**刻意仍只认 `{127.0.0.1, 0.0.0.0}`**：012 决策 4「存量规则不迁移」
+ * ⇒ 选了具体 IP 的新规则可写，但**既有**其它地址的规则仍是 conflict、不自动修复。
+ */
+export function listenAddressForScope(scope: Scope, listenAddress?: string): string {
+  return expectedListenAddress(scope, listenAddress);
 }

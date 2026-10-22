@@ -118,7 +118,13 @@ export interface SnapshotOptions {
   readonly refreshedAt?: number;
   readonly distro?: PortsSnapshot['distro'];
   readonly distroError?: string | null;
+  /** 012：候选监听地址（缺省 = 本机的真机读数形状：`192.168.31.129` 一块物理网卡） */
+  readonly localAddresses?: PortsSnapshot['localAddresses'];
+  readonly localAddressesError?: string | null;
 }
+
+/** 012 真机读数（2026-10-22：`Get-NetIPAddress` 过滤后只剩这一条） */
+export const LOCAL_ADDRESSES_FIXTURE: PortsSnapshot['localAddresses'] = [{ address: '192.168.31.129', ifAlias: '以太网 4', prefixLength: 24 }];
 
 export const FIXED_TIMESTAMP = Date.UTC(2026, 9, 9, 6, 30, 0);
 
@@ -148,6 +154,8 @@ export function snapshot(options: SnapshotOptions = {}): PortsSnapshot {
     elevationAvailable: options.elevationAvailable ?? true,
     execAvailable: options.execAvailable ?? false,
     iphlpsvcRunning: true,
+    localAddresses: options.localAddresses ?? LOCAL_ADDRESSES_FIXTURE,
+    localAddressesError: options.localAddressesError ?? null,
   };
 }
 
