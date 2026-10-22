@@ -17,10 +17,11 @@
  * 区域组件拆在 `pane-tables.tsx` / `pane-settings.tsx`（单文件 ≤ 400 行是 SHALL）。
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 
 import type { Scope } from '../diff/types.ts';
 import { containerControlOf } from './container-control.ts';
+import { usePageScrollFix } from './pane-scroll.ts';
 import type { ClientRuntime, ForwardAction } from './host.ts';
 import { buildPortsPageView, summarizeWriteReport } from './page.ts';
 import { ContainersBlock, DistroBlock, DockerFailureBlock, ExternalRulesBlock, PortsBlock, UnsupportedBlock } from './pane-tables.tsx';
@@ -265,6 +266,10 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
   // 🔴 必须放在**任何条件 return 之前**（下面 `view === null` 就 return 了）—— 否则 hook 数会变。
   const containerControl = useMemo(() => containerControlOf(runtime), [runtime]);
 
+  /** 宿主把本页挂进零高 div ⇒ 见 `pane-scroll.ts`（chunk 侧修复，主包零字节） */
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  usePageScrollFix(rootRef, view);
+
   if (view === null) {
     return (
       <div className="wdp-page" data-plugin="dsh-wsl-docker-ports">
@@ -316,7 +321,7 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
 
 
   return (
-    <div className="wdp-page" data-plugin="dsh-wsl-docker-ports">
+    <div className="wdp-page" data-plugin="dsh-wsl-docker-ports" ref={rootRef}>
       <PaneHeader view={view} busy={busy} onRefresh={() => void refresh(false, lastWrite)} onLaunch={() => void refresh(true, lastWrite)} />
       {actionError !== null ? (
         <p className="wdp-error" data-testid="action-error">
@@ -385,3 +390,4 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
     </div>
   );
 }
+

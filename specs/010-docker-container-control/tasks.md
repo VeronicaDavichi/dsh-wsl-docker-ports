@@ -183,3 +183,28 @@
 
 **回归**：`tsc` 0 · `node --test` **459/459/0** · `vitest` **139/139** · 产物 主包 **49,183 B（未变）** / chunk **135,374 B**。
 ⚠️ chunk 文件名不随内容变（`client.ports.js`）⇒ 用户需 **Ctrl+Shift+R** 强刷才能看到新顺序。
+
+### 🔴 2026-10-22 第三处真机反馈：「没有滚动，下面的东西看不到」⇒ 右栏页自建滚动容器
+
+**反馈**：「没有滚动下拉的可能我看不到下面的东西」。
+
+**真机 DOM 实测根因**（修前）：
+```
+.wdp-page          height 3,532px  overflowY visible      ← 我们的内容真的只有 3,532 px
+  └ div (无 class)  height     0px                        ← 宿主给的挂载盒**零高**
+      └ tabBody    height   447px  overflowY hidden      ← 真正裁切内容的盒子
+          └ tabHostBody height 447px  overflowY auto  scrollHeight 447（不含我们的内容）
+```
+⇒ 内容被 `overflow:hidden` 整块裁掉，**连滚动条都不产生**，`scrollHeight` 也不涨。
+
+**修**（`src/client/pane-scroll.ts` 新文件 + `pane.tsx` 两行）：
+- `usePageScrollFix(rootRef, view)`：本页挂载时把「父挂载盒」`height:100%; min-height:0`、把**本页根**
+  `height:100%; min-height:0; overflow-y:auto; box-sizing:border-box`，让本页根自己成为滚动容器。
+- **为什么放 chunk 侧而不是 `styles.ts`**：主包棘轮是**地板**（SSoT 49,183 B，余量 0 B），往主包 CSS
+  加字节直接判红；这段逻辑落在 chunk 里，主包**一个字节不涨**（仍 49,183 B）。
+
+**真机复核（`accept-docker-ports` @43391，实跑）**：`root.clientHeight=442` / `root.scrollHeight=3,532`
+/ `computed overflowY=auto` / 程序化 `scrollTop 0 → 600` **生效** ⇒ 可滚 ✅；卡片 11 张，从「NAT 硬前提」到「查看原始输出」全部可达。
+
+**回归**：`tsc -p tsconfig.json` 0 · `node --test` **459/459/0** · `vitest` **139/139** ·
+`assert-client-split` **①a 49,183 ≤ 65,536 ✅ / ①b 49,183 ≤ 49,183（余 0）✅** · `check-size` exit 0（最大 `src/write/plan.ts` 398 行）· 产物 主包 **49,183 B（零增长）** / chunk **135,971 B**。
