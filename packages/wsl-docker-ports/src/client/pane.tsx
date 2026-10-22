@@ -324,6 +324,10 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
         </p>
       ) : null}
       <NatGateBlock nat={view.nat} />
+      {/* 010 收口（真机反馈 2026-10-22）：配置页在本机 profile 的「内置插件」里没有座位
+          （那是 `@deepseek-ai/dsh-plugin-manager` 自己的列表）⇒ 提权档写入口**必须**留在右栏页，
+          而且**放在最上面**：主人连着两次「找不到」，埋在端口声明下面等于没做。 */}
+      <ElevationBlock elevation={view.elevation} onChange={(policy) => void writeSettings(async () => runtime.settings?.writeElevationPolicy(policy))} />
       <DistroBlock
         distro={view.distro}
         onChange={(name) => void writeSettings(async () => runtime.settings?.writeDistro(name))}
@@ -358,7 +362,6 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
       />
       {/* 010 收口（真机反馈）：配置页在本机 profile 的「内置插件」里没有座位（那是插件管理器自己的列表），
           所以提权档的写入口**必须**留在右栏页 —— 否则用户无处可改。 */}
-      <ElevationBlock elevation={view.elevation} onChange={(policy) => void writeSettings(async () => runtime.settings?.writeElevationPolicy(policy))} />
       <WriteTokenBlock
         sessionPresent={tokenPresent}
         configured={configConfigured}

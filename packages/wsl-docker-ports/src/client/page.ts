@@ -52,7 +52,7 @@ export function writeGate(snapshot: PortsSnapshot): WriteGate {
     return { allowed: false, reason: '取不到 eth0：期望地址不可判定，写规则会造出一条指向失效地址的规则（REQ-6.4）' };
   }
   if (snapshot.elevationPolicy === 'none') {
-    return { allowed: false, reason: '提权策略为 none（默认）：不发起任何提权写操作；可先改下面的提权策略' };
+    return { allowed: false, reason: '提权策略为 none（默认）：不发起任何提权写操作；可在本页上方「提权策略」处改（010 起它就在最上面）' };
   }
   if (!snapshot.elevationAvailable) {
     return { allowed: false, reason: '写路径（提权辅助进程）不可用：本行只做只读展示' };
