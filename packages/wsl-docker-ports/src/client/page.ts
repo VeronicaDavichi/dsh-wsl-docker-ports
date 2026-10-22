@@ -191,7 +191,8 @@ export function buildListenAddressControl(
   return {
     testId: 'sel-listen-address',
     port,
-    value: LISTEN_ADDRESS_ANY,
+    // 012：**已持久化**的选择优先（刷新后靠快照回填）；没选过 ⇒ 默认项 `0.0.0.0`
+    value: snapshot.listenAddresses?.[String(port)] ?? LISTEN_ADDRESS_ANY,
     options,
     enabled: gate.allowed && scope === 'lan',
     disabledReason,

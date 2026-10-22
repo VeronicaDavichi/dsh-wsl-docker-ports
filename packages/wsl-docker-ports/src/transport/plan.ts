@@ -28,9 +28,11 @@ import { createHash } from 'node:crypto';
 import type { ManagedPorts } from '../diff/managed-ports.ts';
 import type { PortState, Scope } from '../diff/types.ts';
 import type { PortproxyRule } from '../read/netsh.ts';
+import type { LocalAddressEntry } from '../read/local-addresses.ts';
+import { createListenResolver } from './listen-address.ts';
+import { planPortDtoOf, type PlanPortDto } from './plan-port.ts';
 import { isPortNumber } from '../write/firewall.ts';
-import { buildWritePlan } from '../write/plan.ts';
-import type { WriteAction, WriteBlockReason, WritePlanInput, WriteStep } from '../write/types.ts';
+import type { WriteAction, WriteStep } from '../write/types.ts';
 import type { ConfirmTickets } from './confirm.ts';
 import type { WriteRouteResult, WriteErrorCode } from './routes.ts';
 
@@ -48,6 +50,14 @@ export interface PlanTarget {
   readonly fromScope?: Scope | undefined;
   /** 请求方声明的所有权集合（方案 (a)，同 003 的 query）；缺省 = 空集 */
   readonly declaration?: ManagedPorts | undefined;
+  /**
+   * 012：目标端口的监听地址（**可选覆盖**）。
+   *
+   * 缺省 ⇒ 服务端用配置里持久化的那一项（`facts.listenAddresses`）；配置里也没有 ⇒ 逐字同 010。
+   * 它**不是**「客户端说了算」的输入：合法性/候选资格仍由服务端现读的候选清单判，
+   * 不在清单里 ⇒ `listen-address-invalid` + 零步骤。
+   */
+  readonly listenAddress?: string | undefined;
 }
 
 const ACTIONS: readonly WriteAction[] = ['add', 'remove', 'fix', 'switch-scope'];
@@ -106,16 +116,33 @@ export function normalizeTarget(
   const declared = record['declaration'] === undefined || record['declaration'] === null ? undefined : declaration;
 
   const rawFrom = record['fromScope'];
+  // 012：监听地址是**地址字面量**，不是命令文本 ⇒ 只收字符串（语法合法性留给计划层判成
+  // `listen-address-invalid` 这个**可区分**的业务拦下，而不是 400 —— 那样 UI 只说得出「参数不对」）。
+  const rawListen = record['listenAddress'];
+  if (rawListen !== undefined && rawListen !== null && typeof rawListen !== 'string') {
+    return { ok: false, reason: `listenAddress 必须是 IPv4 字符串，实际 ${JSON.stringify(rawListen) ?? 'undefined'}` };
+  }
+  const listenAddress = typeof rawListen === 'string' && rawListen.trim().length > 0 ? rawListen.trim() : undefined;
   if (action === 'switch-scope') {
     if (!isPlanScope(rawFrom)) {
       return { ok: false, reason: 'switch-scope 必须给 fromScope（loopback / lan 之一）' };
     }
-    return { ok: true, target: { action, ports: unique, scope, fromScope: rawFrom, declaration: declared } };
+    return { ok: true, target: { action, ports: unique, scope, fromScope: rawFrom, declaration: declared, ...(listenAddress === undefined ? {} : { listenAddress }) } };
   }
   if (rawFrom !== undefined && !isPlanScope(rawFrom)) {
     return { ok: false, reason: `fromScope 给了但不是合法作用域：${JSON.stringify(rawFrom) ?? 'undefined'}` };
   }
-  return { ok: true, target: { action, ports: unique, scope, fromScope: isPlanScope(rawFrom) ? rawFrom : undefined, declaration: declared } };
+  return {
+    ok: true,
+    target: {
+      action,
+      ports: unique,
+      scope,
+      fromScope: isPlanScope(rawFrom) ? rawFrom : undefined,
+      declaration: declared,
+      ...(listenAddress === undefined ? {} : { listenAddress }),
+    },
+  };
 }
 
 /**
@@ -167,24 +194,21 @@ export interface PlanFacts {
   localhostForwarding?: (() => boolean | null | Promise<boolean | null>) | undefined;
   /** 当前提权策略与后端（REQ-3.1：预览必须显示它） */
   elevation(): PlanElevation | Promise<PlanElevation>;
+  /**
+   * 012：该端口**已持久化**的监听地址（服务端配置现读）；`undefined` = 没选过。
+   * 缺省实现 = 永远 `undefined` ⇒ 计划逐字同 010。
+   */
+  listenAddresses?: ((port: number) => string | undefined) | undefined;
+  /**
+   * 012：候选监听地址清单（服务端现读的 Windows 物理网卡 IPv4）。
+   * **读失败请抛**（`plan.ts` 会回 `rules-unavailable` 503）；缺省 ⇒ 空清单 ⇒ 任何具体地址都
+   * 被 `listen-address-invalid` 拦下（fail-closed，绝不按未校验的地址写规则）。
+   */
+  localAddresses?: (() => Promise<readonly LocalAddressEntry[]>) | undefined;
 }
 
-/** 单端口计划（原样透出 005 的 `WriteStep`，不另造步骤形状） */
-export interface PlanPortDto {
-  readonly port: number;
-  readonly ready: boolean;
-  readonly steps: readonly WriteStep[];
-  readonly commandText: string;
-  readonly notes: readonly string[];
-  readonly blocked?:
-    | {
-        readonly reason: WriteBlockReason;
-        readonly message: string;
-        readonly hint: string;
-        readonly conflictRules: readonly PortproxyRule[];
-      }
-    | undefined;
-}
+/** 单端口计划 DTO（定义在 `plan-port.ts`：装配逻辑一起拆出去以守住 ≤400 行） */
+export type { PlanPortDto } from './plan-port.ts';
 
 export interface PlanResponse {
   readonly ok: true;
@@ -305,40 +329,25 @@ export async function computePlan(facts: PlanFacts, target: unknown, problem?: s
     const firewallNames = facts.firewallNames === undefined ? undefined : await facts.firewallNames();
     const localhostForwarding = facts.localhostForwarding === undefined ? undefined : await facts.localhostForwarding();
 
+    const listen = createListenResolver(facts);
     const dtos: PlanPortDto[] = [];
     for (const port of ports) {
-      const rules = await facts.rules(port);
       const portState = facts.portState?.(port);
-      // ⚠️ `exactOptionalPropertyTypes`：可选字段**只能缺席**，不能显式给 `undefined`
-      const input: WritePlanInput = {
-        action,
-        port,
-        scope,
-        managedPorts,
-        eth0Ip,
-        rules,
-        ...(fromScope === undefined ? {} : { fromScope }),
-        ...(localhostForwarding === undefined || localhostForwarding === null ? {} : { localhostForwarding }),
-        ...(firewallNames === undefined ? {} : { existingFirewallNames: firewallNames }),
-        ...(portState === undefined ? {} : { portState }),
-      };
-      const outcome = buildWritePlan(input);
       dtos.push(
-        outcome.ok
-          ? { port, ready: true, steps: outcome.steps, commandText: outcome.commandText, notes: outcome.notes }
-          : {
-              port,
-              ready: false,
-              steps: [],
-              commandText: '',
-              notes: [],
-              blocked: {
-                reason: outcome.reason,
-                message: outcome.message,
-                hint: outcome.hint,
-                conflictRules: outcome.conflictRules,
-              },
-            },
+        await planPortDtoOf({
+          action,
+          port,
+          scope,
+          managedPorts,
+          eth0Ip,
+          rules: await facts.rules(port),
+          ...(fromScope === undefined ? {} : { fromScope }),
+          ...(localhostForwarding === undefined || localhostForwarding === null ? {} : { localhostForwarding }),
+          ...(firewallNames === undefined ? {} : { firewallNames }),
+          ...(portState === undefined ? {} : { portState }),
+          listen,
+          ...(normalized.target.listenAddress === undefined ? {} : { override: normalized.target.listenAddress }),
+        }),
       );
     }
 

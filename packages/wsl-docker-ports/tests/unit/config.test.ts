@@ -130,7 +130,7 @@ function realFactory(): { readonly z: SchemaFactory; readonly from: string } {
   return { z: viaSibling.factory as SchemaFactory, from: viaSibling.resolvedFrom ?? anchor };
 }
 
-test('009 缺陷 1：字段清单 = 客户端 5 个写方法产出的 patch 键集合（与两侧读写面同源）', async () => {
+test('009 缺陷 1：字段清单 = 客户端 6 个写方法产出的 patch 键集合（与两侧读写面同源）', async () => {
   const record = recordingFactory(true);
   createPortsSchema(record.z);
   assert.deepEqual(record.fields(), [...PORTS_CONFIG_FIELDS], 'schema 字段必须与 PORTS_CONFIG_FIELDS 逐字一致');
@@ -142,7 +142,7 @@ test('009 缺陷 1：字段清单 = 客户端 5 个写方法产出的 patch 键�
       written.push(...Object.keys(patch));
       return { ok: true, value: {} };
     },
-    // 本用例只数 `update` 的 patch 键集合（「五个字段都有声明」）；清除走 mutate，这里不该被调到 ⇒ 抛。
+    // 本用例只数 `update` 的 patch 键集合（「六个字段都有声明」）；清除走 mutate，这里不该被调到 ⇒ 抛。
     mutate: async (): Promise<SettingsResponse> => {
       throw new Error('本用例不该走 mutate');
     },
@@ -152,6 +152,8 @@ test('009 缺陷 1：字段清单 = 客户端 5 个写方法产出的 patch 键�
   await pipe.writeDistro('Ubuntu2204');
   await pipe.writeElevationPolicy('ask');
   await pipe.writeScope(3306, 'lan');
+  // 012：第六个写方法（逐端口监听地址）—— 键必须在 schema 里有声明，否则写不进去
+  await pipe.writeListenAddress(3306, '192.168.31.129');
   await pipe.writeWriteToken('t'.repeat(64));
   assert.deepEqual([...new Set(written)].sort(), [...PORTS_CONFIG_FIELDS].sort(), '客户端写过的键必须逐个在 schema 里有声明');
   console.log(`  · 扫了 ${String(record.fields().length)} 个字段与 ${String(written.length)} 次写入：键集合完全一致`);
@@ -199,15 +201,15 @@ test('009 缺陷 1：真工厂 ⇒ 真 schema（宿主判据 vendor=schemastery�
   assert.deepEqual(
     PORTS_CONFIG_FIELDS.filter((field) => isRef(empty[field])),
     [...PORTS_CONFIG_FIELDS],
-    '🔴 **第二层陷阱的现场证据**：五个字段解析出来都是带 `.get()` 的活体包装（宿主交给我们的是包装，不是值）',
+    '🔴 **第二层陷阱的现场证据**：六个字段解析出来都是带 `.get()` 的活体包装（宿主交给我们的是包装，不是值）',
   );
   assert.deepEqual(
     plain(empty),
-    { managedPorts: [], scopes: {}, distro: undefined, elevationPolicy: undefined, writeToken: undefined },
+    { managedPorts: [], scopes: {}, listenAddresses: {}, distro: undefined, elevationPolicy: undefined, writeToken: undefined },
     '缺省值（**解包后**）：两个集合为空；三个字符串字段缺省 = `undefined`（`get()` 取到 undefined ⇒ 客户端读到「未配置」）',
   );
 
-  const full = { managedPorts: ['3306', '1000-3000'], scopes: { '3306': 'lan' }, distro: 'Ubuntu2204', elevationPolicy: 'ask', writeToken: 'x' };
+  const full = { managedPorts: ['3306', '1000-3000'], scopes: { '3306': 'lan' }, listenAddresses: { '3306': '192.168.31.129' }, distro: 'Ubuntu2204', elevationPolicy: 'ask', writeToken: 'x' };
   const resolved = schema(full) as Record<string, unknown>;
   assert.deepEqual(plain(resolved), full, '合法文档解包后原样通过');
   assert.deepEqual(

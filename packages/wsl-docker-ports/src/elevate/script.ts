@@ -99,6 +99,38 @@ export function assertAddress(value: string): void {
   }
 }
 
+/**
+ * 012：带**字段名**的地址校验（`-ListenAddress` / `-DeleteAddress` 与 `-Address` 同一套判据，
+ * 但报错字段要能指到具体参数 —— 否则真机上只知道「有个地址不对」，不知道是哪一个）。
+ */
+export function assertAddressField(field: string, value: string): void {
+  assertSafeToken(field, value);
+  if (!IPV4.test(value) || value.split('.').some((part) => Number(part) > 255)) {
+    throw new ElevateParamError(field, value, `${field} 必须是 IPv4 字面量（收到 ${value}）`);
+  }
+}
+
+/** CIDR 段（`a.b.c.d/0..32`）；**不**做网段归零校验 —— 那是 `cidrFor()` 的职责，这里只保证能安全进 argv */
+const CIDR = /^((?:\d{1,3}\.){3}\d{1,3})\/(0|[1-9]\d?)$/u;
+
+/**
+ * 012：防火墙 `-RemoteAddress` 的校验（只收 `IPv4/0..32`）。
+ *
+ * 🔴 为什么**单独**一道：它一旦为空串或非法值，`New-NetFirewallRule` 要么抛、要么退化成
+ * 「所有来源」—— 后者正是 012 要收窄的攻击面 ⇒ 宁可拒绝生成脚本。
+ */
+export function assertCidr(value: string): void {
+  assertSafeToken('remoteAddress', value);
+  const match = CIDR.exec(value);
+  if (match === null) {
+    throw new ElevateParamError('remoteAddress', value, `remoteAddress 必须是 IPv4/掩码 形式（收到 ${value}）`);
+  }
+  assertAddressField('remoteAddress', match[1] ?? '');
+  if (Number(match[2]) > 32) {
+    throw new ElevateParamError('remoteAddress', value, `remoteAddress 的掩码长度必须是 0..32（收到 ${value}）`);
+  }
+}
+
 export function assertScope(value: string): void {
   if (value !== 'loopback' && value !== 'lan') {
     throw new ElevateParamError('scope', value, `scope 只能是 loopback 或 lan（收到 ${value}）`);
@@ -155,6 +187,13 @@ export function assertScriptParams(params: ScriptParams): void {
   assertAddress(params.address);
   assertScope(params.scope);
   assertTempPaths(params.scriptPath, params.outPath);
+  // 012：三个可选字段（缺省 = 010 行为）。**给了就必须合法**：
+  // 地址重复走同一套 IPv4 判据，`-RemoteAddress` 必须是 CIDR（空串/通配一律拒）。
+  if (params.listenAddress !== undefined) assertAddressField('listenAddress', params.listenAddress);
+  if (params.deleteAddress !== undefined) assertAddressField('deleteAddress', params.deleteAddress);
+  if (params.remoteAddress !== undefined) assertCidr(params.remoteAddress);
+  // 删除地址与新增地址都必须落在脚本认得的两个形态之内（+ 具体 IP）——
+  // 具体 IP 的合法性由上面的 IPv4 判据兜住，不会出现「按通配删」这种形态。
 }
 
 /** 脚本参数 → argv（`-File` 之后的参数；`script.ts` 是这些值的唯一来源） */
@@ -170,6 +209,10 @@ export function scriptArgs(params: ScriptParams): string[] {
     params.address,
     '-Scope',
     params.scope,
+    // 012：只有显式选了具体地址/网段时才追加 ⇒ **缺省 argv 与 010 逐字相同**（既有用例的 deepEqual 不变）
+    ...(params.listenAddress === undefined ? [] : ['-ListenAddress', params.listenAddress]),
+    ...(params.deleteAddress === undefined ? [] : ['-DeleteAddress', params.deleteAddress]),
+    ...(params.remoteAddress === undefined ? [] : ['-RemoteAddress', params.remoteAddress]),
   ];
 }
 
@@ -187,14 +230,22 @@ param(
   [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
   [Parameter(Mandatory = $true)][string]$Address,
   [Parameter(Mandatory = $true)][ValidateSet('loopback', 'lan')][string]$Scope,
-  [Parameter(Mandatory = $true)][string]$Out
+  [Parameter(Mandatory = $true)][string]$Out,
+  # 012：缺省空串 ⇒ 与 010 逐字同形（$listen 按作用域取 0.0.0.0 / 127.0.0.1；放行不带 -RemoteAddress）。
+  # 值已由主机侧 assertScriptParams 校验（IPv4 / CIDR），脚本只做 [ValidatePattern] 兜底。
+  [ValidatePattern('^(\\d{1,3}\\.){3}\\d{1,3}$')][string]$ListenAddress = '',
+  [ValidatePattern('^(\\d{1,3}\\.){3}\\d{1,3}$')][string]$DeleteAddress = '',
+  [ValidatePattern('^((\\d{1,3}\\.){3}\\d{1,3})/(0|[1-9][0-9]?)$')][string]$RemoteAddress = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $steps = New-Object System.Collections.ArrayList
 $displayName = "dsh-wsl-docker-ports-$Port"
 $group = 'dsh-wsl-docker-ports'
-$listen = if ($Scope -eq 'lan') { '${LAN_ADDRESS}' } else { '${LOOPBACK_ADDRESS}' }
+# 012：显式选择的监听地址优先（只对 lan 有意义；loopback 恒 127.0.0.1）
+$listen = if ($Scope -ne 'lan') { '${LOOPBACK_ADDRESS}' } elseif ($ListenAddress -ne '') { $ListenAddress } else { '${LAN_ADDRESS}' }
+# 012：删除对准**哪一条**（fix 时可能「删旧的、建新的」）⇒ 缺省 = 本次的 $listen
+$delete = if ($DeleteAddress -ne '') { $DeleteAddress } else { $listen }
 
 function Add-Step([string]$Name, [bool]$Ok, [string]$Err) {
   [void]$steps.Add(@{ name = $Name; ok = $Ok; stderr = $Err })
@@ -226,11 +277,13 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 
 function Add-Portproxy {
-  # 同一端口在另一 listen address 下的残留（只可能是本插件写的两个地址之一）：
-  # 先清掉，保证「一个端口恰好一条规则」；不存在时 netsh 返回非 0，这里不算错。
-  $other = if ($listen -eq '${LAN_ADDRESS}') { '${LOOPBACK_ADDRESS}' } else { '${LAN_ADDRESS}' }
-  & netsh.exe interface portproxy delete v4tov4 "listenport=$Port" "listenaddress=$other" | Out-Null
-  if ($LASTEXITCODE -eq 0) { Add-Step 'portproxy-clean-other-scope' $true '' }
+  # 同一端口在**其它** listen address 下的残留：逐个精确清掉（012 起形态有三个 ⇒ 清其余全部，
+  # 仍是逐地址精确删除、绝无通配）。不存在时 netsh 返回非 0，不算错。
+  $stale = @('${LOOPBACK_ADDRESS}', '${LAN_ADDRESS}') | Where-Object { $_ -ne $listen }
+  foreach ($addr in $stale) {
+    & netsh.exe interface portproxy delete v4tov4 "listenport=$Port" "listenaddress=$addr" | Out-Null
+    if ($LASTEXITCODE -eq 0) { Add-Step 'portproxy-clean-other-scope' $true '' }
+  }
   try {
     & netsh.exe interface portproxy add v4tov4 "listenport=$Port" "listenaddress=$listen" "connectport=$Port" "connectaddress=$Address" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "netsh exit $LASTEXITCODE" }
@@ -244,7 +297,9 @@ function Add-Portproxy {
 
 function Remove-Portproxy {
   try {
-    & netsh.exe interface portproxy delete v4tov4 "listenport=$Port" "listenaddress=$listen" | Out-Null
+    # 012：删除对准 $delete（缺省 = $listen）。fix 换地址时主机侧会把**旧**地址传进来
+    # ⇒ 删的是旧规则、建的是新规则（否则会去删一条不存在的规则而整个 fix 失败）。
+    & netsh.exe interface portproxy delete v4tov4 "listenport=$Port" "listenaddress=$delete" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "netsh exit $LASTEXITCODE" }
     Add-Step 'portproxy-delete' $true ''
     return $true
@@ -265,7 +320,13 @@ function Add-Firewall {
       $sameName | Remove-NetFirewallRule -ErrorAction SilentlyContinue
       Add-Step 'firewall-clean' $true ''
     }
-    New-NetFirewallRule -DisplayName $displayName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port -Profile Any -Group $group | Out-Null
+    # 012：选了具体监听地址 ⇒ 放行来源收窄到该网卡所在网段（-RemoteAddress）；没选 ⇒ **逐字同 010**。
+    # 两条分支都是「单端口 + 本组 + 固定显示名」形态，没有任何通配/全表形态。
+    if ($RemoteAddress -ne '') {
+      New-NetFirewallRule -DisplayName $displayName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port -Profile Any -RemoteAddress $RemoteAddress -Group $group | Out-Null
+    } else {
+      New-NetFirewallRule -DisplayName $displayName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port -Profile Any -Group $group | Out-Null
+    }
     Add-Step 'firewall-add' $true ''
     return $true
   } catch {

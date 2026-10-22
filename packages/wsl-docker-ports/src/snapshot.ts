@@ -72,6 +72,12 @@ export interface SnapshotDeps {
   readonly eth0?: Eth0SourceOptions | undefined;
   /** 012：候选监听地址探针（`timeoutMs` 可覆盖；**不注入探针本身**，改用假执行器走真解析） */
   readonly localAddresses?: LocalAddressesOptions | undefined;
+  /**
+   * 012：逐端口已持久化的监听地址（键 = 端口号字符串）。**宿主从 config 现读**（`config-read.ts`）——
+   * 它同时是判决输入（选了具体 IP 的规则算「本插件形态」，不算冲突）与写计划的缺省来源。
+   * 缺省 ⇒ `{}`（= 一个都没选，行为与 010 逐字一致）。
+   */
+  readonly listenAddresses?: (() => Readonly<Record<string, string>>) | undefined;
   /** 覆盖 nat 判定（默认 001 的 `readNetworkingMode()`）；测试用来构造 mirrored / unreadable 形状 */
   readonly readNetworkingMode?: (() => Promise<NetworkingModeOutcome>) | undefined;
   /** 提权是否可用（**只影响写控件门禁**；默认 `false` = 保守）。由 `plugin.ts` 注入 005 的探测 */
@@ -205,6 +211,8 @@ export function createSnapshotBuilder(deps: SnapshotDeps): SnapshotBuilder {
         const parsed = parseManagedPorts(declaration.managedPorts);
         const managedPorts = parsed.ok ? parsed.ports : EMPTY_MANAGED;
         const scopes: Readonly<Record<string, Scope>> = declaration.scopes;
+        // 012 ①：逐端口已持久化的监听地址 —— **服务端现读配置**，不向客户端索取（单一真相来源）
+        const listenAddresses = deps.listenAddresses?.() ?? {};
         const outcome = diff({
           containers: dockerOutcome !== null && dockerOutcome.ok ? dockerOutcome.containers : [],
           managedPorts,
@@ -215,6 +223,8 @@ export function createSnapshotBuilder(deps: SnapshotDeps): SnapshotBuilder {
           // 012 决策 1/2：候选清单里的 IP **不是**冲突（否则用户刚选的具体 IP 会被判 conflict）；
           // 但也不会因此被当成「本插件默认形态」—— 判决仍按五态事实给，只是不再报形态冲突。
           allowedListenAddresses: localAddresses.map((entry) => entry.address),
+          // 012 ②：**已选**的具体 IP 是该端口的期望形态 ⇒ 五态才不会把「刚写好的规则」报成冲突。
+          listenAddresses,
         });
 
         return {
@@ -246,6 +256,7 @@ export function createSnapshotBuilder(deps: SnapshotDeps): SnapshotBuilder {
             iphlpsvcRunning: null,
             localAddresses,
             localAddressesError,
+            listenAddresses,
           },
         };
       } catch (error) {

@@ -56,6 +56,36 @@ export function blockListenAddress(input: WritePlanInput): WriteBlock {
   );
 }
 
+/**
+ * 012 决策 3 的**第二道门**（fail-closed）：选中的地址必须**在候选清单里**。
+ *
+ * 为什么必须有这一道：`cidrFor` 只能证明「字符串是合法 IPv4」，证明不了「它属于本机物理网卡」。
+ * 一个合法但**不属于本机**的地址（或属于被过滤的虚拟网段，如 WSL 的 `172.20.201.152`）写进
+ * `listenaddress` 会得到一条永远接不到流量的规则，而上游防火墙却按它的 /24 放行 —— 用户以为
+ * 收窄了攻击面，实际只是把入口换了个不存在的门牌。故：**清单缺席 = 空集 = 全部拦下**（漏传
+ * 参数的方向是「什么都不做」，不是「随便写」）。
+ *
+ * 只在 `lan` 上生效：`loopback` 恒 `127.0.0.1`（作用域说了算，010 的既有口径）。
+ */
+export function listenAddressGate(input: WritePlanInput, scope: Scope): WriteBlock | null {
+  if (scope !== 'lan' || input.listenAddress === undefined) return null;
+  const allowed = input.allowedListenAddresses ?? [];
+  if (allowed.includes(input.listenAddress)) return null;
+  // 先分清「地址/掩码本身就非法」与「合法但不属于本机」：两者都拦下，但文案必须能区分 ——
+  // 前者用户改掩码/重选，后者用户只能在候选里挑（回退 `0.0.0.0` 这条路永不提供）。
+  if (cidrFor(input.listenAddress, input.listenAddressPrefixLength ?? 32) === null) return blockListenAddress(input);
+  const list =
+    allowed.length === 0
+      ? '候选清单为空（服务端没能枚举出本机物理网卡 IPv4）'
+      : `候选清单只有 ${allowed.join(' / ')}`;
+  return block(
+    'listen-address-invalid',
+    input.port,
+    `监听地址 ${input.listenAddress} 不在本机候选清单里（${list}）：不写任何规则`,
+    '它也许是合法 IPv4，但不是这台机器的物理网卡地址（WSL/Hyper-V/loopback 网段按决策 1 已排除）⇒ 请重新选择。算不出归属时不会放行任何来源',
+  );
+}
+
 /** 端口 + 合法端口号 + 声明集合（所有动作共用的三道门） */
 export function commonGate(input: WritePlanInput): WriteBlock | null {
   if (!isPortNumber(input.port)) {

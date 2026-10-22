@@ -6,11 +6,10 @@
  * 选项含默认项 `0.0.0.0（所有网卡）` 与候选 `192.168.31.129`，且**不含** `172.20.201.152` /
  * `172.20.192.1` / `127.0.0.1`（WSL/Hyper-V/loopback 都被决策 1 排除）。
  *
- * 本文件只证「渲染 + 本地选择」；**不改配置**（`recorded.updates` 必须为 0：
- * 持久化本轮未接线，见 012 交付报告的「未做」一节）。
+ * 本文件证「渲染 + 本地选择 + **选值即写配置**」（012 A 计划：选一次写一次，服务端现读它算计划）。
  */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { PortsPane } from '../../src/client/pane.tsx';
@@ -52,18 +51,23 @@ describe('REQ-1.1 监听地址下拉（lan 才有）', () => {
     console.log(`  · 扫了 ${String(select.options.length)} 个监听地址选项：${JSON.stringify(labels)}`);
   });
 
-  it('选中一个 IP ⇒ 视图形参跟着变，且**不写配置**（持久化未接线）', async () => {
+  it('选中一个 IP ⇒ 视图形参跟着变，并**即时写回配置**（`listenAddresses[端口]`，一次、不重试）', async () => {
     const test = harness(lanSnapshot());
     render(<PortsPane runtime={test.runtime} />);
     await screen.findByTestId('tbl-ports');
 
     const select = screen.getByTestId('sel-listen-address') as HTMLSelectElement;
     fireEvent.change(select, { target: { value: LAN_IP } });
+    // 012 A 计划：选值 → 立刻落配置（服务端现读它算 listenaddress / RemoteAddress）。
+    // 写回是 async（先 describe 取 revision 再 update）⇒ 等一拍再断言，且**恰好一次**。
+    await waitFor(() => expect(test.recorded.updates).toHaveLength(1));
 
     expect((screen.getByTestId('sel-listen-address') as HTMLSelectElement).value).toBe(LAN_IP);
-    expect(test.recorded.updates).toHaveLength(0);
+    expect(test.recorded.updates[0]?.ns).toBe('dsh-wsl-docker-ports');
+    expect(test.recorded.updates[0]?.patch).toEqual({ listenAddresses: { '3306': LAN_IP } });
+    // 只写配置：不触发任何提权/写通道调用（选监听地址不是写动作）
     expect(test.recorded.elevation).toHaveLength(0);
-    console.log(`  · 选择 ${LAN_IP} 后：select.value=${(screen.getByTestId('sel-listen-address') as HTMLSelectElement).value} / 配置写 ${String(test.recorded.updates.length)} 次`);
+    console.log(`  · 选择 ${LAN_IP} 后：配置写 ${String(test.recorded.updates.length)} 次，patch=${JSON.stringify(test.recorded.updates[0]?.patch)}`);
   });
 
   it('loopback 行**没有**这个控件（loopback 恒 127.0.0.1，没有「用哪块网卡」的自由度）', async () => {

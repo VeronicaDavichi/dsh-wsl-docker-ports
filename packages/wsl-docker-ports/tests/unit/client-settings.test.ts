@@ -207,6 +207,8 @@ test('T5.7 写回：remote.settings 缺失 ⇒ ok:false + 文案，不抛异常'
   assert.match(result.message, /remote\.settings/u);
   assert.equal(pipe.updateCount(), 0, '服务缺失时不得计入 update');
   const read = await pipe.readConfig();
+  // 012：读回形状**不变** —— 监听地址的回填走快照（`snapshot.listenAddresses`），
+  // 客户端只负责「写」，故 `readConfig()` 不新增字段（两份镜像必然分叉）。
   assert.deepEqual(read, { managedPorts: [], distro: undefined, elevationPolicy: undefined, scopes: {}, writeTokenConfigured: false });
   console.log(`  · 扫了 2 个调用（写/读），均降级返回，updateCount=${String(pipe.updateCount())}`);
 });
@@ -314,14 +316,16 @@ test('T5.7 零提权调用：写配置的一轮里提权计数器保持 0（且�
   console.log(`  · 扫了 2 次配置写入 / ${String(elevationCalls.length)} 次提权调用（updateCount=${String(runtime.settings.updateCount())}）`);
 });
 
-test('T5.7 管道面收窄：settings 管道只暴露 8 个方法，没有任何「执行/提权」入口', () => {
+test('T5.7 管道面收窄：settings 管道只暴露 9 个方法，没有任何「执行/提权」入口', () => {
   const pipe = createSettingsPipe(() => undefined);
   const keys = Object.keys(pipe).sort();
   // 008 T3.1 追加第 6 个：`writeWriteToken` —— 它是**配置写入**（与服务端 config 的 writeToken 同一个字段），
   // 不是执行/提权入口；下面的 forbidden 断言（写配置零提权调用）仍是这条判据的真正红线。
   // 009 收口轮 T3 追加第 8 个：`clearWriteToken` —— 同样是**配置写入**（宿主 `mutate` 的 unset），
   // 它连「值」这个参数都没有（零凭据字节出门），更不是执行入口。
-  assert.deepEqual(keys, ['clearWriteToken', 'readConfig', 'updateCount', 'writeDistro', 'writeElevationPolicy', 'writeManagedPorts', 'writeScope', 'writeWriteToken']);
+  // 012 A 计划追加第 9 个：`writeListenAddress` —— 同样是**配置写入**（listenAddresses[端口]），
+  // 只收地址字符串，不碰任何执行器；它换来的计划仍由服务端重新算并从候选清单复核。
+  assert.deepEqual(keys, ['clearWriteToken', 'readConfig', 'updateCount', 'writeDistro', 'writeElevationPolicy', 'writeListenAddress', 'writeManagedPorts', 'writeScope', 'writeWriteToken']);
   const forbidden = ['run', 'invoke', 'exec', 'elevate', 'spawn'];
   assert.deepEqual(forbidden.filter((key) => key in pipe), [], '配置管道不得带执行入口');
   console.log(`  · 扫了 ${String(keys.length)} 个方法名：${JSON.stringify(keys)}；执行入口 0 个`);

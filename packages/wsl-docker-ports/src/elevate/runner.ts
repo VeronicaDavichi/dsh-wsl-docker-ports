@@ -40,7 +40,7 @@ import { compareOthers, createWriteLogEntry, type WriteLogEntry } from '../write
 import { createPortproxySnapshotter, type PortproxySnapshotter } from '../write/snapshot.ts';
 
 import { detectBackend, resolvePolicy } from './backend.ts';
-import { buildInvocation, DEFAULT_ELEVATE_TIMEOUT_MS, looksLikeUacRejection, scriptCallFor } from './invoke.ts';
+import { buildInvocation, DEFAULT_ELEVATE_TIMEOUT_MS, looksLikeUacRejection, scriptAddressesOf, scriptCallFor } from './invoke.ts';
 import { classifyExit, ELEVATE_EXIT, parseElevatedOut, payloadPortMismatch } from './outcome.ts';
 import {
   assertScriptParams,
@@ -201,6 +201,10 @@ export async function runElevate(request: ElevateRequest, deps: ElevationDeps): 
   const scriptPath = tempScriptPath(tempDir, suffix);
   const outPath = tempOutPath(tempDir, suffix);
   const call = scriptCallFor({ action: plan.action, scope: plan.scope });
+  // 012：脚本的 listen 地址/删除地址/放行网段**从计划步骤里取**（步骤表是唯一的真相，
+  // 不再由 `scope` 反推）：`add` 取 `portproxy-add`、`remove` 取 `portproxy-delete`、
+  // `fix` 两者都有（删旧的、建新的）。都取不到 ⇒ 三个可选参数缺席 ⇒ argv 与 010 逐字相同。
+  const scriptAddresses = scriptAddressesOf(plan.steps);
   const params: ScriptParams = {
     action: call.action,
     port: plan.port,
@@ -208,6 +212,7 @@ export async function runElevate(request: ElevateRequest, deps: ElevationDeps): 
     scope: call.scope,
     scriptPath,
     outPath,
+    ...scriptAddresses,
   };
 
   const write = deps.writeFile ?? ((path: string, content: string) => writeFile(path, content, 'utf8'));

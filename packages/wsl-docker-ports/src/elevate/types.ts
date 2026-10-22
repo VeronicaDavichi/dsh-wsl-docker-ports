@@ -39,6 +39,21 @@ export interface ScriptParams {
   readonly scope: 'loopback' | 'lan';
   readonly scriptPath: string;
   readonly outPath: string;
+  /**
+   * 012：`portproxy add` 的 `listenaddress`（缺省 = 按作用域取 `0.0.0.0` / `127.0.0.1`）。
+   * 只在用户选了具体网卡 IPv4 时出现；**必须**先过 `assertAddress`（同一套 IPv4 字面量校验）。
+   */
+  readonly listenAddress?: string | undefined;
+  /**
+   * 012：防火墙放行的 `-RemoteAddress`（CIDR，如 `192.168.31.0/24`）；缺省 ⇒ 不带该参数
+   * （= 010 的「所有来源」，逐字同形）。
+   */
+  readonly remoteAddress?: string | undefined;
+  /**
+   * 012：**要删除**的那条规则的 `listenaddress`（`fix` 时可能与 `listenAddress` 不同：
+   * 删旧的、建新的）。缺省 ⇒ 删 `$listen`（= 010 行为）。
+   */
+  readonly deleteAddress?: string | undefined;
 }
 
 /** 后端探测结果（探测**不产生任何提权**：只跑 `where.exe gsudo` 与 `gsudo status`） */

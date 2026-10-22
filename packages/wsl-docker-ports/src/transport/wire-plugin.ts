@@ -33,6 +33,7 @@ import type { ConfirmTickets } from './confirm.ts';
 import { readLocalhostForwarding } from '../read/localhost-forwarding.ts';
 import { probeFirewallRuleNames } from '../read/firewall-probe.ts';
 import { probePortproxyRules } from '../read/netsh-probe.ts';
+import type { LocalAddressEntry } from '../read/local-addresses.ts';
 import { createPlanFacts } from './real-facts.ts';
 import { createPlanChannel } from './plan.ts';
 import type { PlanFacts } from './plan.ts';
@@ -112,6 +113,16 @@ export interface PluginReadParts {
   readonly probeLocalhostForwarding?: (() => Promise<boolean | null>) | undefined;
   /** 配置档的策略；形态三类都收（活体包装 / 平凡值 / 现读函数）—— 见 `transport/real-facts.ts` */
   readonly elevationPolicy?: ConfigValueSource;
+  /**
+   * 012：该端口已持久化的监听地址（`config-read.ts` 的 `listenAddresses` 现读面）。
+   * 缺省 ⇒ 计划永远不带具体地址（逐字同 010）。
+   */
+  readonly listenAddresses?: ((port: number) => string | undefined) | undefined;
+  /**
+   * 012：候选监听地址探针（`probeLocalAddresses`）。**读失败请抛** ⇒ 计划回 503；
+   * 缺省 ⇒ 空清单 ⇒ 任何具体地址都被拦下（fail-closed）。
+   */
+  readonly localAddresses?: (() => Promise<readonly LocalAddressEntry[]>) | undefined;
 }
 
 /**
@@ -154,5 +165,7 @@ export function createPluginFacts(parts: PluginReadParts): PlanFacts {
     },
     ...(parts.probeLocalhostForwarding === undefined ? {} : { localhostForwarding: parts.probeLocalhostForwarding }),
     ...(parts.elevationPolicy === undefined ? {} : { elevationPolicy: parts.elevationPolicy }),
+    ...(parts.listenAddresses === undefined ? {} : { listenAddresses: parts.listenAddresses }),
+    ...(parts.localAddresses === undefined ? {} : { localAddresses: parts.localAddresses }),
   });
 }

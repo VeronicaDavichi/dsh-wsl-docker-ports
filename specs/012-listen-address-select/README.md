@@ -1,11 +1,14 @@
 ---
-status: in-progress
+status: complete
 created: 2026-10-22
 created_at: 2026-10-22T08:39:49.241276500Z
-updated_at: 2026-10-22T08:40:02.643390400Z
+updated_at: 2026-10-22T09:52:36.951079100Z
+completed_at: 2026-10-22T09:52:36.951079100Z
 transitions:
 - status: in-progress
   at: 2026-10-22T08:40:02.643390400Z
+- status: complete
+  at: 2026-10-22T09:52:36.951079100Z
 ---
 # 011 · 监听地址可选（listenAddress 从 Windows 物理网卡 IP 里选）
 
@@ -39,7 +42,9 @@ transitions:
 - [x] A3 不选（默认）时计划与 010 完全一致（`0.0.0.0`；命令原文逐字比对，且 `listenAddress` / `remoteAddress` 键**不出现**）。
 - [x] A4 枚举失败时下拉只剩 `0.0.0.0` 且带原因文案，页面其余部分照常（`localAddressesError` 降级；快照仍 `ok:true`）。
 - [x] A5 存量 19 条规则条数不变（19），手工 3306 规则不被改动（2026-10-22 只读复读：19 条 `0.0.0.0` + 1 条 `192.168.31.129:3306`，全程未执行任何 `netsh` 写）。
-- [x] 回归：`tsc` 0 / `node --test` 全绿（477）/ `vitest` 全绿（148）/ 主包体积零增长（49,183 B）。
+- [x] 回归（**第二轮闭环后实测**）：`tsc` ×3 exit 0 / `node --test` **488/488/0** / `vitest` **16 文件 148 用例全绿** / 主包 **49,500 B**（+317 B，**主人 2026-10-22 书面授权上限 +400 B**）/ `check-size` exit 0（最大 399 行）。
+- [x] A6 **选择真的落地**：选中即写配置（`listenAddresses[端口]`），刷新后仍回显；计划里 `listenaddress=<所选 IP>` + 防火墙 `RemoteAddress=<该网卡网段>`；不选 ⇒ 与 010 逐字一致；非法/非候选 IP ⇒ `listen-address-invalid` + **零写入**（`tests/unit/listen-address-persist.test.ts` 10 条 + `tests/client/listen-address.test.tsx` 的写回断言）。
+- [x] A7 提权脚本真的带上它：PS1 模板 `listenaddress=$listen` + `-RemoteAddress $RemoteAddress` + 三个新形参，argv 只在需要时追加（缺省 argv 与 010 逐字相同）。
 
 ## 交付记录（2026-10-22）
 
@@ -52,10 +57,31 @@ transitions:
 
 **未做（刻意，均有理由）**：
 
-1. **客户端选择不回传服务端**：`SettingsPatch` / `write target` / 快照查询串都在**常驻主包**
-   （`lib/client.js` 49,183 B 零余量棘轮）⇒ 加字段即破 ①b。故选择目前只活在本组件内（视图形参），
-   真实写入仍按配置里的 `scope` 走默认地址。要闭环须先给主包腾出预算（另立 Spec）。
-2. **提权脚本模板未改**：真实执行走 `elevate/script.ts` 的固定 PS1 模板，其 `listenaddress` 由
-   `plan.scope` 推导、且不支持 `-RemoteAddress`。本轮只做**计划层**参数化（A2 的判据即计划预览）。
-3. **未在真机 GUI 点验**：本会话只跑了离线门（含 8 个 jsdom 用例）。真机点验需临时 profile + 浏览器会话。
-4. **未执行任何 `netsh` / 防火墙写**：A5 的「条数不变」是**只读复读**得到的事实，不是我改过又改回来。
+1. ~~**客户端选择不回传服务端**~~ → ✅ **第二轮闭环已关闭**（见下「A 计划闭环」）：`SettingsPatch.listenAddresses` + `writeListenAddress` + 选择即写配置 + 服务端现读并贯通到计划/脚本/防火墙。
+2. ~~**提权脚本模板未改**~~ → ✅ **第二轮闭环已关闭**：`elevate/script.ts` 的 PS1 模板真的用 `$listen` 与 `-RemoteAddress`，`scriptAddressesOf` 从计划步骤反推 `-ListenAddress` / `-DeleteAddress` / `-RemoteAddress`。
+3. **未在真机 GUI 点验**：两轮都只跑了离线门（`node --test` + jsdom）。真机点验需临时 profile + 浏览器会话（主人指定的 profile 白名单），本轮未做。
+4. **未执行任何 `netsh` / 防火墙写**：A5 的「条数不变」是**只读复读**得到的事实，不是我改过又改回来；**真写由主人接手**（提权脚本的 `listenaddress` / `-RemoteAddress` 只做了模板与断言，未经真机执行）。
+
+## A 计划闭环（2026-10-22 第二轮）
+
+**目标**：选择 → 写配置 → 计划 → 提权脚本 → 防火墙，全链 fail-closed。
+
+**判定口径**（新增用例逐条钉死，`tests/unit/listen-address-persist.test.ts`，10 条）：
+
+1. 配置 `listenAddresses['3306'] = '192.168.31.129'` ⇒ 计划两步：`portproxy-add … listenaddress=192.168.31.129` + `firewall-add … -RemoteAddress 192.168.31.0/24`（网段来自候选条目自己的 `prefixLength`）。
+2. 没传也没配 ⇒ 与 010 **逐字节一致**（`listenaddress=0.0.0.0`、无 `RemoteAddress` 键、**候选网卡一次都不探测**；显式选 `0.0.0.0` 与缺省的 `planId` 相同）。
+3. 非法 IPv4 / 合法但非候选 / 候选清单为空 ⇒ `listen-address-invalid` + **`steps: []`**（绝不静默回退 `0.0.0.0`）；候选来源抛异常 ⇒ `503 rules-unavailable`（不把「读不到」当「没有网卡」）。
+4. 请求体 `listenAddress` 覆盖配置值（同端口两处不同 ⇒ 以请求为准，且仍过候选门槛）。
+5. 快照带 `listenAddresses`（回填下拉的**唯一**来源；客户端不从 `describe()` 读第二份）。
+6. PS1 模板含 `listenaddress=$listen` / `-RemoteAddress $RemoteAddress` / 三个新形参；`scriptArgs` 缺省时与 010 逐字相同。
+
+**改动面**（单包，`packages/wsl-docker-ports`）：`config.ts`（第 6 字段）、`config-read.ts`（`listenAddresses()` 读法）、
+`wire.ts` / `snapshot.ts` / `plugin.ts`（快照透出 + 两处事实注入）、`write/types.ts` / `write/guards.ts` / `write/plan.ts`
+（`allowedListenAddresses` + 候选门）、`transport/{plan,plan-port,listen-address,real-facts,wire-plugin}.ts`
+（请求覆盖 > 配置 > 缺省的唯一解析点）、`elevate/{types,script,invoke,runner}.ts`（三个新形参 + 从步骤反推）、
+`client/{settings-pipe,write-channel,page,pane}.tsx`（选择即写 + 请求透传）。
+
+**体积**：主包 49,183 → **49,500 B（+317 B）**，依据 = **主人 2026-10-22 授权「012 listenAddress 贯通」**，
+授权上限 +400 B，**未超额、未预借**；chunk 143,674 → **145,459 B**（切分边界未动）。第一版实测 +679 B
+（超授权 279 B）⇒ 把**无人消费**的 `readConfig().listenAddresses` 读回路径整段删掉（回填走快照）后回到 +317 B。
+SSoT / 文档表 / changelog 三处同步为 `49500 / debt / 2026-10-22 / #58`。

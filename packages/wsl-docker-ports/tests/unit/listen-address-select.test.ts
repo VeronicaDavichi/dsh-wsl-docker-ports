@@ -140,6 +140,8 @@ test('决策 3：lan + 选中 IP ⇒ 两步都带上该 IP 与网段（add 与 s
       localhostForwarding: true,
       listenAddress: LAN_IP,
       listenAddressPrefixLength: 24,
+      // 012 收口：具体 IP 必须过候选清单门（fail-closed），故直接调 plan 也要给清单
+      allowedListenAddresses: [LAN_IP],
     }),
   );
   assert.deepEqual(stepKinds(add), ['portproxy-add', 'firewall-add']);
@@ -158,6 +160,7 @@ test('决策 3：lan + 选中 IP ⇒ 两步都带上该 IP 与网段（add 与 s
       rules: [],
       listenAddress: LAN_IP,
       listenAddressPrefixLength: 24,
+      allowedListenAddresses: [LAN_IP],
     }),
   );
   assert.deepEqual(stepKinds(switched), ['portproxy-add', 'firewall-add']);
@@ -193,6 +196,7 @@ test('决策 3 fail-closed：地址或掩码算不出网段 ⇒ listen-address-i
       localhostForwarding: true,
       listenAddress: 'not-an-ip',
       listenAddressPrefixLength: 24,
+      allowedListenAddresses: [LAN_IP],
     }),
     'listen-address-invalid',
   );
@@ -210,6 +214,7 @@ test('决策 3 fail-closed：地址或掩码算不出网段 ⇒ listen-address-i
       rules: [],
       listenAddress: LAN_IP,
       listenAddressPrefixLength: 40,
+      allowedListenAddresses: [LAN_IP],
     }),
     'listen-address-invalid',
   );
@@ -225,6 +230,7 @@ test('决策 3 fail-closed：地址或掩码算不出网段 ⇒ listen-address-i
       rules: [],
       localhostForwarding: true,
       listenAddress: LAN_IP,
+      allowedListenAddresses: [LAN_IP],
     }),
   );
   assert.equal(String(noPrefix.steps[1]?.params.remoteAddress), '192.168.31.129/32', '缺省掩码必须是 /32（最小放行面）');
@@ -242,6 +248,7 @@ test('决策 4：既有 0.0.0.0 规则 + 新选 IP ⇒ fix 按新址重建，但
       portState: 'drift',
       listenAddress: LAN_IP,
       listenAddressPrefixLength: 24,
+      allowedListenAddresses: [LAN_IP],
     }),
   );
   assert.deepEqual(stepKinds(planned), ['portproxy-delete', 'portproxy-add']);

@@ -19,7 +19,7 @@
  * 没有「命令字符串拼接用户输入」这一步。
  */
 
-import type { WriteAction } from '../write/types.ts';
+import type { WriteAction, WriteStep } from '../write/types.ts';
 
 import { windowsSudoPath } from './backend.ts';
 import type { BackendChoice, ScriptAction, ScriptParams } from './types.ts';
@@ -62,6 +62,36 @@ export function scriptCallFor(plan: {
   // 切到 lan：add（0.0.0.0 + 放行）；切回 loopback：remove **以 lan 作用域**执行 ——
   // 这样脚本删的是 0.0.0.0 那条，并连带删掉本插件建的防火墙规则（REQ-2.4）
   return plan.scope === 'lan' ? { action: 'add', scope: 'lan' } : { action: 'remove', scope: 'lan' };
+}
+
+/**
+ * 012：从**计划步骤**里取脚本的地址参数（真源 = 步骤表，不由 `scope` 反推）。
+ *
+ * - `add` 步骤的 `listenaddress` ⇒ `-ListenAddress`（`portproxy add` 绑哪个地址）；
+ * - `delete` 步骤的 `listenaddress` ⇒ 只在它**与新增地址不同**时出 `-DeleteAddress`
+ *   （`fix` 换地址：删旧的、建新的；相等 ⇒ 不传，argv 与 010 一样短）；
+ * - `firewall-add` 步骤的 `remoteAddress` ⇒ `-RemoteAddress`（放行收窄到该网段）。
+ * 三个都取不到 ⇒ 返回 `{}` ⇒ 脚本按作用域走 010 的老路径（逐字同形）。
+ */
+export function scriptAddressesOf(
+  steps: readonly WriteStep[],
+): Pick<ScriptParams, 'listenAddress' | 'deleteAddress' | 'remoteAddress'> {
+  const paramOf = (kind: WriteStep['kind'], key: string): string | undefined => {
+    const step = steps.find((item) => item.kind === kind);
+    const value = step?.params[key];
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
+  };
+  const added = paramOf('portproxy-add', 'listenaddress');
+  const removed = paramOf('portproxy-delete', 'listenaddress');
+  const remote = paramOf('firewall-add', 'remoteAddress');
+  // `remove` 形态只有 delete 步骤 ⇒ 那个地址就是脚本的 `$listen`（脚本按 `$listen` 定向删，
+  // 不必再传一个同值的 -DeleteAddress）。`fix` 两者都有 ⇒ 删旧的、建新的。
+  const listen = added ?? removed;
+  return {
+    ...(listen === undefined ? {} : { listenAddress: listen }),
+    ...(removed === undefined || removed === listen ? {} : { deleteAddress: removed }),
+    ...(remote === undefined ? {} : { remoteAddress: remote }),
+  };
 }
 
 /**

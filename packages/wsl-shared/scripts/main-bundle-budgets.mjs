@@ -87,11 +87,11 @@ export const MAIN_BUNDLE_BUDGETS = {
     note: '§P2 推导值（64 KiB）：实测主 53,756 B（余 11,780 B ≈ 最大单次交付增量 +6,148 B 的 1.92×）（原记 53,014 B / 12,522 B；2026-10-12 重建后实测订正）；重定条件见 client-contract-incremental.md §P2 追加变更记录',
   },
   'dsh-wsl-docker-ports': {
-    limitBytes: 49183,
+    limitBytes: 49500,
     nature: 'debt',
-    recorded: '2026-10-15',
-    trace: '#57',
-    note: '**棘轮地板**（不是推导值）：010 `T7.3` 的宿主配置页注册壳 **必须常驻主包**（`plugins.row.config` 是客户端 slot 服务，注册只能发生在 `apply()` 期间；chunk 只在用户打开右栏页时才取回）⇒ 新增 `src/client/config-slot.ts` + `apply()` 里的取块座位，实测 **49,183 B**（+4,562 B vs 44,621）⇒ 相对 §P2 推导口径 65,536 B **仍达标**（余 16,353 B）；**未删功能、未动切分边界**（容器动作 UI 与配置页本体都在 chunk：`lib/client.ports.js` 117,898 → 135,179 B）。⚠️ 本轮为**上调**（前值 44,621 B / #56），依据 = 主人 2026-10-15 的书面授权（010 `T7.3` 落点冲突：`configure({auto:false})` 只能在主包侧调）；上调幅度**超出我预估的 0.6–1.5 KB**（实际 4.5 KB），已如实登记。前值 44,621 = 011 `T2.4` 复核后实测（#56）；38,640 = Phase 1 切分后（#54）；144,149 = 切分前存量欠账（#52）',
+    recorded: '2026-10-22',
+    trace: '#58',
+    note: '**棘轮地板**（不是推导值）：012 `listenAddress` 贯通（选值 → 写配置 → 计划 → 提权脚本 → 防火墙）在常驻侧新增 `SettingsPatch.listenAddresses` + `writeListenAddress` + `serializeTarget` 的 `listenAddress` 键 ⇒ 实测 **49,500 B**（+317 B vs 49,183）。**2026-10-22 主人授权：012 listenAddress 贯通**（授权上限 +400 B；实际 +317 B，未超额、未预借额度）。本轮已刻意把「读回 `listenAddresses`」从主包移除（回填走快照 ⇒ 客户端只写一份，省下 ~360 B），否则原样会到 +679 B。未删功能、未动切分边界（chunk 143,674 → 145,459 B）。前值 49,183 = 010 `T7.3` 宿主配置页注册壳（#57）；44,621 = 011 `T2.4`（#56）；38,640 = Phase 1 切分后（#54）；144,149 = 切分前存量欠账（#52）',
   },
 };
 

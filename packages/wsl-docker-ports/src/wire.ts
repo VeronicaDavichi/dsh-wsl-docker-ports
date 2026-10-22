@@ -217,6 +217,14 @@ export interface PortsSnapshot {
   readonly localAddresses: readonly LocalAddressEntry[];
   /** 枚举失败的原因（`null` = 读成功）；**失败不影响页面其余部分**（REQ-2.1 降级） */
   readonly localAddressesError: string | null;
+  /**
+   * 012：逐端口**已持久化**的监听地址（键 = 端口号字符串，值 = 选中/缺省 `0.0.0.0`）。
+   *
+   * 来源是服务端配置（`listenAddresses`）——客户端选值后写入配置、刷新后由本字段**回填下拉**，
+   * 服务端同时把它当作写计划的输入（判决/计划同一份事实）。
+   * 可选：缺省 = `{}`（等价于「一个都没选」⇒ 行为与 010 逐字一致）。
+   */
+  readonly listenAddresses?: Readonly<Record<string, string>>;
 }
 
 /* ───────────────────────── 编码 / 解码（互为逆，两侧共用） ───────────────────────── */

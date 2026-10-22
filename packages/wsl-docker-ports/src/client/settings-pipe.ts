@@ -56,6 +56,11 @@ export interface SettingsPatch {
   readonly elevationPolicy?: ElevationPolicyValue;
   readonly scopes?: Readonly<Record<string, ScopeValue>>;
   /**
+   * 012：逐端口监听地址（键 = 端口号字符串，值 = 选中的 IPv4 / 缺省 `0.0.0.0`）。
+   * 用户在下拉里换一次就写一次 —— **不批量、不延迟**（刷新后靠它回填）。
+   */
+  readonly listenAddresses?: Readonly<Record<string, string>>;
+  /**
    * 写通道凭据（008 T3.1 契约 1）。**默认仍为空**：本文件不会自动生成它，
    * 只有用户在配置页点「生成并保存写通道凭据」才会带上这个字段
    * （`write-token.ts` 的 `issueWriteToken()` 负责生成与一次性展示）。
@@ -129,6 +134,10 @@ export interface SettingsPipe {
   writeDistro(name: string): Promise<SettingsWriteResult>;
   writeElevationPolicy(policy: ElevationPolicyValue): Promise<SettingsWriteResult>;
   writeScope(port: number, scope: ScopeValue): Promise<SettingsWriteResult>;
+  /**
+   * 012：逐端口监听地址写回（选一次写一次）。空串/缺省由调用方归一化成 `0.0.0.0`。
+   */
+  writeListenAddress(port: number, address: string): Promise<SettingsWriteResult>;
   /**
    * 写通道凭据写回（008 T3.1）：**只写配置，不经提权、不发请求**。
    * 调用方（配置页）负责生成与「只显示一次」，本层不读回、不缓存、不打印凭据。
@@ -230,6 +239,12 @@ function readScopes(value: unknown): Record<string, ScopeValue> {
 }
 
 /**
+ * 012：**刻意不从 `describe()` 读回 `listenAddresses`** —— 回填下拉的那份值走快照
+ * （`snapshot.listenAddresses`，服务端现读配置）⇒ 客户端只有「写」这一条路，
+ * 不存在两份可能分叉的镜像（也让主包零额外字节）。
+ */
+
+/**
  * 造写回管道。`getSettings` 是**惰性软取**（contract §D13：`ctx.get('remote.settings')`
  * 可能晚于本插件就绪，故每次写入时再取一次，不缓存 `undefined`）。
  */
@@ -286,6 +301,7 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
     writeDistro: (name) => write({ distro: name }),
     writeElevationPolicy: (policy) => write({ elevationPolicy: policy }),
     writeScope: (port, scope) => write({ scopes: { [String(port)]: scope } }),
+    writeListenAddress: (port, address) => write({ listenAddresses: { [String(port)]: address } }),
     writeWriteToken: (token) => write({ writeToken: token.trim() }),
     async clearWriteToken(): Promise<SettingsClearResult> {
       const ops = UNSET_WRITE_TOKEN_OPS;

@@ -54,6 +54,8 @@ import { readLocalhostForwarding } from './read/localhost-forwarding.ts';
 import type { LocalhostForwardingOutcome } from './read/localhost-forwarding.ts';
 import { probePortproxyRules } from './read/netsh-probe.ts';
 import type { PortproxyOutcome } from './read/netsh-probe.ts';
+// 012：写通道的监听地址候选清单（与快照的 `localAddresses` 同源：`read/local-addresses.ts`）
+import { probeLocalAddresses } from './read/local-addresses.ts';
 import { registerPortsRoute } from './route.ts';
 import { registerContainerRoute } from './docker/route.ts';
 import type { ContainerRouteRegistration, ContainerTarget } from './docker/route.ts';
@@ -195,13 +197,30 @@ export function applyWslDockerPorts(
     elevationAvailable,
     // 002 的 `managedTerminal` 只按字符串键软取（REQ-10.2：不建包依赖边）
     execAvailable: (): boolean => ctx.get?.('managedTerminal') !== undefined,
+    // 012：逐端口已持久化的监听地址 —— 宿主从 config **现读**（判决与计划同一份事实）
+    listenAddresses: hostConfig.listenAddresses,
   };
   const builder: SnapshotBuilder = deps.snapshotBuilder ?? createSnapshotBuilder(snapshotDeps);
 
   // ② 路由：**注册发生在宿主可用时机**（`ctx.inject(['webServer'])`），此处不再同步 `ctx.get` 定生死
   const route: PortsRouteRegistration = registerPortsRoute(ctx, builder);
   // ③ 写通道（008 T1.7 + T2.9）：接线在 wire-plugin.ts，此处只留一行（⇒ 不挤爆 400 行 SHALL）。🔴 透传的是 `config-read.ts` 的**活体读取函数**（不是值本身）：两个消费点都在 apply 之后才用（策略判决每次计划、凭据每次请求）⇒ 现读才吃得到 live 写入（缺省 ⇒ fail-safe：事实面 'unknown' ⇒ 不写；凭据未配置 ⇒ 401）
-  const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({ executor, netsh: deps.netsh, probeEth0: () => service.probeEth0(false), probeElevation: () => availability.probe(), probeLocalhostForwarding: createDefaultLocalhostForwarding(), elevationPolicy: hostConfig.elevationPolicy }), executor, undefined, hostConfig.writeToken);
+  const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({
+    executor,
+    netsh: deps.netsh,
+    probeEth0: () => service.probeEth0(false),
+    probeElevation: () => availability.probe(),
+    probeLocalhostForwarding: createDefaultLocalhostForwarding(),
+    elevationPolicy: hostConfig.elevationPolicy,
+    // 012：选中的监听地址要**贯通到执行层**（plan 用它算 listenaddress/RemoteAddress）：
+    // 配置现读（逐端口）+ 候选清单现读（同一道 fail-closed 门的输入）。
+    listenAddresses: (port: number) => hostConfig.listenAddresses()[String(port)],
+    localAddresses: async () => {
+      const outcome = await probeLocalAddresses(executor, {});
+      if (!outcome.ok) throw new Error(`监听地址候选清单读失败：${outcome.message}`);
+      return outcome.addresses;
+    },
+  }), executor, undefined, hostConfig.writeToken);
 
   // ④ 容器控制（010 T7.1/T7.2）：**另一条通道**（REQ-P1-2：不经 /write/plan|apply），前缀 `/…/container`。
   //    凭据与写通道**同一把**（`hostConfig.writeToken` 的活体读取）⇒ 未配置即 401 fail-safe，Agent 无凭据 ⇒ 0 次 docker 调用。

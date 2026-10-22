@@ -267,7 +267,6 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
   // 010 T7.1/T7.2：容器动作客户端（`write` 未接线 ⇒ `undefined` ⇒ 控件置灰并写明原因）。
   // 🔴 必须放在**任何条件 return 之前**（下面 `view === null` 就 return 了）—— 否则 hook 数会变。
   const containerControl = useMemo(() => containerControlOf(runtime), [runtime]);
-
   /** 宿主把本页挂进零高 div ⇒ 见 `pane-scroll.ts`（chunk 侧修复，主包零字节） */
   const rootRef = useRef<HTMLDivElement | null>(null);
   usePageScrollFix(rootRef, view);
@@ -298,13 +297,9 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
     await refresh(false, summary);
   };
 
-  /**
-   * 配置写回的**唯一出口**（2026-10-12 缺陷 4 的修复点）：任何抛出都化成可读提示。
-   *
-   * 修前 `savePorts()` 直接 `await settings.writeManagedPorts(...)`：宿主抛错时那个 Promise 没人接
-   * ⇒ 浏览器控制台只有 `Uncaught (in promise)`、页面**零提示**、配置也没变（真机现象：既没发
-   * `update` 请求、也没提示）。现在：成功清提示、失败给原因、未接线也给原因；**只发一次、不重试**。
-   */
+  /** 配置写回的**唯一出口**（2026-10-12 缺陷 4 的修复点）：任何抛出都化成可读提示。修前
+   * `savePorts()` 直接 await：宿主抛错时 Promise 没人接 ⇒ 只有 `Uncaught (in promise)`、页面零提示、
+   * 配置也没变。现在：成功清提示、失败给原因、未接线也给原因；**只发一次、不重试**。 */
   const writeSettings = async (run: () => Promise<{ ok: boolean; message: string } | undefined>): Promise<void> => {
     try {
       const result = await run();
@@ -353,7 +348,11 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
           void writeSettings(async () => runtime.settings?.writeScope(port, scope));
         }}
         listenDraft={listenDraft}
-        onListenAddress={(port, address) => setListenDraft((previous) => ({ ...previous, [String(port)]: address }))}
+        onListenAddress={(port, address) => {
+          // 012：本地草稿 = 即时反馈；**同时**写回配置（服务端现读它算 listenaddress / RemoteAddress）
+          setListenDraft((previous) => ({ ...previous, [String(port)]: address }));
+          void writeSettings(async () => runtime.settings?.writeListenAddress(port, address));
+        }}
         onForward={(action, row) => void runForward(action, row)}
       />
       <p className="wdp-muted" data-testid={TESTID.udpTip}>

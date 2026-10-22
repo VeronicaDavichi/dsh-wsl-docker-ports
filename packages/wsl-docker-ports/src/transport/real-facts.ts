@@ -27,6 +27,7 @@ import type { ElevationPolicy } from '../elevate/types.ts';
 import { readConfigValue } from '../config-read.ts';
 import type { ConfigValueSource } from '../config-read.ts';
 import type { PortproxyRule } from '../read/netsh.ts';
+import type { LocalAddressEntry } from '../read/local-addresses.ts';
 import type { PlanFacts } from './plan.ts';
 
 const POLICIES: readonly ElevationPolicy[] = ['none', 'ask', 'passby'];
@@ -76,6 +77,16 @@ export interface PlanFactSources {
    *  🔴 收**活体包装 / 平凡值 / 零参取值函数**（本包 `Config` 标了 volatile ⇒ 宿主给的是包装；
    *  `plugin.ts` 透传的是 `config-read.ts` 的读取函数）—— 三态判决一致，且**每次计划现读**。 */
   readonly elevationPolicy?: ConfigValueSource;
+  /**
+   * 012：该端口已持久化的监听地址（服务端配置现读；`plugin.ts` 透传 `config-read.ts` 的读取函数）。
+   * 缺省 ⇒ 永远 `undefined` ⇒ 计划逐字同 010。
+   */
+  readonly listenAddresses?: ((port: number) => string | undefined) | undefined;
+  /**
+   * 012：候选监听地址（`read/local-addresses.ts` 的现读）。**读失败请抛** ⇒ 计划回 503
+   * （把「不知道本机有哪些网卡」当成「没有网卡」会让所有具体地址都被静默拒绝，比报错更难查）。
+   */
+  readonly localAddresses?: (() => Promise<readonly LocalAddressEntry[]>) | undefined;
 }
 
 /**
@@ -88,6 +99,9 @@ export function createPlanFacts(sources: PlanFactSources): PlanFacts {
   const forward = sources.localhostForwarding;
   const elevation = sources.elevation;
   const firewall = sources.firewallNames;
+  // 012：先取成 `const` 再收进闭包（`sources.x` 在闭包里会丢收窄，`!` 是噪声）
+  const listenSource = sources.listenAddresses;
+  const candidates = sources.localAddresses;
   // 认不出的配置值 ⇒ `'unknown'`（**不**原样透传：否则非法值会一路显示到只读预览里，像真的选过一样）；
   // 🔴 在 `elevation()` **里面**现读（不在构造期拍一次）：volatile 写入是原地更新 ⇒ 现读才吃得到新档位。
   const policy = (): ElevationPolicy | 'unknown' => readElevationPolicy(sources.elevationPolicy);
@@ -100,6 +114,9 @@ export function createPlanFacts(sources: PlanFactSources): PlanFacts {
     ...(forward === undefined ? {} : { localhostForwarding: () => forward() ?? null }),
     // 不给来源 ⇒ 键不存在（「该门不启用」≠「空集」：假装空集等于宣称「机器上没有同名规则」）
     ...(firewall === undefined ? {} : { firewallNames: () => firewall() }),
+    // 012：配置现读（不是构造期拍一次 —— 客户端选值后要立刻生效）+ 候选清单现读
+    ...(listenSource === undefined ? {} : { listenAddresses: (port: number) => listenSource(port) }),
+    ...(candidates === undefined ? {} : { localAddresses: () => candidates() }),
     // `elevation` 在 PlanFacts 里是**必填** ⇒ 没给来源时给「不可用」，绝不省略
     elevation: async () => {
       const current = await elevation?.();

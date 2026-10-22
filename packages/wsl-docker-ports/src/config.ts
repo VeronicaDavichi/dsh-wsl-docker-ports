@@ -40,8 +40,8 @@
  *
  * 1. 少了就**没有命名空间**（`volatileForm` 门，见上 ②）；
  * 2. 少了**写不进去**：`write()` 的 `validatePaths` 对非 volatile 路径直接抛
- *    `Config field "…" is not volatile` —— 而客户端 `settings-pipe.ts` 的五个写方法
- *    （`managedPorts` / `scopes` / `distro` / `elevationPolicy` / `writeToken`）正是这五个字段；
+ *    `Config field "…" is not volatile` —— 而客户端 `settings-pipe.ts` 的六个写方法
+ *    （`managedPorts` / `scopes` / `listenAddresses` / `distro` / `elevationPolicy` / `writeToken`）正是这六个字段；
  * 3. 少了**读不回来**：`describe()` 的 `value`/`base`/`user` 都是
  *    `projectForm(form, plainConfig(entry.fiber.config))`，而 `form` = **volatile 子树**
  *    ⇒ 非 volatile 字段在返回值里**根本不存在**，客户端 `readConfig()` 会把它读成「未配置」
@@ -56,6 +56,7 @@
  * | --- | --- | --- | --- |
  * | `managedPorts` | 客户端配置页（`settings-pipe.ts`） | 客户端（声明 → `/write/plan` 的 `declaration`） | `array(string).volatile()`，缺省 `[]` |
  * | `scopes` | 客户端（逐端口） | 客户端 | `dict(string).volatile()`，缺省 `{}` |
+ * | `listenAddresses` | 客户端（逐端口选监听地址时**即时**写入） | **宿主**（`config-read.ts` 现读 → 快照判决 + 写计划） | `dict(string).volatile()`，缺省 `{}`（012） |
  * | `distro` | 客户端 | **宿主**（`PortsPluginConfigLike.distro`，经 `config-read.ts` 现读） | `string.volatile()` |
  * | `elevationPolicy` | 客户端 | **宿主**（`apply` 的策略解析，经 `config-read.ts` 现读） | `string.volatile()` |
  * | `writeToken` | 客户端（生成凭据时） | **宿主**（`transport/write-auth.ts` 的 401 门） | `string.role('secret').volatile()` |
@@ -113,7 +114,7 @@ export const PROFILE_ANCHOR_MAX = 24;
 export const HOST_SCHEMA_MODULE = '@deepseek-ai/schemastery';
 
 /** `Config` 声明的字段名（顺序 = 配置文档里的呈现顺序；测试按它做白名单断言） */
-export const PORTS_CONFIG_FIELDS = ['managedPorts', 'scopes', 'distro', 'elevationPolicy', 'writeToken'] as const;
+export const PORTS_CONFIG_FIELDS = ['managedPorts', 'scopes', 'listenAddresses', 'distro', 'elevationPolicy', 'writeToken'] as const;
 
 export type PortsConfigField = (typeof PORTS_CONFIG_FIELDS)[number];
 
@@ -143,7 +144,7 @@ export interface SchemaFactory {
 /**
  * 造 `Config`：字段与 `PORTS_CONFIG_FIELDS` **同源**（少一个/多一个都会被测试抓到）。
  *
- * 🔴 **五个字段全部 `.volatile()`**，`writeToken` 另加 `.role('secret')` —— 依据逐条见文件头
+ * 🔴 **六个字段全部 `.volatile()`**，`writeToken` 另加 `.role('secret')` —— 依据逐条见文件头
  * 「标 volatile 的字段集」：少了 volatile 则命名空间不出现（`volatileForm` 门）、`update` 抛
  * `is not volatile`、`describe().value` 里读不到；少了 `role('secret')` 则凭据明文进 `value`。
  * 顺序与生产同族一致（`z.string().role("secret").volatile()`，见 `dsh-web-search-deepseek`）。
@@ -153,6 +154,9 @@ export function createPortsSchema(z: SchemaFactory): SchemaLike {
   return z.object({
     managedPorts: z.array(z.string()).volatile(),
     scopes: (dict === undefined ? z.any() : dict(z.string())).volatile(),
+    // 012：逐端口的监听地址（键 = 端口号的字符串形式，值 = IPv4 字面量）。
+    // 与 `scopes` 同形（dict + volatile）：客户端选择**即时写入**，服务端**现读**后传给判决与计划。
+    listenAddresses: (dict === undefined ? z.any() : dict(z.string())).volatile(),
     distro: z.string().volatile(),
     elevationPolicy: z.string().volatile(),
     writeToken: z.string().role('secret').volatile(),

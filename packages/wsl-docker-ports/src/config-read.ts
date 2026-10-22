@@ -76,6 +76,24 @@ export function unwrapConfigStringArray(value: unknown): readonly string[] {
 }
 
 /**
+ * 解包成「字符串 → 字符串」映射（012 的 `listenAddresses`）：非对象 ⇒ `{}`；
+ * 键是端口号、值是 IPv4 字面量，**只留两侧都是字符串的项**。
+ *
+ * 与 `unwrapConfigStringArray` 同口径：宿主来的畸形值降级成空映射（安全方向 = 不选具体地址
+ * ⇒ 仍是 `0.0.0.0`），绝不把非字符串强转成地址。
+ */
+export function unwrapConfigStringRecord(value: unknown): Readonly<Record<string, string>> {
+  const plain = unwrapConfigValue(value);
+  if (plain === null || typeof plain !== 'object' || Array.isArray(plain)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, item] of Object.entries(plain as Record<string, unknown>)) {
+    const text = unwrapConfigValue(item);
+    if (typeof text === 'string') out[key] = text;
+  }
+  return out;
+}
+
+/**
  * 归一化「凭据来源」：`string` / 活体包装 / **零参取值函数**（`() => …`）三种都收。
  * 空白串 ⇒ `undefined`（与 `transport/write-auth.ts` 的 `trim` 口径一致：空白 = 未配置，不是「凭据是空格」）。
  */
@@ -85,7 +103,7 @@ export function readConfigToken(source: ConfigValueSource): string | undefined {
   return text === '' ? undefined : text;
 }
 
-/** 本包宿主面用到的四个配置字段的**活体读取面**（每次调用现读，不吃缓存） */
+/** 本包宿主面用到的**六个**配置字段的**活体读取面**（每次调用现读，不吃缓存） */
 export interface PortsConfigReaders {
   /** `distro`：留空/非串 ⇒ `undefined`（001 的四级优先级解析接管） */
   distro(): string | undefined;
@@ -95,11 +113,16 @@ export interface PortsConfigReaders {
   writeToken(): string | undefined;
   /** `managedPorts`：非数组/非串成员一律剔除 ⇒ `[]`（声明恒空是**安全**降级） */
   managedPorts(): readonly string[];
+  /**
+   * 012 `listenAddresses`：逐端口监听地址（键 = 端口号字符串）。畸形 ⇒ `{}`。
+   * **现读**：客户端选值后立刻写配置，下一次判决/计划就能看到。
+   */
+  listenAddresses(): Readonly<Record<string, string>>;
 }
 
 /**
  * 造活体读取面。`config` 可以是活体包装**或**平凡对象**或**零参取值函数（返回上述两类之一），
- * 也可以是 `undefined`。返回的四个方法**每次重新解包**（取值函数也每次都调）⇒ volatile 原地写入
+ * 也可以是 `undefined`。返回的六个方法**每次重新解包**（取值函数也每次都调）⇒ volatile 原地写入
  * （不重挂载）能被下一次读到。
  */
 export function createHostConfigReaders(config?: ConfigValueSource): PortsConfigReaders {
@@ -115,5 +138,6 @@ export function createHostConfigReaders(config?: ConfigValueSource): PortsConfig
     elevationPolicy: () => unwrapConfigString(field('elevationPolicy')),
     writeToken: () => readConfigToken(field('writeToken')),
     managedPorts: () => unwrapConfigStringArray(field('managedPorts')),
+    listenAddresses: () => unwrapConfigStringRecord(field('listenAddresses')),
   };
 }

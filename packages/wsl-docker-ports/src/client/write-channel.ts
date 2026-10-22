@@ -74,6 +74,13 @@ export interface WriteTargetInput {
   readonly ports: readonly number[];
   readonly scope: WriteScopeInput;
   readonly declaration: ManagedPorts;
+  /**
+   * 012：目标端口的监听地址（**可选**）。
+   *
+   * 不给 ⇒ 服务端用配置里持久化的那一项（`listenAddresses`，也是下拉框写回的那份）⇒ 缺省仍是
+   * `0.0.0.0`。给了就作为显式覆盖，但**仍要**过服务端的候选清单校验（不在清单 ⇒ 零动作）。
+   */
+  readonly listenAddress?: string;
 }
 
 /**
@@ -155,6 +162,8 @@ export function serializeTarget(target: WriteTargetInput): Record<string, unknow
     ports: [...target.ports],
     scope: target.scope,
     declaration: target.declaration.map((range) => ({ start: range.start, end: range.end })),
+    // 012：只有调用方**真的**给了才发这个键（缺席 ⇒ 服务端按配置/缺省走 ⇒ 与 010 逐字同形）
+    ...(target.listenAddress === undefined ? {} : { listenAddress: target.listenAddress }),
   };
 }
 

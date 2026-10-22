@@ -119,4 +119,12 @@ export interface WritePlanInput {
   readonly listenAddress?: string;
   /** 选中地址的掩码长度（来自候选清单的 `PrefixLength`；缺省 `32` = 只放行该地址本身） */
   readonly listenAddressPrefixLength?: number;
+  /**
+   * 012（2026-10-22）：**允许**的监听地址清单（= 服务端现读的候选物理网卡 IPv4）。
+   *
+   * 🔴 给了 `listenAddress` 就必须在这里面：不在 ⇒ `listen-address-invalid`、零步骤
+   * （**绝不**静默回退 `0.0.0.0`）。清单**缺席 = 空集**（fail-closed）—— 这个字段不是可选装饰，
+   * 漏传的后果是「什么都不做」，不是「随便写」。
+   */
+  readonly allowedListenAddresses?: readonly string[];
 }

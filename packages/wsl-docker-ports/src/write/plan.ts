@@ -37,7 +37,7 @@ import {
   firewallNameExists,
   firewallRuleName,
 } from './firewall.ts';
-import { block, blockListenAddress, commonGate, conflictGate, matchOf, remoteAddressOf } from './guards.ts';
+import { block, blockListenAddress, commonGate, conflictGate, listenAddressGate, matchOf, remoteAddressOf } from './guards.ts';
 import { fixableDriftRule, isIpv4, listenAddressForScope, type OwnershipMatch } from './ownership.ts';
 import { explainScope, needsExplicitRule } from './scope-note.ts';
 import type {
@@ -162,6 +162,10 @@ function planAdd(input: WritePlanInput, match: OwnershipMatch): WritePlanOutcome
     );
   }
 
+  // 012 决策 3 的第二道门（fail-closed）：选了具体 IP 就**必须**在候选清单里；
+  // 不在 ⇒ 零动作（绝不静默回退 0.0.0.0）。放在拼装任何命令之前，故拦下时 `steps` 恒空。
+  const listenInvalid = listenAddressGate(input, input.scope);
+  if (listenInvalid !== null) return listenInvalid;
   const remote = remoteAddressOf(input, input.scope);
   if (remote === 'invalid') return blockListenAddress(input);
   const steps: WriteStep[] = [portproxyAddStep(input.port, input.scope, input.eth0Ip, input.listenAddress)];
@@ -236,6 +240,9 @@ function planFix(input: WritePlanInput, match: OwnershipMatch): WritePlanOutcome
   // （`elevate/runner.ts:scriptCallFor`，不看步骤表）⇒ 这里必须给对，否则真机会去删另一个地址。
   const scope = scopeFromRules([target]);
   const listen = scope === 'lan' ? input.listenAddress : undefined;
+  // 012：重建时若带具体 IP，它同样必须在候选清单里（同一道 fail-closed 门）
+  const listenInvalid = listenAddressGate(input, scope);
+  if (listenInvalid !== null) return listenInvalid;
   if (remoteAddressOf(input, scope) === 'invalid') return blockListenAddress(input);
   const notes = ['先精确删除旧地址的规则，再按新地址重建（两条都带 listenport）'];
   if (owned === undefined) {
@@ -289,6 +296,8 @@ function planSwitchScope(input: WritePlanInput, match: OwnershipMatch): WritePla
       );
     }
     // T1.3 的顺序要求：切到 lan = **portproxy add + 防火墙 add**（两步，不夹带别的动作）
+    const listenInvalid = listenAddressGate(input, 'lan');
+    if (listenInvalid !== null) return listenInvalid;
     const remote = remoteAddressOf(input, 'lan');
     if (remote === 'invalid') return blockListenAddress(input);
     return planOf(
