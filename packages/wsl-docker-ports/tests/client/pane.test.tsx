@@ -73,7 +73,7 @@ describe('T5.1 开页只读（NFR-2）', () => {
 });
 
 describe('T5.2 非 NAT：写控件全灰 + 修复指引', () => {
-  it('非 NAT 下没有任何可点的转发写控件；提权档 010 起只读 + 有指路文案（写入口在宿主配置页）', async () => {
+  it('非 NAT 下没有任何可点的转发写控件；提权档仍可改（配置页在真机上没有座位 ⇒ 写入口留在右栏页）', async () => {
     const test = harness(snapshot({ nat: NAT_NON_NAT, ports: [classification('missing', 3306)] }));
     const { container } = render(<PortsPane runtime={test.runtime} />);
     await screen.findByTestId('tbl-ports');
@@ -82,10 +82,11 @@ describe('T5.2 非 NAT：写控件全灰 + 修复指引', () => {
     const clickable = container.querySelectorAll('[data-write-control]:not([disabled])');
     expect(controls.length).toBeGreaterThan(0);
     expect(clickable).toHaveLength(0);
-    // 010 T7.3 起提权档在右栏页**只读**（写入口收到宿主配置页）⇒ 非 NAT 时它也一样是灰的，
-    // 但**必须**给出指路文案，否则用户会以为「没地方改」
-    expect((screen.getByTestId('sel-elevation') as HTMLSelectElement).disabled).toBe(true);
-    expect(screen.getByTestId('elevation-readonly-pointer').textContent ?? '').toContain('配置页');
+    // 🔴 2026-10-22 真机反馈订正：`plugins.row.config` 在本机 profile 的「内置插件」里**没有座位**
+    //（那是 `@deepseek-ai/dsh-plugin-manager` 自己的列表）⇒ 若把提权档做成只读，用户就**无处可改**。
+    // 因此写入口**回到右栏页**，配置页只作为将来的备选面（存在也不会抢入口）。
+    expect((screen.getByTestId('sel-elevation') as HTMLSelectElement).disabled).toBe(false);
+    expect(screen.queryByTestId('elevation-readonly-pointer')).toBeNull();
 
     // 反向对照：NAT 下同一批控件真的有可点的，否则上面的 0 是「整体点不动」的假象
     const ok = harness(snapshot({ nat: NAT_OK, ports: [classification('missing', 3306)] }));

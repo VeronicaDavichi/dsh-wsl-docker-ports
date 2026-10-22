@@ -152,3 +152,19 @@
 **收尾对账（第二轮，逐项）**：容器 `dsh-p1-probe` 已 `rm -f`（总数回 **31**）· 两条 junction 已 `rmdir` · 覆盖层已删 · profile **36/36 sha256 全一致（0 差异）** · `cordis.patch.yml` **343 B / `CDC61A08…`** · 探针实例已停。
 ⇒ **V0–V5 + V4 白名单全部真机通过**；V6（GUI 逐点）**部分**：实例/设置面板/内置插件页可达，按钮级点击留给主人验收。
 据此 `010` 置 **`complete`**：spec 自身的准出真机表（V1–V5）已闭，GUI 逐点由主人「未来的你」验收时确认 —— 这条**不许**被解读成「GUI 已验证」。
+
+### 🔧 2026-10-22 真机反馈收口：提权档「无处可改」⇒ 写入口回到右栏页（订正上一轮设计）
+
+**反馈原文**：「没找到提权配置的地方」。
+
+**根因（真机核对）**：`plugins.row.config` 在本机 profile 的「设置 → 内置插件」里**没有座位** —— 那个列表由 `@deepseek-ai/dsh-plugin-manager` 提供，只列它自己登记的插件；本包只是 bundle 栈里的一层，不在其中。上一轮我按「单字段单入口」把右栏页的提权档改成**只读 + 指路**，结果指过去的地方**根本不存在** ⇒ 用户无处可改。这是**我引入的回归**，不是宿主缺陷。
+
+**修（最小面）**：`pane.tsx` 的 `<ElevationBlock>` 重新接 `onChange`，走既有 `writeSettings(...)` 包装 + `runtime.settings.writeElevationPolicy`（不新造写管道、不复制 revision 逻辑）；`config-page.tsx` / `config-slot.ts` 保留（宿主要是将来支持，它就是备选面，**不再抢入口**）。
+
+**真机验证（`accept-docker-ports` @43391，实跑）**：
+- 右栏「端口转发」页渲染：`tbl-ports` ✅、`tbl-containers` ✅（6 个容器）、每行 `container-start/stop/restart/logs-btn-<id>` 全在 ✅
+- `sel-elevation` 存在且 **`disabled=false`** ✅、`elevation-readonly-pointer` **不存在** ✅ ⇒ 提权档当场可改
+- 页面文案自述与实现一致：「提权策略为 none（默认）：不发起任何提权写操作；可先改下面的提权策略」
+- 回归：`tsc -p tsconfig.json` **0** · `node --test` **459/459/0** · `vitest` **15 文件 / 139 用例全过** · 重建产物 **主包 49,183 B（未变）/ chunk 135,292 B**
+
+**订正**：上一轮 tasks 里「右栏页提权档只读 + 指路」的结论**作废**，以本节为准；`pane.test.tsx` 的对应断言已改回「可改」并写明原因。

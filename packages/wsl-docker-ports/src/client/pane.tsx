@@ -356,7 +356,9 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
         onToggle={(name, on) => setCheckedPresets((previous) => (on ? [...previous, name] : previous.filter((item) => item !== name)))}
         onSave={() => void savePorts()}
       />
-      <ElevationBlock elevation={view.elevation} />
+      {/* 010 收口（真机反馈）：配置页在本机 profile 的「内置插件」里没有座位（那是插件管理器自己的列表），
+          所以提权档的写入口**必须**留在右栏页 —— 否则用户无处可改。 */}
+      <ElevationBlock elevation={view.elevation} onChange={(policy) => void writeSettings(async () => runtime.settings?.writeElevationPolicy(policy))} />
       <WriteTokenBlock
         sessionPresent={tokenPresent}
         configured={configConfigured}
