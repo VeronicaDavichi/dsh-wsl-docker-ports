@@ -138,3 +138,17 @@ R3（共享层白名单 + 业务词）、R4（公开面无容器导出）、R5�
 2. **真机浏览器点击穿透**（A1–A3 的人工验收）：未启动宿主实例、未在浏览器里真的点两个页签与按钮。
 3. **`git commit`**：未提交（主人未授权）。
 4. **主包地板上调的追认**：见 P4 偏差，需主人点头。
+
+## 真机验收（2026-10-23 17:5x，实例 `accept-docker-ports` / 43391）
+
+| 项 | 证据 |
+| --- | --- |
+| 两个页签 | `[role=tab]` = `WSL Docker 端口` + `WSL Docker 容器`（容器页默认激活） |
+| 容器 chunk | `GET /plugins/dsh-wsl-docker-ports/client.containers.js?rev=3761196fcf92` → 200 |
+| 容器数据 | `GET /dsh-wsl-docker-containers/snapshot` → 200；表格 **30 行**，30 组 start/stop/restart/logs |
+| 转发侧不变 | 切回转发页：`sel-refresh-interval` 存在（值 15）；3306 行仍「多余规则（可移除）」+「WSL 内没有进程监听该端口」 |
+| 凭据隔离 | 容器 `/action` 无 token ⇒ 401；带**转发侧** token ⇒ 401；转发 `/write/plan` 带转发 token ⇒ 200 |
+| 角色判定 | `GET /dsh-wsl-docker-containers/health` → `{"side":"containers","rowId":"dsh-wsl-docker-containers"}` |
+| 控制台 | 零 `console.error` |
+
+**未验（需在插件列表里单开一侧）**：A1「只开转发」、A2「只开容器」——两者都要通过插件开关临时禁用一个 row，属改动 profile 的交互路径，等主人确认后再做。
