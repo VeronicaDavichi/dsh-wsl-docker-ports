@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 import * as entry from '../../src/client/index.ts';
 import type { ClientContextLike } from '../../src/client/host.ts';
 import type { PortsSnapshot } from '../../src/client/types.ts';
-import { PAGE_ID, PAGE_KIND, TAB_SLOT, TAB_TITLE_SLOT } from '../../src/client/rows.ts';
+import { CONTAINERS_PAGE_ID, PAGE_ID, PAGE_KIND, TAB_SLOT, TAB_TITLE_SLOT } from '../../src/client/rows.ts';
 import { CONFIG_SLOT_NAME } from '../../src/client/config-slot.ts';
 import { snapshot } from '../unit/client-fixtures.ts';
 
@@ -117,7 +117,8 @@ describe('T5.1 降级：缺什么就报什么，且一律不抛异常', () => {
     const result = entry.apply(fake.ctx);
     expect(result.registered).toBe(true);
     if (result.registered) expect(result.pageId).toBe(PAGE_ID);
-    expect(fake.tabRegistrations).toHaveLength(1);
+    // 🔴 015 P4 形状变更：右栏现在有**两个页**（转发 + 容器）⇒ 注册次数 1 → 2。
+    expect(fake.tabRegistrations.map((definition) => (definition as Record<string, unknown>)['id'])).toEqual([PAGE_ID, CONTAINERS_PAGE_ID]);
     console.log(`  · 无注入 source 时注册尝试 ${String(fake.tabRegistrations.length)} 次 ⇒ 默认来源就是自建路由`);
   });
 
@@ -177,9 +178,10 @@ describe('② 真机复验缺陷：页类型缺 guide 入口 ⇒ 页存在但用
   it('注册的页定义带 guide[]（官方字段 id/order/title()/description()），且文案是 thunk', () => {
     const fake = fakeCtx();
     entry.apply(fake.ctx, { source: source({ count: 0 }) });
-    expect(fake.tabRegistrations).toHaveLength(1);
+    // 🔴 015 P4 形状变更：两个页定义（转发在前、容器在后），下面只校验**转发页**那条。
+    expect(fake.tabRegistrations.map((item) => (item as Record<string, unknown>)['id'])).toEqual([PAGE_ID, CONTAINERS_PAGE_ID]);
 
-    const definition = fake.tabRegistrations[0] as Record<string, unknown>;
+    const definition = fake.tabRegistrations.find((item) => (item as Record<string, unknown>)['id'] === PAGE_ID) as Record<string, unknown>;
     const guide = definition['guide'] as readonly Record<string, unknown>[] | undefined;
     expect(Array.isArray(guide)).toBe(true);
     expect(guide).toHaveLength(1);
@@ -216,8 +218,10 @@ describe('T5.1 注册形状（contract §C9/§C10）', () => {
     }
 
     // 010 T7.3：先 `inject(['settings'])`（配置页关自动表单），再登记右栏懒注入
-    expect(fake.injectNames).toEqual([['settings'], ['sidebarRightTabs', 'sidebarRight']]);
-    expect(fake.tabRegistrations).toHaveLength(1);
+    // 🔴 015 P4 形状变更：两行各有自己的配置槽 ⇒ inject(['settings']) 两次（关自动表单），再登记右栏懒注入
+    expect(fake.injectNames).toEqual([['settings'], ['settings'], ['sidebarRightTabs', 'sidebarRight']]);
+    // 🔴 015 P4 形状变更：两个页定义（转发在前）
+    expect(fake.tabRegistrations.map((item) => (item as Record<string, unknown>)['id'])).toEqual([PAGE_ID, CONTAINERS_PAGE_ID]);
     const definition = fake.tabRegistrations[0] as Record<string, unknown>;
     expect(definition['id']).toBe(PAGE_ID);
     expect(definition['kind']).toBe(PAGE_KIND);
@@ -227,14 +231,16 @@ describe('T5.1 注册形状（contract §C9/§C10）', () => {
     expect((definition['title'] as (address: string) => string)('x')).toBeTypeOf('string');
 
     // 两个页内座位 + 010 T7.3 的配置槽（`plugins.row.config`）= 3 次注册
-    expect(fake.slotRegistrations).toHaveLength(3);
+    // 🔴 015 P4 形状变更：2 页 × (2 seat) + 2 个配置槽 = 6 次注册
+    expect(fake.slotRegistrations).toHaveLength(6);
     const paneSeats = fake.slotRegistrations.filter((registration) => registration.options['name'] !== CONFIG_SLOT_NAME);
-    expect(paneSeats.map((registration) => registration.options['name'])).toEqual([TAB_SLOT, TAB_TITLE_SLOT]);
-    expect(paneSeats.every((registration) => registration.options['key'] === PAGE_ID)).toBe(true);
-    // 配置槽的 key = 本包 patch 条目 id（不是 PAGE_ID）—— 两者混用会让宿主找不到配置行
-    expect(fake.slotRegistrations.find((registration) => registration.options['name'] === CONFIG_SLOT_NAME)?.options['key']).toBe('dsh-wsl-docker-ports');
+    expect(paneSeats.map((registration) => registration.options['name'])).toEqual([TAB_SLOT, TAB_TITLE_SLOT, TAB_SLOT, TAB_TITLE_SLOT]);
+    expect(paneSeats.map((registration) => registration.options['key'])).toEqual([PAGE_ID, PAGE_ID, CONTAINERS_PAGE_ID, CONTAINERS_PAGE_ID]);
+    // 配置槽的 key = 该行的 patch 条目 id（不是 PAGE_ID）—— 混用会让宿主找不到配置行；015 起有**两个**配置槽
+    expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === CONFIG_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['dsh-wsl-docker-ports', 'dsh-wsl-docker-containers']);
     expect(fake.slotRegistrations.every((registration) => typeof registration.component === 'function')).toBe(true);
-    expect(fake.effects).toHaveLength(3);
+    // 🔴 015 P4 形状变更：样式 / 右栏注册 / 配置槽 ×2 —— 第二个配置槽自己带一条 slots.inject effect ⇒ 3 → 4
+    expect(fake.effects).toHaveLength(4);
     console.log(`  · 扫了 ${String(fake.tabRegistrations.length)} 个页定义 / ${String(fake.slotRegistrations.length)} 个 seat / ${String(fake.effects.length)} 个 effect；priority=${JSON.stringify(definition['priority'])}`);
   });
 
@@ -250,7 +256,8 @@ describe('T5.1 注册形状（contract §C9/§C10）', () => {
     };
     const result = entry.apply(bare, { source: source({ count: 0 }) });
     expect(result.registered).toBe(true);
-    expect(registrations).toHaveLength(1);
+    // 🔴 015 P4 形状变更：两个页定义（转发 + 容器）
+    expect(registrations).toHaveLength(2);
     console.log(`  · 扫了 ${String(registrations.length)} 个页定义（无 inject/effect 的 ctx）`);
   });
 });

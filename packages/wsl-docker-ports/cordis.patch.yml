@@ -1,4 +1,4 @@
-# Bundle patch 层：「能被宿主加载的清单」四件套之二（Spec 003 / 宿主 0.2.0-rc.2）
+# Bundle patch 层：「能被宿主加载的清单」四件套之二（Spec 003 / 015；宿主 0.2.0-rc.2）
 #
 # 依据（2026-10-09 集成方只读核对，两处实物）：
 #   ① 本机已装第三方插件 `@xxxyz/dsh-mcp-manager` v2.4.0 的 `cordis.patch.yml` —— 形状同构：
@@ -13,8 +13,22 @@
 # `./lib/index.js`，该产物已导出 `name` / `inject` / `apply`（宿主按包根导出找它们）⇒ 本包
 # **可以**用于 T0.5 的装载验证了。跑之前先 `pnpm -C packages/wsl-docker-ports build`。
 #
-# 仍**未**接线（不影响本行装载，但会让右栏页按 ports-source-missing 降级，见 `src/plugin.ts`
-# 的 `gaps`）：真机快照装配 + 前后端数据通道（003 Phase 4 保留空位）与提权写路径（005）。
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔴 015（2026-10-23）：**同一个包、同一个 `name`、两条行**
+#
+# - 行 id（`- id:`）是身份：它决定「这是哪一行」，同时是**配置命名空间**与 patch 定位键；
+# - `name` 是模块说明符：两条行都解析到同一个包 ⇒ 同一个模块实例，`apply` 只被调两次；
+# - `src/plugin.ts` 的 `apply` 按**行 id 后缀** `-containers` 分派（判据见 `src/role.ts`：
+#   `config.role` → 行 id 后缀 → 缺省 `ports`）。故两条行共用同一个入口，各装各的一侧。
+#
+# ⚠️ 两条行都**不带** `disabled: true`：owner 决策 ② 是「容器行默认开启」。转发侧那条的行为
+# 与 015 之前**逐字节不变**（快照金标 / 19 条 portproxy / 既有判据一致）。
+#
+# ⚠️ 「容器行默认开」**不等于**「转发侧可以关」：两行互不依赖（容器侧有自己的 snapshot 路由，
+# 不读 netsh），但端口转发是原来的主功能 —— 关掉它只影响端口表，不影响容器页。
+# ─────────────────────────────────────────────────────────────────────────────
 - insert:
     - id: dsh-wsl-docker-ports
+      name: dsh-wsl-docker-ports
+    - id: dsh-wsl-docker-containers
       name: dsh-wsl-docker-ports

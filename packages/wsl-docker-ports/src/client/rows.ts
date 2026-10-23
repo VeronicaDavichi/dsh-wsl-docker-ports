@@ -10,7 +10,6 @@ import { isManagedPort, type ManagedPorts } from '../diff/managed-ports.ts';
 import { parseManagedPorts } from '../diff/managed-ports-parse.ts';
 import type { PortClassification, PortState, Scope, UnsupportedMapping, ExternalRule } from '../diff/types.ts';
 import type { DockerContainer } from '../read/docker.ts';
-import type { SidebarRightTabDefinitionLike, SlotsServiceLike } from './host.ts';
 import type {
   ContainerRowView,
   DriftView,
@@ -23,14 +22,33 @@ import type {
   UnsupportedRowView,
 } from './types.ts';
 
-/** 页类型 id / kind（kind 由集成方定：`wslDockerPorts` 不与官方 9 个 kind 重名 —— contract §P1） */
-export const PAGE_ID = 'dsh-wsl-docker-ports';
-export const PAGE_KIND = 'wslDockerPorts';
-export const PAGE_TITLE = 'WSL Docker 端口';
-
-/** 两个 keyed seat（contract §C10）：`key = definition.id` */
-export const TAB_SLOT = 'sidebar.right.pane.tab';
-export const TAB_TITLE_SLOT = 'sidebar.right.pane.tab.title';
+/**
+ * 015 `P4`：页定义 / seat 注册参数已拆到 [`tab-def.ts`](./tab-def.ts)（主包常驻面只装那一小块）。
+ * 这里**原样转发**（含 015 新加的容器页）⇒ 本文件既有的 import 路径与测试断言一字不变。
+ */
+export {
+  PAGE_ID,
+  PAGE_KIND,
+  PAGE_TITLE,
+  CONTAINERS_PAGE_ID,
+  CONTAINERS_PAGE_KIND,
+  CONTAINERS_PAGE_TITLE,
+  TAB_SLOT,
+  TAB_TITLE_SLOT,
+  GUIDE_ENTRY_ID,
+  GUIDE_ENTRY_ORDER,
+  GUIDE_ENTRY_TITLE,
+  GUIDE_ENTRY_DESCRIPTION,
+  CONTAINERS_GUIDE_ENTRY_ID,
+  CONTAINERS_GUIDE_ENTRY_ORDER,
+  CONTAINERS_GUIDE_TITLE,
+  CONTAINERS_GUIDE_DESCRIPTION,
+  TAB_SEATS,
+  paneTabDefinition,
+  portsTabDefinition,
+  containersTabDefinition,
+  registerTabSeats,
+} from './tab-def.ts';
 
 /**
  * **guide 空态入口**（真机复验缺陷：页存在但用户在右栏空态里点不到）。
@@ -60,10 +78,7 @@ export const TAB_TITLE_SLOT = 'sidebar.right.pane.tab.title';
  * "Optional glyph, drawn before the title; without one the guide draws its cube placeholder."），
  * 于是也不必为此新增一个 `@deepseek-ai/dsh-client-ui-primitives` 运行时 import。
  */
-export const GUIDE_ENTRY_ID = 'ports';
-export const GUIDE_ENTRY_ORDER = 40;
-export const GUIDE_ENTRY_TITLE = '端口转发';
-export const GUIDE_ENTRY_DESCRIPTION = '查看容器的端口映射与 portproxy 规则，逐端口应用／移除转发（只读事实层，开页零副作用）';
+/* guide 位次与文案常量已在 `./tab-def.ts` 里定义并由上方 re-export 转发 */
 
 /** `data-testid` 常量（requirements §2 的控件清单逐条对应，测试与实现共用一个字面量） */
 export const TESTID = {
@@ -108,43 +123,7 @@ export function stateTone(state: PortState): PortTone {
   return STATE_TONES[state];
 }
 
-/**
- * 构建页定义。`priority` **刻意不写**（= `extension` 档）；`multiple:false` + `keepMounted:true` 的理由见 README/report。
- *
- * `guide` 是**空态入口**（官方形状，见上方 `GUIDE_ENTRY_*`）：不注册它，页只在程序化 `openTab` 之后
- * 才出现在页签上，用户在右栏空态里**没有入口可点**。文案一律写成 thunk（官方每次使用都重读）。
- */
-export function portsTabDefinition(): SidebarRightTabDefinitionLike {
-  return {
-    id: PAGE_ID,
-    kind: PAGE_KIND,
-    title: () => PAGE_TITLE,
-    multiple: false,
-    keepMounted: true,
-    guide: [
-      {
-        id: GUIDE_ENTRY_ID,
-        order: GUIDE_ENTRY_ORDER,
-        title: () => GUIDE_ENTRY_TITLE,
-        description: () => GUIDE_ENTRY_DESCRIPTION,
-      },
-    ],
-  };
-}
-
-/** 两个 seat 的注册参数（`slots.register({name, key}, Component)`） */
-export const TAB_SEATS: readonly { readonly slot: string; readonly key: string }[] = [
-  { slot: TAB_SLOT, key: PAGE_ID },
-  { slot: TAB_TITLE_SLOT, key: PAGE_ID },
-];
-
-/** 注册两个 seat（返回 disposer 数组；调用方负责挂到 `ctx.effect`） */
-export function registerTabSeats(slots: SlotsServiceLike, component: unknown, titleComponent: unknown): (() => void)[] {
-  const disposers: (() => void)[] = [];
-  disposers.push(slots.inject(TAB_SLOT, () => slots.register({ name: TAB_SLOT, key: PAGE_ID }, component)));
-  disposers.push(slots.inject(TAB_TITLE_SLOT, () => slots.register({ name: TAB_TITLE_SLOT, key: PAGE_ID }, titleComponent)));
-  return disposers;
-}
+/* 页定义 / 两个 seat 的注册参数 / `registerTabSeats` 都在 `./tab-def.ts`，由上方 re-export 转发 */
 
 /** 修复指引（REQ-1.4）：**路径 + 可复制命令**，并写明不会自动改文件 */
 export function buildNatGuide(nat: NatGateView): NatGuideView {

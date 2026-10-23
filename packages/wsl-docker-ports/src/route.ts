@@ -39,42 +39,25 @@
  */
 
 import { PORTS_HTTP_PREFIX, PORTS_SNAPSHOT_METHOD, PORTS_SNAPSHOT_PATH, parseSnapshotQuery } from './wire.ts';
-import type { PortsErrorCode, PortsSnapshotResponse } from './wire.ts';
+import type { PortsErrorCode } from './wire.ts';
 import type { SnapshotBuilder } from './snapshot.ts';
+// 015 P1：HTTP 底座搬到 `./shared/http.ts`（两侧共用一份实现）；这里**原样再导出**，既有 import 不变
+import {
+  isWebServerSurface,
+  pathOf,
+  resolveWebServer,
+  sendJson,
+  WEB_SERVER_SERVICE,
+  type HttpRequestLike,
+  type HttpResponseLike,
+  type RoutePluginContextLike,
+  type WebServerRoute,
+  type WebServerSurfaceLike,
+} from './shared/http.ts';
+import { answerHealth, healthPath, type HealthPayload } from './shared/health.ts';
 
-/** 宿主 `webServer` 的路由处理器响应面（形状按 Node `http.ServerResponse` 取，与 002 同一假设） */
-export interface HttpResponseLike {
-  statusCode?: number | undefined;
-  setHeader(name: string, value: string): unknown;
-  end(body?: string): unknown;
-}
-
-export interface HttpRequestLike {
-  readonly url?: string | undefined;
-  readonly method?: string | undefined;
-}
-
-export interface WebServerRoute {
-  readonly kind: 'exact' | 'prefix';
-  readonly path: string;
-  readonly handler: (request: HttpRequestLike, response: HttpResponseLike) => void | Promise<void>;
-}
-
-export interface WebServerSurfaceLike {
-  register(route: WebServerRoute): () => void;
-}
-
-/**
- * 路由注册用到的 ctx 面（三个成员都可选：测试与降级路径都要能在没有它们的 ctx 上跑完）。
- *
- * `inject` 是**缺陷 A 的修法所在**：`ctx.inject(['webServer'], cb)` 的回调在服务可用时才跑
- * （服务已在 ⇒ 同步跑；后到 ⇒ 后到就跑），这就是「宿主可用时机」。
- */
-export interface RoutePluginContextLike {
-  readonly get?: (serviceName: string) => unknown;
-  readonly inject?: ((names: readonly string[], callback: (scope: RoutePluginContextLike) => void) => unknown) | undefined;
-  readonly effect?: (callback: () => (() => void) | void, label?: string) => unknown;
-}
+export { isWebServerSurface, pathOf };
+export type { HttpRequestLike, HttpResponseLike, RoutePluginContextLike, WebServerRoute, WebServerSurfaceLike };
 
 /** 注册状态（**活的**：惰性注入的回调可能在 `registerPortsRoute` 返回之后才跑） */
 export type PortsRouteState =
@@ -92,7 +75,7 @@ export interface PortsRouteRegistration {
   readonly state: PortsRouteState;
   /** 未注册的原因（**getter**：注册成功后必须变回 `undefined`，不许留一句过期的谎） */
   readonly reason?: string | undefined;
-  readonly paths: { readonly prefix: string; readonly snapshot: string };
+  readonly paths: { readonly prefix: string; readonly snapshot: string; readonly health: string };
   /** 处理过的请求数（测试用：证明「装载期零请求」与「请求真被处理」） */
   requestCount(): number;
   /** 当前仍生效的注册数（卸载后必须归零） */
@@ -108,54 +91,6 @@ const MISSING_WEB_SERVER_REASON =
 const PENDING_WEB_SERVER_REASON =
   "宿主此刻尚未提供 webServer：已登记 ctx.inject(['webServer'])，服务到位后自动注册（惰性注入的常态，不是失败）。";
 
-/** 宿主 webServer 的服务名（**唯一**字面量，别在别处再写一遍） */
-const WEB_SERVER_SERVICE = 'webServer';
-
-/** 结构面判定（duck typing，不 import 宿主类型） */
-export function isWebServerSurface(value: unknown): value is WebServerSurfaceLike {
-  if (typeof value !== 'object' || value === null) return false;
-  const candidate = value as Partial<WebServerSurfaceLike>;
-  return typeof candidate.register === 'function';
-}
-
-/**
- * 从注入回调拿到的 scope 里取 webServer。
- *
- * 三种写法都收（官方调用点里两种都出现过）：`scope.get('webServer')`（本仓既有口径）、
- * cordis 注入作用域上的直接属性 `scope.webServer`、以及「回调直接收到服务本身」。
- * 拿不到就返回 `undefined`，由调用方记成 `missing`（**不抛**）。
- */
-function resolveWebServer(scope: unknown): WebServerSurfaceLike | undefined {
-  if (typeof scope !== 'object' || scope === null) return undefined;
-  const candidate = scope as { get?: (name: string) => unknown; webServer?: unknown };
-  const viaGet = typeof candidate.get === 'function' ? candidate.get(WEB_SERVER_SERVICE) : undefined;
-  if (isWebServerSurface(viaGet)) return viaGet;
-  if (isWebServerSurface(candidate.webServer)) return candidate.webServer;
-  return isWebServerSurface(scope) ? scope : undefined;
-}
-
-/** 取路径（去掉 query/hash；畸形 url 退到原串，绝不抛） */
-export function pathOf(url: string | undefined): string {
-  if (url === undefined || url === '') return '/';
-  try {
-    return new URL(url, 'http://dsh.invalid').pathname;
-  } catch {
-    return url;
-  }
-}
-
-const encoder = new TextEncoder();
-
-/** 唯一的响应出口（`Content-Length` 按 UTF-8 字节算 —— 中文文案按字符算会短，长连接会串包） */
-function sendJson(response: HttpResponseLike, status: number, payload: PortsSnapshotResponse | { readonly ok: false; readonly error: { readonly code: PortsErrorCode; readonly message: string } }): void {
-  const body = JSON.stringify(payload);
-  response.statusCode = status;
-  response.setHeader('Content-Type', 'application/json; charset=utf-8');
-  response.setHeader('Content-Length', String(encoder.encode(body).length));
-  response.setHeader('Cache-Control', 'no-store');
-  response.end(body);
-}
-
 function statusFor(code: PortsErrorCode): number {
   if (code === 'not-found') return 404;
   if (code === 'method-not-allowed') return 405;
@@ -169,9 +104,19 @@ function statusFor(code: PortsErrorCode): number {
  * ⚠️ 缺 `webServer` 时**不注册任何路由并给出原因**（非严格取服务），**不是**让整个插件加载失败
  * —— 客户端半会按 `ports-source-missing` 降级。返回对象的 `registered` / `state` / `reason`
  * 都是 **getter**：惰性注入的回调后到也能被读到。
+ *
+ * 015 P2：本前缀内多一条 `GET <prefix>/health`（客户端据此判定「转发那一行是否启用」）。
+ * 它**免鉴权、只读、零 IO**，不改变快照路径的任何判据。
  */
-export function registerPortsRoute(ctx: RoutePluginContextLike, builder: SnapshotBuilder): PortsRouteRegistration {
-  const paths = { prefix: PORTS_HTTP_PREFIX, snapshot: PORTS_SNAPSHOT_PATH } as const;
+export function registerPortsRoute(
+  ctx: RoutePluginContextLike,
+  builder: SnapshotBuilder,
+  identity?: { readonly rowId?: string | undefined },
+): PortsRouteRegistration {
+  const rowId = identity?.rowId ?? PORTS_HTTP_PREFIX.slice(1);
+  const health = healthPath(PORTS_HTTP_PREFIX);
+  const healthPayload: HealthPayload = { ok: true, side: 'ports', rowId, v: 1 };
+  const paths = { prefix: PORTS_HTTP_PREFIX, snapshot: PORTS_SNAPSHOT_PATH, health } as const;
   let requests = 0;
   let live = 0;
   let state: PortsRouteState = 'missing';
@@ -186,10 +131,16 @@ export function registerPortsRoute(ctx: RoutePluginContextLike, builder: Snapsho
   const handler = async (request: HttpRequestLike, response: HttpResponseLike): Promise<void> => {
     requests += 1;
     try {
+      // 015 P2：健康端点**先**认（免鉴权、零 IO）—— 客户端靠它判定「转发这一行是否启用」。
+      // 非 GET 由 `answerHealth` 回 405（与快照的 405 同语义，但文案各自说清）。
+      if (pathOf(request.url) === health) {
+        answerHealth(request, response, healthPayload);
+        return;
+      }
       // 🔴 判据顺序（缺陷 B2）：**先**认路径，已知路径才谈方法 ⇒ 405 才可达；
       // 未知路径（含本前缀的根）一律 404，不管方法是什么。
       if (pathOf(request.url) !== PORTS_SNAPSHOT_PATH) {
-        fail(response, 'not-found', `未知路径：本前缀（${PORTS_HTTP_PREFIX}）只提供 ${PORTS_SNAPSHOT_PATH}`);
+        fail(response, 'not-found', `未知路径：本前缀（${PORTS_HTTP_PREFIX}）只提供 ${PORTS_SNAPSHOT_PATH} 与 ${health}`);
         return;
       }
       if ((request.method ?? PORTS_SNAPSHOT_METHOD).toUpperCase() !== PORTS_SNAPSHOT_METHOD) {

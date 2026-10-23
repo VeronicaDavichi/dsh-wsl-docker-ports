@@ -96,6 +96,27 @@ export interface SidebarRightTabsServiceLike {
 }
 
 /**
+ * `ctx.sidebarRight`（**只声明本包真正用到的两个成员**；服务名 `sidebarRight`）。
+ *
+ * 🔴 `openTab` 的存在本身就是一条真机事实：**注册页类型 ≠ 出现页签**。
+ * 0.2.0-rc.2 实物 `@deepseek-ai/dsh-client-ui-sidebar-right` 的 `SidebarRightController`：
+ *
+ * - `register(definition)`（`ctx.sidebarRightTabs`）只把类型放进注册表并刷 `guide()`，
+ *   它**不创建任何 tab** —— tab 是布局记录（`dsh.sidebar-right.v1.session-*` 的 `layout.tabs`），
+ *   只由 `openTab` / guide 胶囊 / `defaultSeed` 三条路产生；
+ * - `openTab(kind, options)` → `require()` → 没有在屏会话时**抛** `sidebarRight: no session surface is mounted`
+ *   （故本包调用点必须 try/catch，并在 `mounted` 变化后重试一次）；
+ * - `mounted` 是 `sessions.onScreen` 的快照 store（`{getSnapshot, subscribe}`），就是 `require()` 读的那个。
+ */
+export interface SidebarRightServiceLike {
+  openTab(kind: string, options?: { readonly revealIfOpened?: boolean }): void;
+  readonly mounted?: {
+    getSnapshot(): string | undefined;
+    subscribe(listener: () => void): () => void;
+  };
+}
+
+/**
  * 客户端 ctx 的最小面（contract §B6：`get` / `inject` / `effect` 都在）。
  * 三个成员都写成可选：**测试与降级路径都要能在没有它们的 ctx 上跑**，
  * 而生产上 `slots` 由模块级 `inject` 保证存在。

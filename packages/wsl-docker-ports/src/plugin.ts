@@ -57,14 +57,16 @@ import type { PortproxyOutcome } from './read/netsh-probe.ts';
 // 012：写通道的监听地址候选清单（与快照的 `localAddresses` 同源：`read/local-addresses.ts`）
 import { probeLocalAddresses } from './read/local-addresses.ts';
 import { registerPortsRoute } from './route.ts';
-import { registerContainerRoute } from './docker/route.ts';
-import type { ContainerRouteRegistration, ContainerTarget } from './docker/route.ts';
 import { attachWriteChannel, createDefaultLocalhostForwarding, createPluginFacts } from './transport/wire-plugin.ts';
 import type { PortsRouteRegistration } from './route.ts';
 import { createSnapshotBuilder } from './snapshot.ts';
 import type { SnapshotBuilder, SnapshotDeps } from './snapshot.ts';
 import { PORTS_SNAPSHOT_PATH } from './wire.ts';
 import type { Eth0Outcome } from 'dsh-wsl-shared';
+import { resolvePluginRole } from './role.ts';
+// 🔴 015 的**唯一**一条「转发侧 → 容器侧」边（`scripts/check-borders.mjs` 的 R2 白名单里逐字登记）：
+// `apply` 是两条行共用的入口，靠行 id 分派。除这一行之外，转发侧任何文件都不许 import `containers/**`。
+import { applyWslDockerContainers } from './containers/plugin.ts';
 
 /** 插件名（供 profile 清单的 `id` 引用；**与包名逐字一致** —— 二者不一致会让 patch 行指不到东西） */
 export const name = 'dsh-wsl-docker-ports';
@@ -101,8 +103,22 @@ import type {
   WslDockerPortsPluginHandle,
 } from './host-face.ts';
 
-/** 宿主入口（cordis 调用；返回值被忽略） */
+/**
+ * 宿主入口（cordis 调用；返回值被忽略）。
+ *
+ * ## 015：同一个包、同一个 `name`、**两条行**
+ *
+ * 两条行的 `apply` 都是本函数 ⇒ 必须在这里**按行 id 分派**（判据见 `./role.ts`）：
+ * `- id: dsh-wsl-docker-containers` ⇒ 装配容器侧；其余（含判不出来）⇒ 装配转发侧。
+ * 「判不出来走转发侧」是硬要求：015 之前的 profile 里那条行没写 `-containers` 后缀，
+ * 不能让它们突然装不上转发侧。
+ */
 export function apply(ctx: PluginContextLike, config?: PortsPluginConfigLike | undefined): void {
+  const decision = resolvePluginRole(ctx, config);
+  if (decision.role === 'containers') {
+    applyWslDockerContainers(ctx, config);
+    return;
+  }
   applyWslDockerPorts(ctx, config);
 }
 
@@ -222,18 +238,9 @@ export function applyWslDockerPorts(
     },
   }), executor, undefined, hostConfig.writeToken);
 
-  // ④ 容器控制（010 T7.1/T7.2）：**另一条通道**（REQ-P1-2：不经 /write/plan|apply），前缀 `/…/container`。
-  //    凭据与写通道**同一把**（`hostConfig.writeToken` 的活体读取）⇒ 未配置即 401 fail-safe，Agent 无凭据 ⇒ 0 次 docker 调用。
-  //    目标发行版**每次请求现解析**（`distro` 是 volatile，现读才吃得到 live 写入）。
-  const containerRoute: ContainerRouteRegistration = registerContainerRoute(ctx, {
-    writeToken: hostConfig.writeToken,
-    executor,
-    resolveTarget: async (): Promise<ContainerTarget> => {
-      const target = await resolveTarget();
-      if (!target.ok) return { ok: false, reason: target.code, message: target.message };
-      return { ok: true, name: target.resolved.name, distros: target.distros };
-    },
-  });
+  // ④ 015 P2：容器能力**不再**挂在转发侧（两条行、两条独立通道）。
+  //    010 的 `src/docker/**` 保留为「已实现但未装配」的遗留面（契约用例直接调它），
+  //    运行时的容器入口在 `src/containers/plugin.ts`（由上面的 `apply` 按行 id 分派）。
 
   /**
    * webServer 缺口：**每次读都按 `route` 的当前状态算**。
@@ -283,7 +290,6 @@ export function applyWslDockerPorts(
     if (disposed) return;
     disposed = true;
     route.dispose(); // 幂等；`ctx.effect` 也会在卸载时调它
-    containerRoute.dispose();
   };
 
   if (typeof ctx.effect === 'function') {
@@ -310,7 +316,6 @@ export function applyWslDockerPorts(
     service,
     snapshotBuilder: builder,
     writeRoute: writeChannel.writeRoute,
-    containerRoute,
     route,
     get gaps(): readonly PluginGap[] {
       const out: PluginGap[] = [];

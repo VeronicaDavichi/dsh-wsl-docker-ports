@@ -56,11 +56,21 @@ import {
   type ClientTimers,
   type PortsSource,
   type RemoteSettingsLike,
+  type SidebarRightServiceLike,
   type SidebarRightTabsServiceLike,
   type SlotsServiceLike,
 } from './host.ts';
 import type { PortsPaneProps } from './pane.tsx';
-import { PAGE_ID, PAGE_KIND, PAGE_TITLE, TAB_SLOT, TAB_TITLE_SLOT, portsTabDefinition, registerTabSeats } from './rows.ts';
+import {
+  PAGE_ID,
+  PAGE_KIND,
+  PAGE_TITLE,
+  TAB_SLOT,
+  TAB_TITLE_SLOT,
+  portsTabDefinition,
+  registerTabSeats,
+} from './tab-def.ts';
+import { createContainersSurface } from './containers-surface.ts';
 import { createRouteSource } from './route-source.ts';
 import { createSettingsPipe } from './settings-pipe.ts';
 import { registerConfigSlot } from './config-slot.ts';
@@ -188,6 +198,8 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
 
   // ③ 配置管道先建：路由来源每次刷新要用它读声明（**读**，不是写）
   const settings = createSettingsPipe(() => softGet<RemoteSettingsLike>(ctx, 'remote.settings'));
+  // ③″ 容器侧（015 P4）：注册面拆到 `containers-surface.ts`（`T6.4` 单文件 ≤ 400 行是 SHALL）
+  const containersSurface = createContainersSurface(ctx, options, softGet, CLIENT_LOG_TAG);
 
   // ③′ 010 T7.3：插件配置页（宿主「插件」行的配置槽）。组件本体在 chunk 里（主包棘轮零余量），
   //    这里只注册一个**取块座位**；`settings` 直接闭包进去 ⇒ 页面写走同一条 live 管道（不另造一条）。
@@ -200,6 +212,8 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
       paneProps: { ...ownerProps, settings },
     });
   const configSlot = registerConfigSlot(ctx as unknown as ConfigSlotContext, configSeat as unknown as (props: never) => unknown);
+  // ③‴ 容器行**自己的**配置槽（键 = 容器行 id；读写的命名空间是容器侧那个）
+  containersSurface.registerConfig(ctx);
   if (!configSlot.registered) {
     console.warn(`${CLIENT_LOG_TAG} 插件配置页未注册：${configSlot.reason ?? '原因未记录'}`);
   }
@@ -301,7 +315,7 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
     injectFired = true;
     cancelPendingWarn();
     const tabs = softGet<SidebarRightTabsServiceLike>(scope, SIDEBAR_TAB_SERVICE);
-    const sidebar = softGet<unknown>(scope, SIDEBAR_SERVICE);
+    const sidebar = softGet<SidebarRightServiceLike>(scope, SIDEBAR_SERVICE);
     const missing: string[] = [];
     if (tabs === undefined) missing.push(SIDEBAR_TAB_SERVICE);
     if (sidebar === undefined) missing.push(SIDEBAR_SERVICE);
@@ -321,6 +335,9 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
     )) {
       collect(disposer);
     }
+    // 015 `P4`：容器页（独立 id/kind/seat）；探活在 `containers-surface` 里排定，只有确证 404 才撤页。
+    // 第三个实参是 `ctx.sidebarRight` 本身 —— 注册类型**不等于**出现页签，容器页要 `openTab` 才存在。
+    for (const disposer of containersSurface.registerTab(tabs, scopedSlots, sidebar)) collect(disposer);
     registeredPage = true;
     // 对照：先前那条「等待超时」告警到此**已解除**（否则看到告警的人无从判断它是否还成立）
     if (warnedPending) {

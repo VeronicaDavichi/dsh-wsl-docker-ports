@@ -175,20 +175,20 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 /** 从 `describe()` 里取本命名空间的**整条记录**（形如 `{ namespaces: [{ ns, value, secrets }] }`） */
-export function namespaceEntry(described: SettingsResponse): Record<string, unknown> | undefined {
+export function namespaceEntry(described: SettingsResponse, namespace: string = SETTINGS_NAMESPACE): Record<string, unknown> | undefined {
   const value = asRecord(described.value);
   const namespaces = value?.['namespaces'];
   if (!Array.isArray(namespaces)) return undefined;
   for (const entry of namespaces) {
     const record = asRecord(entry);
-    if (record?.['ns'] === SETTINGS_NAMESPACE) return record;
+    if (record?.['ns'] === namespace) return record;
   }
   return undefined;
 }
 
 /** 从 `describe()` 里取本命名空间的当前值（形如 `{ namespaces: [{ ns, value }] }`） */
-export function namespaceValue(described: SettingsResponse): unknown {
-  return namespaceEntry(described)?.['value'];
+export function namespaceValue(described: SettingsResponse, namespace: string = SETTINGS_NAMESPACE): unknown {
+  return namespaceEntry(described, namespace)?.['value'];
 }
 
 /**
@@ -219,7 +219,7 @@ function readSecretSet(entry: Record<string, unknown> | undefined): boolean {
  * （2026-10-12 真机原话，缺陷 2）；而 `expectedRevision` 的 codec 是 `union([_undefined(), number()])`
  * 且 `acceptsUndefined: true` ⇒ 显式 `undefined` 合法，投影时被丢弃 = 语义仍是「无条件写」。
  */
-export function revisionOf(described: SettingsResponse): unknown {
+export function revisionOf(described: SettingsResponse, namespace: string = SETTINGS_NAMESPACE): unknown {
   const value = asRecord(described.value);
   if (value === undefined) return undefined;
   if (value['revision'] !== undefined) return value['revision'];
@@ -227,7 +227,7 @@ export function revisionOf(described: SettingsResponse): unknown {
   if (!Array.isArray(namespaces)) return undefined;
   for (const entry of namespaces) {
     const record = asRecord(entry);
-    if (record?.['ns'] !== SETTINGS_NAMESPACE) continue;
+    if (record?.['ns'] !== namespace) continue;
     if (record['revision'] !== undefined) return record['revision'];
     const inner = asRecord(record['value']);
     if (inner?.['revision'] !== undefined) return inner['revision'];
@@ -260,7 +260,7 @@ function readScopes(value: unknown): Record<string, ScopeValue> {
  * 造写回管道。`getSettings` 是**惰性软取**（contract §D13：`ctx.get('remote.settings')`
  * 可能晚于本插件就绪，故每次写入时再取一次，不缓存 `undefined`）。
  */
-export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undefined): SettingsPipe {
+export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undefined, namespace: string = SETTINGS_NAMESPACE): SettingsPipe {
   let updateCount = 0;
 
   async function write(patch: SettingsPatch): Promise<SettingsWriteResult> {
@@ -274,12 +274,12 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
     } catch (error) {
       return { ok: false, message: `读取配置失败：${errorText(error)}`, patch, revisionPassed: false };
     }
-    const revision = revisionOf(described);
+    const revision = revisionOf(described, namespace);
     updateCount += 1;
     try {
       // 🔴 实参个数**恰好 3**（缺陷 2）：`revision === undefined` 时也必须显式占位，
       // 宿主按 `values.length` 校验（少一个直接抛，连请求都发不出去）。
-      const result = await service.update(SETTINGS_NAMESPACE, patch, revision);
+      const result = await service.update(namespace, patch, revision);
       if (result.ok) return { ok: true, message: '配置已写入（live 路径，不重挂载）', patch, revisionPassed: revision !== undefined };
       return { ok: false, message: `配置写入失败：${String(result.error ?? '未知原因')}`, patch, revisionPassed: revision !== undefined };
     } catch (error) {
@@ -292,7 +292,7 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
     async readConfig(): Promise<SettingsConfigView> {
       const service = getSettings();
       if (service === undefined) return { managedPorts: [], distro: undefined, elevationPolicy: undefined, scopes: {}, writeTokenConfigured: false, refreshIntervalSec: 0 };
-      const entry = namespaceEntry(await service.describe());
+      const entry = namespaceEntry(await service.describe(), namespace);
       const value = asRecord(entry?.['value']);
       const distro = value?.['distro'];
       const policy = value?.['elevationPolicy'];
@@ -336,15 +336,15 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
       } catch (error) {
         return failed(`清除前读配置失败：${errorText(error)}`, false);
       }
-      const revision = revisionOf(described);
+      const revision = revisionOf(described, namespace);
       // 🔴 实参**恰好 3 个**（宿主 `prepareInvocation` 数 `values.length`）⇒ revision 取不到也要显式占位。
       try {
-        const result = await service.mutate(SETTINGS_NAMESPACE, ops, revision);
+        const result = await service.mutate(namespace, ops, revision);
         if (result.ok !== true) {
           return failed(`清除失败：${String(result.error ?? '宿主未给出原因')}（未改动任何状态，且不重试）`, revision !== undefined);
         }
         // 布尔取自**服务端写入后的新视图**（`namespaceView(descriptor)`），与「刷新后再 describe 一次」同源。
-        const configured = readSecretSet(namespaceEntry(result));
+        const configured = readSecretSet(namespaceEntry(result, namespace));
         return {
           ok: true,
           message: configured

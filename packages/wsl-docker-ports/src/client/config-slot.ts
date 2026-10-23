@@ -128,7 +128,7 @@ function degrade(reason: string, autoForm: ConfigureOutcome): ConfigSlotResult {
 /**
  * 注册配置页（`REQ-12.1` 的后半）。**幂等**：重复调用不会产生第二个页（宿主按 `key` 去重之前我们自己也挡一层）。
  */
-export function registerConfigSlot(ctx: ConfigSlotContext, component: ComponentLike): ConfigSlotResult {
+export function registerConfigSlot(ctx: ConfigSlotContext, component: ComponentLike, key: string = CONFIG_ROW_KEY): ConfigSlotResult {
   const autoForm = configureAutoForm(ctx);
 
   const candidate = (ctx as { readonly slots?: unknown }).slots;
@@ -137,7 +137,7 @@ export function registerConfigSlot(ctx: ConfigSlotContext, component: ComponentL
     return degrade(`宿主未提供 slots.{inject,register}：${CONFIG_SLOT_NAME} 不注册（自绘配置页不可用，其余照常）`, autoForm);
   }
 
-  const options = { name: CONFIG_SLOT_NAME, key: CONFIG_ROW_KEY };
+  const options = { name: CONFIG_SLOT_NAME, key };
   let live = 0;
   let done = false;
   const collected: (() => void)[] = [];

@@ -24,13 +24,13 @@
  * disposer 交给 `ctx.effect`（宿主不会自动收编；漏了会「插件卸载、路由还在」⇒ 重复注册抛错）。
  */
 
-import { isWebServerSurface, pathOf } from '../route.ts';
-import type { HttpRequestLike, HttpResponseLike, RoutePluginContextLike, WebServerSurfaceLike } from '../route.ts';
-import type { ConfigValueSource } from '../config-read.ts';
+import { isWebServerSurface, pathOf, queryOf, readJsonBody, resolveWebServer, sendJson, WEB_SERVER_SERVICE } from '../shared/http.ts';
+import type { HttpRequestLike, HttpResponseLike, RoutePluginContextLike, WebServerSurfaceLike } from '../shared/http.ts';
+import type { ConfigValueSource } from '../shared/config-read.ts';
 import type { Executor, WslDistro } from 'dsh-wsl-shared';
 
-import { createWriteAuthenticator } from '../transport/write-auth.ts';
-import type { WriteHeaderBag } from '../transport/write-auth.ts';
+import { createWriteAuthenticator } from '../shared/credential.ts';
+import type { WriteHeaderBag } from '../shared/credential.ts';
 import { readContainerLogs, runContainerAction } from './control.ts';
 import type { ContainerFailure } from './control.ts';
 import {
@@ -77,65 +77,9 @@ export interface ContainerRouteRegistration {
   dispose(): void;
 }
 
-const WEB_SERVER_SERVICE = 'webServer';
 const MISSING_WEB_SERVER_REASON = '宿主未提供 webServer 服务：容器动作路由不注册（容器表仍可只读浏览）。';
 const PENDING_WEB_SERVER_REASON =
   "宿主此刻尚未提供 webServer：已登记 ctx.inject(['webServer'])，服务到位后自动注册（惰性注入的常态，不是失败）。";
-
-const encoder = new TextEncoder();
-
-function resolveWebServer(scope: unknown): WebServerSurfaceLike | undefined {
-  if (typeof scope !== 'object' || scope === null) return undefined;
-  const candidate = scope as { get?: (name: string) => unknown; webServer?: unknown };
-  const viaGet = typeof candidate.get === 'function' ? candidate.get(WEB_SERVER_SERVICE) : undefined;
-  if (isWebServerSurface(viaGet)) return viaGet;
-  if (isWebServerSurface(candidate.webServer)) return candidate.webServer;
-  return isWebServerSurface(scope) ? scope : undefined;
-}
-
-function sendJson(response: HttpResponseLike, status: number, payload: unknown): void {
-  const body = JSON.stringify(payload);
-  response.statusCode = status;
-  response.setHeader('Content-Type', 'application/json; charset=utf-8');
-  response.setHeader('Content-Length', String(encoder.encode(body).length));
-  response.setHeader('Cache-Control', 'no-store');
-  response.end(body);
-}
-
-/** 读请求体：限长、容忍空体、畸形/超限**不抛**（变成 400 的可读原因） */
-async function readJsonBody(
-  request: ContainerRequestLike,
-): Promise<{ readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly reason: string }> {
-  if (typeof request[Symbol.asyncIterator] !== 'function') return { ok: true, value: undefined };
-  const decoder = new TextDecoder();
-  let text = '';
-  let bytes = 0;
-  try {
-    for await (const chunk of request as AsyncIterable<Uint8Array | string>) {
-      bytes += typeof chunk === 'string' ? encoder.encode(chunk).length : chunk.byteLength;
-      if (bytes > CONTAINER_BODY_MAX_BYTES) return { ok: false, reason: `请求体超过上限 ${String(CONTAINER_BODY_MAX_BYTES)} 字节` };
-      text += typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true });
-    }
-    text += decoder.decode();
-  } catch (error) {
-    return { ok: false, reason: `读取请求体失败：${error instanceof Error ? error.message : String(error)}` };
-  }
-  if (text.trim() === '') return { ok: true, value: undefined };
-  try {
-    return { ok: true, value: JSON.parse(text) as unknown };
-  } catch (error) {
-    return { ok: false, reason: `请求体不是合法 JSON：${error instanceof Error ? error.message : String(error)}` };
-  }
-}
-
-/** `?id=` / `?tail=`（不认识的参数一律忽略，与 003 的快照查询同口径） */
-function queryOf(url: string | undefined): URLSearchParams {
-  try {
-    return new URL(url ?? '/', 'http://dsh.invalid').searchParams;
-  } catch {
-    return new URLSearchParams();
-  }
-}
 
 function failureMessage(failure: ContainerFailure): string {
   return failure.message;
@@ -203,7 +147,7 @@ export function registerContainerRoute(ctx: RoutePluginContextLike, deps: Contai
         return;
       }
 
-      const body = await readJsonBody(request);
+      const body = await readJsonBody(request, CONTAINER_BODY_MAX_BYTES);
       if (!body.ok) {
         fail(response, 'bad-request', body.reason);
         return;

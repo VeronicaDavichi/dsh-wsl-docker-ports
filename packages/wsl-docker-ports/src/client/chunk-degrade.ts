@@ -117,6 +117,11 @@ export interface ChunkBootProps {
   readonly title: string;
   readonly load: (spec: string) => Promise<ChunkSeatModule>;
   readonly paneProps: Record<string, unknown>;
+  /**
+   * 组件导出名（缺省 `'PortsPane'`）。015 `P4` 加了第二个 chunk（容器页）⇒ 同一个 `ChunkBoot`
+   * 要能取不同名字的组件；缺省值保证转发侧调用点与既有测试**一字不变**。
+   */
+  readonly exportName?: string;
   /** 测试缝（生产缺省 = 真 `navigator.onLine` / 真 `fetch` / 真 DOM 自省） */
   readonly online?: () => boolean;
   readonly probe?: (url: string) => Promise<number | null>;
@@ -136,7 +141,7 @@ type BootState =
  * 它会把失败的 promise 记忆住 ⇒ 重试变成空转）。
  */
 export function ChunkBoot(props: ChunkBootProps): ReactElement {
-  const { spec, title, load, paneProps, online, probe, mainUrl } = props;
+  const { spec, title, load, paneProps, exportName = 'PortsPane', online, probe, mainUrl } = props;
   const [state, setState] = useState<BootState>({ phase: 'loading' });
   const [attempt, setAttempt] = useState(0);
 
@@ -145,7 +150,21 @@ export function ChunkBoot(props: ChunkBootProps): ReactElement {
     setState({ phase: 'loading' });
     void load(spec)
       .then((mod) => {
-        if (alive) setState({ phase: 'ready', Pane: mod.PortsPane });
+        if (!alive) return;
+        const picked = (mod as unknown as Record<string, ComponentType<Record<string, unknown>> | undefined>)[exportName];
+        if (picked === undefined) {
+          setState({
+            phase: 'failed',
+            failure: {
+              reason: 'init-failed',
+              label: '页面组件加载失败',
+              hint: 'chunk 已取回但没有导出约定的组件名：多半是产物过期或导出名对不上，重建客户端产物后再刷新。',
+              detail: `${spec} 缺少导出 ${exportName}`,
+            },
+          });
+          return;
+        }
+        setState({ phase: 'ready', Pane: picked });
       })
       .catch(async (error: unknown) => {
         const isOnline = (online ?? ((): boolean => navigator.onLine))();

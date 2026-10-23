@@ -44,7 +44,7 @@ const pkg = JSON.parse(readFileSync(path.join(pkgRoot, 'package.json'), 'utf8'))
 const P2_HARD_LIMIT = 65536;
 /** 常驻面：切分后**必须**仍在主包（`REQ-BS-3` / design §3.1） */
 const RESIDENT_MARKERS = [
-  'src/client/rows.ts',
+  'src/client/tab-def.ts',
   'src/client/write-channel.ts',
   'src/client/write-token.ts',
   'src/client/settings-pipe.ts',
