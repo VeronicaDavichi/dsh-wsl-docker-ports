@@ -1,11 +1,14 @@
 ---
-status: in-progress
+status: complete
 created: 2026-10-23
 created_at: 2026-10-23T02:52:10.174138300Z
-updated_at: 2026-10-23T02:55:52.008995500Z
+updated_at: 2026-10-23T03:27:15.041015100Z
+completed_at: 2026-10-23T03:27:15.041015100Z
 transitions:
 - status: in-progress
   at: 2026-10-23T02:55:52.008995500Z
+- status: complete
+  at: 2026-10-23T03:27:15.041015100Z
 ---
 # 013 · “多余规则”改按「WSL 内有没有服务在监听」判定
 
