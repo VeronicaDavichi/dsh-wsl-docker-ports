@@ -186,7 +186,7 @@ describe('T3.1 响应解析：命令原文原样搬运', () => {
 
 describe('T3.1 所有权声明读取器：复用宿主的解析器', () => {
   const settingsWith = (managedPorts: readonly string[], ok = true) => ({
-    readConfig: async () => ({ managedPorts, distro: undefined, elevationPolicy: undefined, scopes: {}, writeTokenConfigured: false }),
+    readConfig: async () => ({ managedPorts, distro: undefined, elevationPolicy: undefined, scopes: {}, writeTokenConfigured: false, refreshIntervalSec: 0 }),
     updateCount: () => 0,
     writeManagedPorts: async () => ({ ok, message: '', patch: {}, revisionPassed: false }),
     writeDistro: async () => ({ ok, message: '', patch: {}, revisionPassed: false }),
@@ -195,6 +195,8 @@ describe('T3.1 所有权声明读取器：复用宿主的解析器', () => {
     // 012：监听地址写回（本文件的假管道只服务于「声明读取」，真被调到就是用例写错了）
     writeListenAddress: async () => ({ ok: false, message: '本用例不该走 writeListenAddress', patch: {}, revisionPassed: false }),
     writeWriteToken: async () => ({ ok, message: '', patch: {}, revisionPassed: false }),
+    // 014：自动刷新频次写回（同上，本文件的假管道只服务于「声明读取」）
+    writeRefreshInterval: async () => ({ ok: false, message: '本用例不该走 writeRefreshInterval', patch: {}, revisionPassed: false }),
     // 009 收口轮 T3 起 `SettingsPipe` 多一个成员：清除凭据走宿主 `mutate` 的 unset。
     // 本文件的假管道只服务于「声明读取」，故这里给一个**不 ok** 的占位（真被调到就是用例写错了）。
     clearWriteToken: async () => ({ ok: false, message: '本用例不该走 clearWriteToken', writeTokenConfigured: null, revisionPassed: false, ops: [] }),

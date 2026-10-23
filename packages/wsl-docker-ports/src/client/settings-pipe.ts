@@ -66,6 +66,11 @@ export interface SettingsPatch {
    * （`write-token.ts` 的 `issueWriteToken()` 负责生成与一次性展示）。
    */
   readonly writeToken?: string;
+  /**
+   * 014：自动刷新频次（秒；`0` = 关闭）。右栏页顶部选择器选一次写一次，
+   * 刷新页面后由 `readConfig()` 回填；服务端不消费它。
+   */
+  readonly refreshIntervalSec?: number;
 }
 
 export interface SettingsWriteResult {
@@ -126,6 +131,8 @@ export interface SettingsConfigView {
    * 未脱敏的调用方/测试替身仍然可用，且两条路径都只产出布尔。）
    */
   readonly writeTokenConfigured: boolean;
+  /** 014：自动刷新频次（秒；`0` = 关闭）。缺省/非法值在 `readConfig()` 里化成 `0`。 */
+  readonly refreshIntervalSec: number;
 }
 
 export interface SettingsPipe {
@@ -149,6 +156,11 @@ export interface SettingsPipe {
    * `mutate` 的**返回值**（= 写入后的新脱敏视图），调用方据此更新布尔，不靠内存推断。
    */
   clearWriteToken(): Promise<SettingsClearResult>;
+  /**
+   * 014：自动刷新频次写回（`0` 或 `15/30/60/300` 秒）。只写配置，
+   * **不启动定时器**（轮询在 chunk 侧，主包不新增任何 `setInterval`）。
+   */
+  writeRefreshInterval(sec: number): Promise<SettingsWriteResult>;
   /** `update` 的真实调用次数（测试断言；「零提权调用」由提权侧计数器给出）。**清除走 `mutate`，不计入** —— 两个口径不混 */
   updateCount(): number;
 }
@@ -279,7 +291,7 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
   return {
     async readConfig(): Promise<SettingsConfigView> {
       const service = getSettings();
-      if (service === undefined) return { managedPorts: [], distro: undefined, elevationPolicy: undefined, scopes: {}, writeTokenConfigured: false };
+      if (service === undefined) return { managedPorts: [], distro: undefined, elevationPolicy: undefined, scopes: {}, writeTokenConfigured: false, refreshIntervalSec: 0 };
       const entry = namespaceEntry(await service.describe());
       const value = asRecord(entry?.['value']);
       const distro = value?.['distro'];
@@ -295,6 +307,7 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
         elevationPolicy: policy === 'none' || policy === 'ask' || policy === 'passby' ? policy : undefined,
         scopes: readScopes(value?.['scopes']),
         writeTokenConfigured: readSecretSet(entry) || (typeof writeToken === 'string' && writeToken.trim() !== ''),
+        refreshIntervalSec: Number(value?.['refreshIntervalSec']) || 0,
       };
     },
     writeManagedPorts: (decls) => write({ managedPorts: [...decls] }),
@@ -303,6 +316,7 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
     writeScope: (port, scope) => write({ scopes: { [String(port)]: scope } }),
     writeListenAddress: (port, address) => write({ listenAddresses: { [String(port)]: address } }),
     writeWriteToken: (token) => write({ writeToken: token.trim() }),
+    writeRefreshInterval: (sec) => write({ refreshIntervalSec: sec }),
     async clearWriteToken(): Promise<SettingsClearResult> {
       const ops = UNSET_WRITE_TOKEN_OPS;
       const failed = (message: string, revisionPassed: boolean): SettingsClearResult => ({

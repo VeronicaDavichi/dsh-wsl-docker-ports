@@ -17,17 +17,19 @@
  * 区域组件拆在 `pane-tables.tsx` / `pane-settings.tsx`（单文件 ≤ 400 行是 SHALL）。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 
 import type { Scope } from '../diff/types.ts';
 import { containerControlOf } from './container-control.ts';
 import { usePageScrollFix } from './pane-scroll.ts';
 import type { ClientRuntime, ForwardAction } from './host.ts';
-import { buildPortsPageView, summarizeWriteReport } from './page.ts';
+import { summarizeWriteReport } from './page.ts';
 import { ContainersBlock, DistroBlock, DockerFailureBlock, ExternalRulesBlock, PortsBlock, UnsupportedBlock } from './pane-tables.tsx';
+import { PaneHeader, RefreshIntervalSelect } from './pane-header.tsx';
 import { ElevationBlock, ManagedPortsBlock, NextPhaseBlock, RawOutputBlock, WriteTokenBlock } from './pane-settings.tsx';
 import { mergeManagedPortsDecl, TESTID } from './rows.ts';
-import type { NatGatePanelView, PortRowView, PortsPageView, PortsSnapshot } from './types.ts';
+import type { LastWriteView, NatGatePanelView, PortRowView } from './types.ts';
+import { useAutoRefresh } from './use-auto-refresh.ts';
 import { WriteChannelBlock } from './write-panel.tsx';
 import { clearWriteToken, issueWriteToken } from './write-token.ts';
 
@@ -37,43 +39,12 @@ export interface PortsPaneProps {
   readonly autoLoad?: boolean;
 }
 
-export interface LastWriteView {
-  readonly status: string;
-  readonly message: string;
-  readonly unapplied: readonly string[];
-}
-
 /** 该动作**计划**动哪几步（`SummarizeWriteReport` 据此报「未改项」，与 005 脚本的步骤名同源） */
 export function plannedKinds(action: ForwardAction, scope: Scope, fix: PortRowView['fix']): readonly string[] {
   if (action === 'fix-drift') return fix?.steps.map((step) => step.kind) ?? [];
   if (action === 'apply') return scope === 'lan' ? ['portproxy-add', 'firewall-add'] : ['portproxy-add'];
   if (action === 'remove') return ['portproxy-delete', 'firewall-delete'];
   return [];
-}
-
-function PaneHeader(props: {
-  readonly view: PortsPageView;
-  readonly busy: boolean;
-  readonly onRefresh: () => void;
-  readonly onLaunch: () => void;
-}): ReactElement {
-  const { view, busy, onRefresh, onLaunch } = props;
-  return (
-    <div className="wdp-head">
-      <button type="button" className="wdp-btn" data-testid={TESTID.refresh} disabled={busy} onClick={onRefresh}>
-        刷新
-      </button>
-      <span className="wdp-muted">
-        上次刷新：<span data-testid="last-refreshed">{view.refreshedAtText}</span>
-      </span>
-      <span className="wdp-muted">eth0：{view.eth0.text}</span>
-      {!view.eth0.known ? (
-        <button type="button" className="wdp-btn" data-testid={view.eth0.launchTestId} title={view.eth0.launchNote} onClick={onLaunch}>
-          启动并核验
-        </button>
-      ) : null}
-    </div>
-  );
 }
 
 /** NAT 硬前提区（REQ-1.1/1.4）：非 NAT 时这里同时是**原因**与**修复指引**的落点 */
@@ -125,10 +96,9 @@ function LastWriteBlock({ lastWrite }: { readonly lastWrite: LastWriteView | nul
 
 export function PortsPane(props: PortsPaneProps): ReactElement {
   const { runtime, autoLoad = true } = props;
-  const [view, setView] = useState<PortsPageView | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // 014：拉取 / 自动轮询 / 频次状态机（含挂载读频次、选择写频次、卸载清定时器）
+  const { view, loadError, busy, refresh, refreshIntervalSec, changeRefreshInterval } = useAutoRefresh(runtime, autoLoad, setActionError);
   const [draft, setDraft] = useState('');
   const [checkedPresets, setCheckedPresets] = useState<readonly string[]>([]);
   const [scopeDraft, setScopeDraft] = useState<Readonly<Record<string, Scope>>>({});
@@ -236,28 +206,6 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
     }
   };
 
-  const refresh = useCallback(
-    async (allowColdStart: boolean, previous: LastWriteView | null): Promise<void> => {
-      setBusy(true);
-      setLoadError(null);
-      try {
-        const snapshot: PortsSnapshot = await runtime.source.load(allowColdStart ? { allowColdStart: true } : undefined);
-        setView(buildPortsPageView(snapshot, { lastWrite: previous }));
-      } catch (error) {
-        setLoadError(error instanceof Error ? error.message : String(error));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [runtime],
-  );
-
-  // 开页：**唯一**的挂载期副作用入口，而且它是只读的（NFR-2）
-  useEffect(() => {
-    if (!autoLoad) return;
-    void refresh(false, null);
-  }, [autoLoad, refresh]);
-
   useEffect(() => {
     if (view === null) return;
     setDraft(view.managedPorts.rangeText);
@@ -279,6 +227,7 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
           <button type="button" className="wdp-btn" data-testid={TESTID.refresh} disabled={busy} onClick={() => void refresh(false, lastWrite)}>
             刷新
           </button>
+          <RefreshIntervalSelect value={refreshIntervalSec} onChange={(sec) => void changeRefreshInterval(sec)} />
         </div>
         {loadError !== null ? <p className="wdp-error">读取失败：{loadError}</p> : null}
       </div>
@@ -319,7 +268,19 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
 
   return (
     <div className="wdp-page" data-plugin="dsh-wsl-docker-ports" ref={rootRef}>
-      <PaneHeader view={view} busy={busy} onRefresh={() => void refresh(false, lastWrite)} onLaunch={() => void refresh(true, lastWrite)} />
+      <PaneHeader
+        view={view}
+        busy={busy}
+        onRefresh={() => void refresh(false, lastWrite)}
+        onLaunch={() => void refresh(true, lastWrite)}
+        refreshIntervalSec={refreshIntervalSec}
+        onInterval={(sec) => void changeRefreshInterval(sec)}
+      />
+      {loadError !== null ? (
+        <p className="wdp-error" data-testid="load-error">
+          读取失败：{loadError}
+        </p>
+      ) : null}
       {actionError !== null ? (
         <p className="wdp-error" data-testid="action-error">
           {actionError}

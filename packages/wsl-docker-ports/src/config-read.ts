@@ -103,7 +103,21 @@ export function readConfigToken(source: ConfigValueSource): string | undefined {
   return text === '' ? undefined : text;
 }
 
-/** 本包宿主面用到的**六个**配置字段的**活体读取面**（每次调用现读，不吃缓存） */
+/** 014：自动刷新频次的固定五档（秒）；不在其中一律按「关闭」处理 */
+const REFRESH_INTERVALS_SEC = [0, 15, 30, 60, 300] as const;
+
+/**
+ * 解包成刷新频次（秒）：**数值与纯数字字符串都收**（手工传参 / 旧文档里可能是字符串），
+ * 不在五档内（含负数、`NaN`、空串、`20` 这类未登记值）一律 ⇒ `0`（关闭，fail-safe）。
+ */
+function unwrapConfigRefreshInterval(value: unknown): number {
+  const plain = unwrapConfigValue(value);
+  const text = typeof plain === 'string' ? plain.trim() : plain;
+  const seconds = typeof text === 'number' ? text : typeof text === 'string' && text !== '' ? Number(text) : Number.NaN;
+  return REFRESH_INTERVALS_SEC.some((allowed) => allowed === seconds) ? seconds : 0;
+}
+
+/** 本包宿主面用到的**七个**配置字段的**活体读取面**（每次调用现读，不吃缓存） */
 export interface PortsConfigReaders {
   /** `distro`：留空/非串 ⇒ `undefined`（001 的四级优先级解析接管） */
   distro(): string | undefined;
@@ -118,11 +132,16 @@ export interface PortsConfigReaders {
    * **现读**：客户端选值后立刻写配置，下一次判决/计划就能看到。
    */
   listenAddresses(): Readonly<Record<string, string>>;
+  /**
+   * 014 `refreshIntervalSec`：自动刷新频次（秒）。缺省/非法 ⇒ `0`（关闭）。
+   * 服务端不消费它（没有隐藏轮询），本读者只为「同一命名空间的现读口径」完整。
+   */
+  refreshIntervalSec(): number;
 }
 
 /**
  * 造活体读取面。`config` 可以是活体包装**或**平凡对象**或**零参取值函数（返回上述两类之一），
- * 也可以是 `undefined`。返回的六个方法**每次重新解包**（取值函数也每次都调）⇒ volatile 原地写入
+ * 也可以是 `undefined`。返回的七个方法**每次重新解包**（取值函数也每次都调）⇒ volatile 原地写入
  * （不重挂载）能被下一次读到。
  */
 export function createHostConfigReaders(config?: ConfigValueSource): PortsConfigReaders {
@@ -139,5 +158,6 @@ export function createHostConfigReaders(config?: ConfigValueSource): PortsConfig
     writeToken: () => readConfigToken(field('writeToken')),
     managedPorts: () => unwrapConfigStringArray(field('managedPorts')),
     listenAddresses: () => unwrapConfigStringRecord(field('listenAddresses')),
+    refreshIntervalSec: () => unwrapConfigRefreshInterval(field('refreshIntervalSec')),
   };
 }

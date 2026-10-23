@@ -48,6 +48,10 @@ export interface HarnessOptions {
   readonly mutateError?: string;
   /** 服务端**初始**是否已配置 `writeToken`（T3：清除后 `mutate` 回执里的新视图据此变 false 且**持久**在台架里） */
   readonly configured?: boolean;
+  /** 014：服务端**初始**的自动刷新频次（缺省 = 未配置 ⇒ 客户端读成 `0`） */
+  readonly initialInterval?: number;
+  /** 014：前 N 次快照读成功，**之后**一律抛错（验轮询失败不清空内容） */
+  readonly failAfterLoads?: number;
 }
 
 export interface Harness {
@@ -66,17 +70,28 @@ export function harness(initial: ReturnType<typeof snapshot>, options: HarnessOp
   const recorded: Recorded = { loads: [], describes: 0, updates: [], mutates: [], elevation: [], updateAttempts: 0 };
   let current = initial;
   const config: Record<string, unknown> = options.configured === true ? { writeToken: 'tk-harness-secret' } : {};
+  if (options.initialInterval !== undefined) config['refreshIntervalSec'] = options.initialInterval;
   const secretsOf = (): { path: string[]; set: boolean }[] => [{ path: ['writeToken'], set: config['writeToken'] !== undefined }];
   const remote: RemoteSettingsLike = {
     describe: async (): Promise<SettingsResponse> => {
       recorded.describes += 1;
-      return { ok: true, value: { revision: 3, namespaces: [{ ns: SETTINGS_NAMESPACE, value: {}, secrets: secretsOf() }] } };
+      return {
+        ok: true,
+        value: {
+          revision: 3,
+          namespaces: [{ ns: SETTINGS_NAMESPACE, value: { refreshIntervalSec: config['refreshIntervalSec'] }, secrets: secretsOf() }],
+        },
+      };
     },
     update: async (ns: string, patch: unknown): Promise<SettingsResponse> => {
       recorded.updateAttempts += 1;
       if (options.updateError !== undefined) throw new Error(options.updateError);
       recorded.updates.push({ ns, patch: patch as Record<string, unknown> });
-      if (patch !== null && typeof patch === 'object' && 'writeToken' in patch) config['writeToken'] = (patch as { writeToken?: unknown }).writeToken;
+      if (patch !== null && typeof patch === 'object') {
+        const record = patch as Record<string, unknown>;
+        if ('writeToken' in record) config['writeToken'] = record['writeToken'];
+        if ('refreshIntervalSec' in record) config['refreshIntervalSec'] = record['refreshIntervalSec'];
+      }
       return { ok: true, value: { namespaces: [{ ns: SETTINGS_NAMESPACE, value: {}, secrets: secretsOf() }] } };
     },
     // 用 rest 参数数**真实实参个数**（宿主 `prepareInvocation` 数的就是 `values.length`）；
@@ -108,6 +123,9 @@ export function harness(initial: ReturnType<typeof snapshot>, options: HarnessOp
     source: {
       load: async () => {
         recorded.loads.push(recorded.loads.length + 1);
+        if (options.failAfterLoads !== undefined && recorded.loads.length > options.failAfterLoads) {
+          throw new Error('轮询读取失败（模拟宿主不可用）');
+        }
         return current;
       },
     },

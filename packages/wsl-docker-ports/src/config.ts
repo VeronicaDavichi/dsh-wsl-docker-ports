@@ -25,7 +25,7 @@
  *    天然反例（判据见 `tests/unit/config-gate.test.ts`）。
  * ③ `write()` 还有同向的第二道判据：patch 落到非 volatile 路径直接抛
  *    `Config field "…" is not volatile`（`validatePaths`）⇒ **凡客户端要经 `remote.settings.update`
- *    写的字段都必须标 volatile**（本包五个字段都是客户端写的，故五个全标）。
+ *    写的字段都必须标 volatile**（本包七个字段都是客户端写的，故七个全标）。
  *
  * ## 标了 volatile 之后：**读侧必须统一解包**（第二层陷阱）
  *
@@ -36,19 +36,20 @@
  *
  * 2026-10-09 集成方裁定「**不许用『先加个依赖试试』解决**」继续有效并被遵守（见下「零新增依赖」）。
  *
- * ## 标 volatile 的字段集：**五个全标**（依据是宿主源码，不是口味）
+ * ## 标 volatile 的字段集：**七个全标**（依据是宿主源码，不是口味）
  *
  * 1. 少了就**没有命名空间**（`volatileForm` 门，见上 ②）；
  * 2. 少了**写不进去**：`write()` 的 `validatePaths` 对非 volatile 路径直接抛
- *    `Config field "…" is not volatile` —— 而客户端 `settings-pipe.ts` 的六个写方法
- *    （`managedPorts` / `scopes` / `listenAddresses` / `distro` / `elevationPolicy` / `writeToken`）正是这六个字段；
+ *    `Config field "…" is not volatile` —— 而客户端 `settings-pipe.ts` 的七个写方法
+ *    （`managedPorts` / `scopes` / `listenAddresses` / `distro` / `elevationPolicy` / `writeToken` /
+ *    `refreshIntervalSec`）正是这七个字段；
  * 3. 少了**读不回来**：`describe()` 的 `value`/`base`/`user` 都是
  *    `projectForm(form, plainConfig(entry.fiber.config))`，而 `form` = **volatile 子树**
  *    ⇒ 非 volatile 字段在返回值里**根本不存在**，客户端 `readConfig()` 会把它读成「未配置」
  *    （`writeTokenConfigured` 恒 false ⇒ 「服务端已配置」永远显示不出来）。
  * 4. 标了之后**不再重挂载**（`equal()` 首行 `if (schema?.meta?.volatile) return true` ⇒
  *    volatile-only 走 `_commitVolatile()`），对 008 的票据/审计环是**净收益**；
- *    代价是「值不能拍一次」，由 `./config-read.ts` 的现读口径兜住（五个字段全部经它读）。
+ *    代价是「值不能拍一次」，由 `./config-read.ts` 的现读口径兜住（七个字段全部经它读）。
  *
  * ## 字段（以代码为准；客户端与宿主两侧共用一个命名空间）
  *
@@ -60,6 +61,7 @@
  * | `distro` | 客户端 | **宿主**（`PortsPluginConfigLike.distro`，经 `config-read.ts` 现读） | `string.volatile()` |
  * | `elevationPolicy` | 客户端 | **宿主**（`apply` 的策略解析，经 `config-read.ts` 现读） | `string.volatile()` |
  * | `writeToken` | 客户端（生成凭据时） | **宿主**（`transport/write-auth.ts` 的 401 门） | `string.role('secret').volatile()` |
+ * | `refreshIntervalSec` | 客户端右栏页（自动刷新频次，选择即写） | 客户端（`settings-pipe.ts` 读回；服务端不消费） | `number.volatile()`，缺省 `0` = 关闭（014） |
  *
  * ⚠️ `elevationPolicy` **刻意**只声明 `string`、不写枚举：003 的既定口径是「缺省/认不出 ⇒ `unknown`
  * ⇒ 落 `none`」（fail-safe 在语义层），真机观察到的 `policy:'unknown'` 就是这条路径。把枚举写进
@@ -114,7 +116,16 @@ export const PROFILE_ANCHOR_MAX = 24;
 export const HOST_SCHEMA_MODULE = '@deepseek-ai/schemastery';
 
 /** `Config` 声明的字段名（顺序 = 配置文档里的呈现顺序；测试按它做白名单断言） */
-export const PORTS_CONFIG_FIELDS = ['managedPorts', 'scopes', 'listenAddresses', 'distro', 'elevationPolicy', 'writeToken'] as const;
+export const PORTS_CONFIG_FIELDS = [
+  'managedPorts',
+  'scopes',
+  'listenAddresses',
+  'distro',
+  'elevationPolicy',
+  'writeToken',
+  // 014：自动刷新频次（秒，`0` = 关闭）。选择器在右栏页顶部；服务端不消费它。
+  'refreshIntervalSec',
+] as const;
 
 export type PortsConfigField = (typeof PORTS_CONFIG_FIELDS)[number];
 
@@ -129,14 +140,16 @@ export interface SchemaLike {
  * 本包实际用到的工厂成员。
  *
  * ⚠️ 与 002 的 gate 有一个刻意的差异：002 只认 `any`/`array`/`object`，本包**还要用 `string`**
- * （四个字段里三个是字符串），故 gate 多一个成员 —— 否则「gate 通过但构建时 `z.string` 不存在」
- * 会抛在模块装载期，把插件连 `apply` 一起打死（比 `Config === undefined` 坏得多）。
+ * 与 `number`（`refreshIntervalSec` 是数值），故 gate 多两个成员 —— 否则「gate 通过但构建时
+ * `z.string` / `z.number` 不存在」会抛在模块装载期，把插件连 `apply` 一起打死
+ * （比 `Config === undefined` 坏得多）。
  */
 export interface SchemaFactory {
   any(): SchemaLike;
   array(item: SchemaLike): SchemaLike;
   object(shape: Record<string, SchemaLike>): SchemaLike;
   string(): SchemaLike;
+  number(): SchemaLike;
   /** `scopes` 用；缺失时降级为 `any()`（见 `createPortsSchema`），不因此拒绝整个工厂 */
   dict?(item: SchemaLike): SchemaLike;
 }
@@ -144,7 +157,7 @@ export interface SchemaFactory {
 /**
  * 造 `Config`：字段与 `PORTS_CONFIG_FIELDS` **同源**（少一个/多一个都会被测试抓到）。
  *
- * 🔴 **六个字段全部 `.volatile()`**，`writeToken` 另加 `.role('secret')` —— 依据逐条见文件头
+ * 🔴 **七个字段全部 `.volatile()`**，`writeToken` 另加 `.role('secret')` —— 依据逐条见文件头
  * 「标 volatile 的字段集」：少了 volatile 则命名空间不出现（`volatileForm` 门）、`update` 抛
  * `is not volatile`、`describe().value` 里读不到；少了 `role('secret')` 则凭据明文进 `value`。
  * 顺序与生产同族一致（`z.string().role("secret").volatile()`，见 `dsh-web-search-deepseek`）。
@@ -160,6 +173,8 @@ export function createPortsSchema(z: SchemaFactory): SchemaLike {
     distro: z.string().volatile(),
     elevationPolicy: z.string().volatile(),
     writeToken: z.string().role('secret').volatile(),
+    // 014：自动刷新频次（秒，`0` = 关闭）。数值字段（不是字符串）：五档 0/15/30/60/300。
+    refreshIntervalSec: z.number().volatile(),
   });
 }
 
@@ -266,7 +281,8 @@ export function isSchemaFactory(value: unknown): value is SchemaFactory {
     typeof candidate.any === 'function' &&
     typeof candidate.array === 'function' &&
     typeof candidate.object === 'function' &&
-    typeof candidate.string === 'function'
+    typeof candidate.string === 'function' &&
+    typeof candidate.number === 'function'
   );
 }
 
@@ -286,7 +302,7 @@ export function resolveSchemaFactory(
     }
     const candidate = memberOf(loaded, 'Schema') ?? (loaded as { default?: unknown }).default ?? loaded;
     if (!isSchemaFactory(candidate)) {
-      attempts.push({ anchor, ok: false, detail: '解析到了模块但不是 schemastery 工厂（缺少 any/array/object/string）' });
+      attempts.push({ anchor, ok: false, detail: '解析到了模块但不是 schemastery 工厂（缺少 any/array/object/string/number）' });
       continue;
     }
     attempts.push({ anchor, ok: true, detail: 'schemastery 工厂' });

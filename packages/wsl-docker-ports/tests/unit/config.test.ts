@@ -108,6 +108,7 @@ function recordingFactory(withDict: boolean): {
       return make('object');
     },
     string: () => make('string'),
+    number: () => make('number'),
   };
   if (withDict) z.dict = () => make('dict');
   return {
@@ -130,7 +131,7 @@ function realFactory(): { readonly z: SchemaFactory; readonly from: string } {
   return { z: viaSibling.factory as SchemaFactory, from: viaSibling.resolvedFrom ?? anchor };
 }
 
-test('009 缺陷 1：字段清单 = 客户端 6 个写方法产出的 patch 键集合（与两侧读写面同源）', async () => {
+test('009 缺陷 1：字段清单 = 客户端 7 个写方法产出的 patch 键集合（与两侧读写面同源）', async () => {
   const record = recordingFactory(true);
   createPortsSchema(record.z);
   assert.deepEqual(record.fields(), [...PORTS_CONFIG_FIELDS], 'schema 字段必须与 PORTS_CONFIG_FIELDS 逐字一致');
@@ -155,11 +156,13 @@ test('009 缺陷 1：字段清单 = 客户端 6 个写方法产出的 patch 键�
   // 012：第六个写方法（逐端口监听地址）—— 键必须在 schema 里有声明，否则写不进去
   await pipe.writeListenAddress(3306, '192.168.31.129');
   await pipe.writeWriteToken('t'.repeat(64));
+  // 014：第七个写方法（自动刷新频次）—— 数值键同样必须在 schema 里有声明
+  await pipe.writeRefreshInterval(15);
   assert.deepEqual([...new Set(written)].sort(), [...PORTS_CONFIG_FIELDS].sort(), '客户端写过的键必须逐个在 schema 里有声明');
   console.log(`  · 扫了 ${String(record.fields().length)} 个字段与 ${String(written.length)} 次写入：键集合完全一致`);
 });
 
-test('009 缺陷 1（2026-10-12 订正）：五个字段**全部** `.volatile()`，`writeToken` 另带 `role(secret)`', () => {
+test('009 缺陷 1（2026-10-12 订正）：七个字段**全部** `.volatile()`，`writeToken` 另带 `role(secret)`', () => {
   const record = recordingFactory(true);
   createPortsSchema(record.z);
   // 🔴 旧判据「构建期 volatile() 0 次」**已作废**：它把缺陷 1 的修法判成违规。真机两次给出依据：
@@ -168,7 +171,7 @@ test('009 缺陷 1（2026-10-12 订正）：五个字段**全部** `.volatile()`
   assert.deepEqual(
     record.volatileFields(),
     [...PORTS_CONFIG_FIELDS],
-    '五个字段必须全标 volatile：少任何一个 ⇒ 命名空间不出现（volatileForm 门）/ update 直接抛 is not volatile / describe().value 里读不回来',
+    '七个字段必须全标 volatile：少任何一个 ⇒ 命名空间不出现（volatileForm 门）/ update 直接抛 is not volatile / describe().value 里读不回来',
   );
   assert.equal(record.volatileCalls(), PORTS_CONFIG_FIELDS.length, '`volatile()` 调用次数必须**恰好**等于字段数（不许多标）');
   assert.equal(record.roleOf('writeToken'), 'secret', 'writeToken 必须标 role(secret)：宿主 redactSecrets: true ⇒ 不标则凭据明文进 describe().value');
@@ -201,15 +204,31 @@ test('009 缺陷 1：真工厂 ⇒ 真 schema（宿主判据 vendor=schemastery�
   assert.deepEqual(
     PORTS_CONFIG_FIELDS.filter((field) => isRef(empty[field])),
     [...PORTS_CONFIG_FIELDS],
-    '🔴 **第二层陷阱的现场证据**：六个字段解析出来都是带 `.get()` 的活体包装（宿主交给我们的是包装，不是值）',
+    '🔴 **第二层陷阱的现场证据**：七个字段解析出来都是带 `.get()` 的活体包装（宿主交给我们的是包装，不是值）',
   );
   assert.deepEqual(
     plain(empty),
-    { managedPorts: [], scopes: {}, listenAddresses: {}, distro: undefined, elevationPolicy: undefined, writeToken: undefined },
-    '缺省值（**解包后**）：两个集合为空；三个字符串字段缺省 = `undefined`（`get()` 取到 undefined ⇒ 客户端读到「未配置」）',
+    {
+      managedPorts: [],
+      scopes: {},
+      listenAddresses: {},
+      distro: undefined,
+      elevationPolicy: undefined,
+      writeToken: undefined,
+      refreshIntervalSec: undefined,
+    },
+    '缺省值（**解包后**）：两个集合为空；四个标量字段缺省 = `undefined`（`get()` 取到 undefined ⇒ 客户端读到「未配置」；频次由读侧化成 0）',
   );
 
-  const full = { managedPorts: ['3306', '1000-3000'], scopes: { '3306': 'lan' }, listenAddresses: { '3306': '192.168.31.129' }, distro: 'Ubuntu2204', elevationPolicy: 'ask', writeToken: 'x' };
+  const full = {
+    managedPorts: ['3306', '1000-3000'],
+    scopes: { '3306': 'lan' },
+    listenAddresses: { '3306': '192.168.31.129' },
+    distro: 'Ubuntu2204',
+    elevationPolicy: 'ask',
+    writeToken: 'x',
+    refreshIntervalSec: 15,
+  };
   const resolved = schema(full) as Record<string, unknown>;
   assert.deepEqual(plain(resolved), full, '合法文档解包后原样通过');
   assert.deepEqual(
@@ -219,13 +238,13 @@ test('009 缺陷 1：真工厂 ⇒ 真 schema（宿主判据 vendor=schemastery�
   );
   assert.equal((resolved['writeToken'] as { get(): unknown }).get(), 'x', '凭据在**解析结果**里是能取到的（脱敏只发生在 describe 的出口，不影响宿主自用）');
 
-  for (const bad of [{ managedPorts: 3306 }, { elevationPolicy: 5 }, { writeToken: 42 }]) {
-    assert.throws(() => schema(bad), /expected (array|string)/u, `类型错必须被拒：${JSON.stringify(bad)}`);
+  for (const bad of [{ managedPorts: 3306 }, { elevationPolicy: 5 }, { writeToken: 42 }, { refreshIntervalSec: '15' }]) {
+    assert.throws(() => schema(bad), /expected (array|string|number)/u, `类型错必须被拒：${JSON.stringify(bad)}`);
   }
   // 语义未知值**不**在 schema 层拒绝：003 的既定口径是「认不出 ⇒ unknown ⇒ 落 none」（fail-safe 在语义层）
   const degraded = plain(schema({ elevationPolicy: 'bogus' })) as { readonly elevationPolicy?: string };
   assert.equal(degraded.elevationPolicy, 'bogus', '未知策略值必须在 schema 层放行（降级由语义层做，不在 schema 层抛）');
-  console.log(`  · 扫了 1 份真 schema（来源 ${from}）：缺省/合法/3 类类型错/1 个语义未知值；活体包装 5/5 已确证`);
+  console.log(`  · 扫了 1 份真 schema（来源 ${from}）：缺省/合法/4 类类型错/1 个语义未知值；活体包装 7/7 已确证`);
 });
 
 test('009 缺陷 1：解析器 —— 结构面判定与 `default` 互操作（缺一个方法就拒绝）', () => {
@@ -234,7 +253,12 @@ test('009 缺陷 1：解析器 —— 结构面判定与 `default` 互操作（�
   assert.equal(
     isSchemaFactory({ any: () => undefined, array: () => undefined, object: () => undefined }),
     false,
-    '缺少 string ⇒ 拒绝（本包要用它；否则构建期 TypeError 会把插件装载打死）',
+    '缺少 string/number ⇒ 拒绝（本包要用它们；否则构建期 TypeError 会把插件装载打死）',
+  );
+  assert.equal(
+    isSchemaFactory({ any: () => undefined, array: () => undefined, object: () => undefined, string: () => undefined }),
+    false,
+    '缺少 number（014 的 refreshIntervalSec 要用）⇒ 同样拒绝',
   );
   assert.equal(isSchemaFactory({ default: { any: () => undefined } }), false);
   assert.equal(isSchemaFactory(null), false);

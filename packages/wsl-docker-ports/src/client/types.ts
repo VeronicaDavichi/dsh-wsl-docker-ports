@@ -164,6 +164,13 @@ export interface NatGatePanelView {
   readonly guide: NatGuideView | null;
 }
 
+/** 最近一次写操作的可读摘要（014 从 `pane.tsx` 移来：`use-auto-refresh` 也要用它重建视图） */
+export interface LastWriteView {
+  readonly status: string;
+  readonly message: string;
+  readonly unapplied: readonly string[];
+}
+
 /** 整页视图模型（`pane.tsx` 逐字段渲染；测试直接断言这个对象） */
 export interface PortsPageView {
   readonly refreshedAt: number;
@@ -187,7 +194,7 @@ ull = 全部容器都列了 */
   readonly distro: DistroPanelView;
   readonly exec: ExecControlView;
   readonly elevation: { readonly testId: string; readonly value: 'none' | 'ask' | 'passby'; readonly options: readonly { readonly value: string; readonly label: string }[]; readonly enabled: boolean; readonly note: string; readonly notice: string };
-  readonly lastWrite: { readonly status: string; readonly message: string; readonly unapplied: readonly string[] } | null;
+  readonly lastWrite: LastWriteView | null;
 }
 
 /** 外部规则只读行的构造输入（`ExternalRule` 来自引擎） */

@@ -32,9 +32,11 @@ describe('T5.1 开页只读（NFR-2）', () => {
 
     expect(test.recorded.loads).toHaveLength(1);
     expect(test.recorded.updates).toHaveLength(0);
-    expect(test.recorded.describes).toBe(0);
+    // 014：选择器要回填「上次选的档」，故挂载期多一次**只读** describe（`readConfig`）。
+    // 判据本体（开页零配置**写**、零提权）一字未松：updates / elevation 仍然各 0。
+    expect(test.recorded.describes).toBe(1);
     expect(test.recorded.elevation).toHaveLength(0);
-    console.log(`  · 开页扫了 ${String(test.recorded.loads.length)} 次读 / ${String(test.recorded.updates.length)} 次配置写 / ${String(test.recorded.elevation.length)} 次提权`);
+    console.log(`  · 开页扫了 ${String(test.recorded.loads.length)} 次读 / ${String(test.recorded.describes)} 次配置读 / ${String(test.recorded.updates.length)} 次配置写 / ${String(test.recorded.elevation.length)} 次提权`);
   });
 
   it('五态各自渲染出一行，标签与状态位一一对应', async () => {
