@@ -17,14 +17,13 @@
  * 区域组件拆在 `pane-tables.tsx` / `pane-settings.tsx`（单文件 ≤ 400 行是 SHALL）。
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 
 import type { Scope } from '../diff/types.ts';
-import { containerControlOf } from './container-control.ts';
 import { usePageScrollFix } from './pane-scroll.ts';
 import type { ClientRuntime, ForwardAction } from './host.ts';
 import { summarizeWriteReport } from './page.ts';
-import { ContainersBlock, DistroBlock, DockerFailureBlock, ExternalRulesBlock, PortsBlock, UnsupportedBlock } from './pane-tables.tsx';
+import { DistroBlock, DockerFailureBlock, ExternalRulesBlock, PortsBlock, UnsupportedBlock } from './pane-tables.tsx';
 import { PaneHeader, RefreshIntervalSelect } from './pane-header.tsx';
 import { ElevationBlock, ManagedPortsBlock, NextPhaseBlock, RawOutputBlock, WriteTokenBlock } from './pane-settings.tsx';
 import { mergeManagedPortsDecl, TESTID } from './rows.ts';
@@ -212,9 +211,6 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
     setCheckedPresets(view.managedPorts.presets.filter((preset) => preset.checked).map((preset) => preset.name));
   }, [view]);
 
-  // 010 T7.1/T7.2：容器动作客户端（`write` 未接线 ⇒ `undefined` ⇒ 控件置灰并写明原因）。
-  // 🔴 必须放在**任何条件 return 之前**（下面 `view === null` 就 return 了）—— 否则 hook 数会变。
-  const containerControl = useMemo(() => containerControlOf(runtime), [runtime]);
   /** 宿主把本页挂进零高 div ⇒ 见 `pane-scroll.ts`（chunk 侧修复，主包零字节） */
   const rootRef = useRef<HTMLDivElement | null>(null);
   usePageScrollFix(rootRef, view);
@@ -295,11 +291,9 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
         distro={view.distro}
         onChange={(name) => void writeSettings(async () => runtime.settings?.writeDistro(name))}
       />
-      {view.docker.ok === false ? (
-        <DockerFailureBlock docker={view.docker} />
-      ) : (
-        <ContainersBlock rows={view.containers} count={view.containerCount} control={containerControl} onChanged={() => void refresh(false, lastWrite)} disabledReason={containerControl === undefined ? '容器动作未接线：宿主侧写整包不可用（只读面与配置面照常，动作控件置灰）' : undefined} note={view.containerListNote} />
-      )}
+      {/* D1（2026-10-23 真机）：容器表 / 启停重启 / 日志抽屉已移入容器页（`client.containers.js`）。
+          转发页只保留端口转发；这里仅保留 docker **读数失败**的诊断行（不是容器表、不是动作入口）。 */}
+      {view.docker.ok === false ? <DockerFailureBlock docker={view.docker} /> : null}
       <PortsBlock
         rows={view.ports}
         note={view.portsNote}

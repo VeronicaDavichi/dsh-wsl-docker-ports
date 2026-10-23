@@ -1,17 +1,18 @@
 /**
- * 行级纯函数：五态标签 / NAT 门指引 / 容器与端口行 / 不可转发行 / 外部规则区 / presets（003 Phase 5）
+ * 行级纯函数：五态标签 / NAT 门指引 / 端口行 / 不可转发行 / 外部规则区 / presets（003 Phase 5）
  *
  * 全部**纯数据进出**：不接 DOM、不接执行器、不读配置。`pane.tsx` 只负责把这些对象画出来，
  * 于是「五态各自可渲染」「外部规则区无动作控件」这类断言可以在**无 DOM** 下逐条钉死。
+ *
+ * 🔴 D1（2026-10-23 真机）：容器表的行构造（`buildContainerRows`）已随 UI 一起移出转发侧；
+ * 容器行只活在容器页自己的快照/渲染里。
  */
 
 import { PORT_PRESETS, type PortPreset } from '../diff/port-presets.ts';
 import { isManagedPort, type ManagedPorts } from '../diff/managed-ports.ts';
 import { parseManagedPorts } from '../diff/managed-ports-parse.ts';
 import type { PortClassification, PortState, Scope, UnsupportedMapping, ExternalRule } from '../diff/types.ts';
-import type { DockerContainer } from '../read/docker.ts';
 import type {
-  ContainerRowView,
   DriftView,
   ExternalRulesView,
   ForwardActionView,
@@ -84,7 +85,6 @@ export {
 export const TESTID = {
   refresh: 'btn-refresh',
   natGuide: 'btn-nat-guide',
-  containers: 'tbl-containers',
   ports: 'tbl-ports',
   udpTip: 'tip-udp',
   exec: 'btn-cs-exec',
@@ -145,25 +145,6 @@ export function natReason(nat: NatGateView): string {
   if (nat.kind === 'nat') return nat.mode === 'nat' ? 'networkingMode=nat' : '未配置 networkingMode（缺省 NAT）';
   if (nat.kind === 'non-nat') return `networkingMode=${nat.rawValue ?? nat.mode}（非 NAT）`;
   return nat.message;
-}
-
-/** 容器表行（REQ-2.1/2.2：只读，展示 id/name/image/state/status） */
-export function buildContainerRows(containers: readonly DockerContainer[]): ContainerRowView[] {
-  return containers.map((container) => ({
-    id: container.id,
-    name: container.names,
-    image: container.image,
-    state: container.state,
-    status: container.status,
-    ports: container.ports
-      .map((mapping) => {
-        const host = mapping.hostPort === null ? '' : `${mapping.hostIp ?? ''}:${String(mapping.hostPort)}->`;
-        const range = mapping.hostPortEnd === null ? '' : `-${String(mapping.hostPortEnd)}`;
-        const cRange = mapping.containerPortEnd === null ? '' : `-${String(mapping.containerPortEnd)}`;
-        return `${host}${String(mapping.containerPort)}${cRange}/${mapping.protocol}${range}`;
-      })
-      .join(', '),
-  }));
 }
 
 /** 逐端口作用域控件：**每端口一个**，值是配置里的 scope（缺省 loopback）；无任何「全选/批量」入口 */

@@ -84,8 +84,8 @@ profile 层（`~/.dsh/profiles/<p>/cordis.patch.yml`）：转发那行**原地�
 | NAT 硬前提门 / `localhostForwarding` 提示 / eth0 与发行版漂移 | 转发 | `snapshot.ts:8-17`、`read/eth0-source.ts`、`read/localhost-forwarding.ts`、`diff/engine.ts` |
 | 端口规则表（判据/五态/监听表 `ss -ltn`/多余规则）、`managedPorts`/`scopes`/`listenAddresses` | 转发 | `diff/**`、`read/{netsh,listeners}*`、`client/pane-tables.tsx`（端口部分） |
 | portproxy 增删改 + 防火墙网段 + 确认/审计 + `elevationPolicy` | 转发 | `write/**`、`elevate/**`、`transport/**` |
-| 容器列表（状态/镜像/端口映射列） | 容器 | `read/docker.ts`、`read/docker-probe.ts`（**只读探针，两侧可共享**）、`client/pane-tables.tsx`（容器部分） |
-| 启停重启 / 日志 | 容器 | `docker/control.ts`、`client/container-control.ts` |
+| 容器列表（状态/镜像/端口映射列） | 容器 | `read/docker.ts`、`read/docker-probe.ts`（**只读探针，两侧可共享**）、`client/containers/pane.tsx`（D1 后容器列只在这里；转发侧不再画） |
+| 启停重启 / 日志 | 容器 | `docker/control.ts`、`client/containers/source.ts`（取数）、`client/containers/pane.tsx`（动作/日志 UI）；旧 `client/container-control.ts` 已随 D1 删除 |
 | 容器侧 `distro` / `refreshIntervalSec` / `writeToken` | 容器 | **各自命名空间里的同名字段**（§6） |
 | 下一期：进容器 exec / compose / 镜像管理 | 容器 | 本期只留**注入点**（`src/containers/future.ts` 空壳 + 可选 `ctx.inject(['managedTerminal'])`，不建包依赖边） |
 
@@ -118,7 +118,7 @@ profile 层（`~/.dsh/profiles/<p>/cordis.patch.yml`）：转发那行**原地�
 | `src/read/**` | `docker.ts`、`docker-probe.ts`、`netsh.ts`、`netsh-probe.ts`、`listeners.ts`、`listeners-probe.ts`、`eth0-source.ts`、`localhost-forwarding.ts`、`local-addresses.ts`、`redact.ts`、`probe.ts` | **纯只读探针**：只吃 `Executor`、只吐数据；零写、零提权、零缓存 |
 | `src/shared/**`（新，4 文件） | `http.ts`、`credential.ts`、`config-read.ts`（字段无关版本）、`fs-guard.ts`（如需） | 通用工具，不含任何一侧的业务常量 |
 
-明确**不得**进白名单：`snapshot.ts`、`route.ts`、`wire.ts`、`config.ts`、`plugin.ts`、`diff/**`、`write/**`、`elevate/**`、`transport/**`、`client/{pane*,page,rows,write-*,settings-pipe,container-control,container-*}`。
+明确**不得**进白名单：`snapshot.ts`、`route.ts`、`wire.ts`、`config.ts`、`plugin.ts`、`diff/**`、`write/**`、`elevate/**`、`transport/**`、`client/{pane*,page,rows,write-*,settings-pipe,containers/**}`。
 
 机器校验（P1 交付 `scripts/check-borders.mjs`，3 条规则 + 变异哨兵）：
 
@@ -163,7 +163,7 @@ profile 层（`~/.dsh/profiles/<p>/cordis.patch.yml`）：转发那行**原地�
 | 命名空间 | `dsh-wsl-docker-ports` | `dsh-wsl-docker-containers` | = 行 id（`dsh-settings:432`） |
 | `writeToken` | 现有 | **新生成**（同名字段、不同命名空间） | 互不通用：A 的 token 打 B 的通道 ⇒ **401**（P2 用例） |
 | `distro` | 现有 | 同名字段，独立值/独立默认 | 容器动作的 `wsl -d` 目标 |
-| `refreshIntervalSec` | 现有 | 同名字段，独立值 | 两页各刷各的（`client/use-auto-refresh.ts` 复用，无状态） |
+| `refreshIntervalSec` | 现有 | 同名字段，独立值 | 两页各刷各的。**D2（2026-10-23 真机）实作**：容器页在 `containers/pane.tsx` 自带 `setInterval`（卸载清理），选项/归一化复用 `client/refresh.ts` 的 `REFRESH_INTERVAL_OPTIONS` / `normalizeRefreshIntervalSec`；**未**复用 `use-auto-refresh.ts`，因为该 hook 的比较写死 `refreshedAt`，容器快照的时间戳叫 `generatedAt` |
 | `elevationPolicy` | 现有 | **不消费**（无提权动作，Q9） | 容器配置页不渲染该字段 |
 | `managedPorts`/`scopes`/`listenAddresses` | 现有 | **不消费** | 容器配置页不渲染 |
 | schema | **一字不改**（7 字段，全 `.volatile()`，`writeToken` 带 `role('secret')`） | 同一 schema | 模块级 `Config` 无法按行分化（§2.1 C 的代价） |
@@ -252,7 +252,32 @@ profile 层（`~/.dsh/profiles/<p>/cordis.patch.yml`）：转发那行**原地�
    + 容器侧**零提权**、**只读探针复用**、**独立命名空间**。
 3. **§7.1 的「19 条规则真机前后各一次」未做**：本轮不执行真实 `netsh` 写（红线），只到计划 + 脚本生成 + golden 断言。
 
-### 10.3 结论
+### 10.3 真机缺陷修正（D1/D2，2026-10-23 傍晚）
 
-REQ-1.1–1.7 的**离线可证部分全部落地并被门钉住**；剩余的真机项（§9 ④ 的五项实验、A1–A3 的人工点击穿透、
-真实提权写）在 README「未做」里逐条列出，不冒充已完成。
+| 缺陷 | 真机形态 | 处置 | 离线判据 |
+| --- | --- | --- | --- |
+| **D1** 转发页仍带整套容器表 | 只开转发（实例 `43393`）时 DOM 仍有 `tbl-containers` 30 行 + 120 个 `container-start/stop/restart/logs` 按钮 | 删除 `pane-tables.tsx` 的 `ContainersBlock`、`pane.tsx` 的 `containerControl`、`page.ts` 的 `buildContainerRows`/`containers`/`containerCount`/`containerListNote`、`rows.ts` 的 `TESTID.containers`/`buildContainerRows`、`types.ts` 的 `ContainerRowView`；删除 `client/container-control.ts`（容器动作取数只留在容器 chunk） | `tests/client/pane.test.tsx` 反向断言（快照含 2 个容器，DOM 里 `tbl-containers`/`container-*` 必须为 0）；`tests/unit/client-rows.test.ts`、`snapshot.test.ts` 断言视图**没有**容器字段；`assert-client-split` 新增 ⑥（容器模块标记 + 5 个 testid 字面量在转发 chunk 零命中，故障注入 `leak` 判红） |
+| **D2** 容器页没有刷新间隔控件 | 只开容器（实例 `43395`）时 `selects: []`，只有 `btn-containers-refresh` | 容器页新增 `sel-containers-refresh-interval`（五档 `关闭/15 秒/30 秒/60 秒/5 分钟`），**默认 `0` = 关闭**；写回容器行自己的 `refreshIntervalSec`；轮询比较忽略 `generatedAt`，数据未变不 `setState`；卸载清理定时器 | `tests/client/containers-pane.test.tsx` 的 D2-1…D2-5（默认 120 s 零轮询、15 s 到点、仅时间戳变零重绘、真变重绘、卸载清零、改档写回 60）；`tests/unit/containers-surface.test.ts` 断言写回命名空间 = `dsh-wsl-docker-containers` |
+
+**D1 的边界解释**：转发页保留 `DockerFailureBlock` / `RawOutputBlock` 两个**诊断**入口（不是容器表、不是动作按钮），
+以免把「转发页原有的 docker 读失败说明」一并删掉而改变转发侧行为；容器行/容器动作/容器取数已全部不在转发 chunk。
+**残留观察**：只开转发时仍会看到 1 条 `/dsh-wsl-docker-containers/health` 404（常驻注册壳的保守探活，不是容器表/动作）；
+清零它需要把行角色传给客户端，属额外范围。
+
+**尺寸读数（D1/D2 后，全部 exit 0）**：主包 **56,350 B 不变**（棘轮上限 56,350，余 0）；
+`client.ports.js` **153,709 → 139,980 B**（−13,729 B）；`client.containers.js` **23,210 → 26,139 B**（+2,929 B：五档选择器 + 比较器 + 选项复用）。
+`CUT_MARKERS` 仍 12 条（`pane-tables.tsx` 模块本身没有离开转发 chunk，只删了其中的容器块），故以 ⑥ 反向清单兜住 D1。
+
+**真机复验（2026-10-23 19:17，页面重载；客户端改动，进程未重启）**：
+只开转发 `43393` ⇒ `tbl-containers`/`container-*` 全 **0**、`tbl-ports` 1 行、只加载 `client.ports.js`；
+只开容器 `43395` ⇒ `sel-containers-refresh-interval` 值 **0**、五档文案齐全、`tbl-containers-side` 30 行、只加载 `client.containers.js`；
+默认档 20 s 快照计数 **1→1**（零轮询），改 15 s 后 33 s **1→3**，改回 0 后 20 s **3→3**，重载仍为 0；
+`43393` 的 `sel-refresh-interval` 仍为 15（容器写回不串到转发命名空间）。`43393` 唯一的 404 是
+`/dsh-wsl-docker-containers/health`（容器行禁用时的保守注册路径，不是容器表/动作）。
+
+
+
+### 10.4 结论
+
+REQ-1.1–1.7 的**离线可证部分全部落地并被门钉住**；D1/D2 已在临时实例 `43391/43393/43395` 真机复验。
+剩余真机项（§9 ④ 的五项实验、A3 凭据隔离重测、真实提权写）在 README「未做」里逐条列出，不冒充已完成。

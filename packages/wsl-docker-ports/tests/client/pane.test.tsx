@@ -248,8 +248,8 @@ describe('T5.4 失败态与漂移', () => {
   });
 });
 
-describe('010 收口 2026-10-22：已停止的容器也必须列在表里', () => {
-  it('stopped 容器出现在容器表 + 标题给出「共 N，运行中 M」+ 停止/重启置灰', async () => {
+describe('D1（2026-10-23 真机）：转发页**不再**渲染容器表与容器动作', () => {
+  it('快照里明明有 2 个容器：DOM 里 tbl-containers / container-* 动作计数必须为 0，tbl-ports 仍在', async () => {
     const test = harness(
       snapshot({
         docker: {
@@ -260,23 +260,19 @@ describe('010 收口 2026-10-22：已停止的容器也必须列在表里', () =
         },
       }),
     );
-    render(<PortsPane runtime={test.runtime} />);
-    await screen.findByTestId('tbl-containers');
+    const { container: root } = render(<PortsPane runtime={test.runtime} />);
+    await screen.findByTestId('tbl-ports');
 
-    // 标题：两个容器都在，运行中只有 1 个
-    const head = screen.getByTestId('tbl-containers').closest('section')?.querySelector('h3')?.textContent ?? '';
-    expect(head).toContain('共 2');
-    expect(head).toContain('运行中 1');
-
-    // stopped 的行真的渲染出来（不是被 docker 层丢掉）
-    expect(screen.getByTestId('container-start-db-stopped-id')).toBeTruthy();
-    expect(screen.getByTestId('container-stop-db-stopped-id')).toBeTruthy();
-
-    // 不在运行 ⇒ 停止/重启无意义 ⇒ 置灰；运行中的行则相反
-    expect((screen.getByTestId('container-stop-db-stopped-id') as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByTestId('container-restart-db-stopped-id') as HTMLButtonElement).disabled).toBe(true);
-    // 台架未接线 write ⇒ 所有动作统一置灰（另有用例覆盖接线后的可点性）；本用例只钉「行在不在、状态判得对不对」
-    expect((screen.getByTestId('container-start-db-stopped-id') as HTMLButtonElement).disabled).toBe(true);
+    // 正：端口表仍在（转发页的本职）
+    expect(screen.getByTestId('tbl-ports')).toBeTruthy();
+    // 反：容器表与四类动作按钮全不在（旧代码会渲染出 2 行 + 8 个按钮）
+    expect(screen.queryByTestId('tbl-containers')).toBeNull();
+    expect(root.querySelectorAll('[data-testid^="container-start-"]')).toHaveLength(0);
+    expect(root.querySelectorAll('[data-testid^="container-stop-"]')).toHaveLength(0);
+    expect(root.querySelectorAll('[data-testid^="container-restart-"]')).toHaveLength(0);
+    expect(root.querySelectorAll('[data-testid^="container-logs-"]')).toHaveLength(0);
+    expect(root.querySelectorAll('[data-testid^="btn-containers-"]')).toHaveLength(0);
+    console.log('  · 转发页：tbl-ports=1、tbl-containers=0、container-* 动作=0（快照含 2 个容器）');
   });
 });
 

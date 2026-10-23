@@ -1,36 +1,26 @@
 /**
- * 只读区域组件（003 T5.1 / T5.4 / T5.7）：发行版 / docker 失败 / 容器表 / 端口表 / 不可转发 / 外部规则
+ * 只读区域组件（003 T5.1 / T5.4 / T5.7）：发行版 / docker 失败 / 端口表 / 不可转发 / 外部规则
  *
  * ## 这里为什么一个写动作都没有
  *
- * 容器表、不可转发映射、外部规则区**只展示**（REQ-2.4 / REQ-9.2 / REQ-15.1）。
+ * 不可转发映射、外部规则区**只展示**（REQ-9.2 / REQ-15.1）。
  * 「外部规则区无动作控件」因此不是纪律，而是**这个文件里没有任何写回调入参** ——
  * 测试对该区域的 DOM 扫 `button/select/input/textarea`，命中数必须是 0。
  *
  * 端口表带动作，但每个控件的可用性**只**来自视图模型（`enabled` / `disabledReason`），
  * 组件自己不判 NAT、不判策略（判据只有一处：`page.ts` 的 `writeGate`）。
+ *
+ * 🔴 **D1（2026-10-23 真机）**：容器表 / 启停重启 / 日志抽屉**已整体移出本文件** ——
+ * 转发页只留端口转发功能，容器能力只活在 `client.containers.js`（容器页）。
+ * 容器 UI 若再出现在转发 chunk，`assert-client-split` 的反向标记与 `pane.test.tsx` 会当场红。
  */
 
-import { useState } from 'react';
 import type { ReactElement } from 'react';
 
 import type { Scope } from '../diff/types.ts';
-import { DEFAULT_LOG_TAIL } from '../docker/wire.ts';
-import type { ContainerControl } from './container-control.ts';
-import type { ContainerRowView, DistroPanelView, DockerView, ExternalRulesView, ForwardActionView, PortRowView, UnsupportedRowView } from './types.ts';
+import type { DistroPanelView, DockerView, ExternalRulesView, ForwardActionView, PortRowView, UnsupportedRowView } from './types.ts';
 import { TESTID } from './rows.ts';
 import { ListenAddressCell } from './pane-listen.tsx';
-
-/** 容器动作的测试锚点（**故意不放进 `rows.ts`**：那是主包侧模块，加一个键就涨主包字节） */
-export const CONTAINER_TESTID = {
-  start: 'container-start',
-  stop: 'container-stop',
-  restart: 'container-restart',
-  logs: 'container-logs-btn',
-  logsPanel: 'container-logs',
-  error: 'container-action-error',
-  note: 'container-action-note',
-} as const;
 
 export function DistroBlock(props: { readonly distro: DistroPanelView; readonly onChange: (name: string) => void }): ReactElement {
   const { distro, onChange } = props;
@@ -79,164 +69,6 @@ export function DockerFailureBlock({ docker }: { readonly docker: Extract<Docker
       <p className="wdp-error">{docker.message}</p>
       <p className="wdp-secondary">{docker.hint}</p>
       {docker.raw !== null ? <pre className="wdp-pre">{docker.raw}</pre> : null}
-    </section>
-  );
-}
-
-export function ContainersBlock(props: {
-  readonly rows: readonly ContainerRowView[];
-  readonly count: number;
-  /** 010 T7.1/T7.2：`undefined` ⇒ 动作控件**置灰 + 写明原因**（不抛、不假装可用） */
-  readonly control?: ContainerControl | undefined;
-  /** 动作成功后让页面重拉快照（状态列要跟着变） */
-  readonly onChanged?: (() => void) | undefined;
-  /** 控件不可用的原因（`control === undefined` 时展示） */
-  readonly disabledReason?: string | undefined;
-  /** 「列表只含运行中」的回落说明（docker ps -a 失败时）；
-ull/缺省 = 全部容器 */
-  readonly note?: string | null | undefined;
-}): ReactElement {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-  const [logs, setLogs] = useState<{ readonly id: string; readonly tail: number; readonly text: string } | null>(null);
-  const disabled = props.control === undefined;
-
-  const run = async (id: string, action: 'start' | 'stop' | 'restart'): Promise<void> => {
-    const control = props.control;
-    if (control === undefined) return;
-    setBusy(`${id}:${action}`);
-    setNote(null);
-    try {
-      const outcome = await control.action(id, action);
-      setNote(outcome.ok ? `已执行 docker ${action}（容器 ${id}）` : `docker ${action} 未成功：${outcome.message}`);
-      if (outcome.ok) {
-        props.onChanged?.();
-        // 停掉的容器日志还有用，但快照要在「状态」列上立刻反映 ⇒ 重拉交给 onChanged
-      }
-    } catch (error) {
-      setNote(`docker ${action} 抛出异常：${error instanceof Error ? error.message : String(error)}（未重试）`);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const openLogs = async (id: string): Promise<void> => {
-    const control = props.control;
-    if (control === undefined) return;
-    setBusy(`${id}:logs`);
-    setNote(null);
-    try {
-      const outcome = await control.logs(id);
-      if (outcome.ok) setLogs({ id, tail: outcome.tail, text: outcome.text });
-      else setNote(`读取日志失败：${outcome.message}`);
-    } catch (error) {
-      setNote(`读取日志时抛出异常：${error instanceof Error ? error.message : String(error)}（未重试）`);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  return (
-    <section className="wdp-card">
-      <h3>
-        容器（共 {props.count}，运行中 {props.rows.filter((row) => row.state.toLowerCase() === 'running').length}）
-      </h3>
-      {props.note === undefined || props.note === null ? null : (
-        <p className="wdp-secondary wdp-gate" data-testid={CONTAINER_TESTID.note + '-all'}>
-          {props.note}
-        </p>
-      )}
-      {disabled ? (
-        <p className="wdp-secondary" data-testid={CONTAINER_TESTID.note}>
-          {props.disabledReason ?? '容器动作未接线：只能浏览（宿主没有提供容器控制通道）'}
-        </p>
-      ) : (
-        <p className="wdp-secondary">
-          启停只在你自己点的时候执行：请求带插件凭据，Agent 没有这把凭据 ⇒ 宿主 401，一次 docker 调用都不会发生。
-        </p>
-      )}
-      <table className="wdp-table" data-testid={TESTID.containers}>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>名称</th>
-            <th>镜像</th>
-            <th>状态</th>
-            <th>端口</th>
-            <th>摘要</th>
-            <th>动作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {props.rows.map((row) => (
-            <tr key={row.id}>
-              <td>{row.id}</td>
-              <td>{row.name}</td>
-              <td>{row.image}</td>
-              <td>{row.state}</td>
-              <td>{row.ports}</td>
-              <td>{row.status}</td>
-              <td className="wdp-actions">
-                <button
-                  type="button"
-                  className="wdp-btn"
-                  data-testid={`${CONTAINER_TESTID.start}-${row.id}`}
-                  disabled={disabled || busy !== null || row.state.toLowerCase() === 'running'}
-                  title={row.state.toLowerCase() === 'running' ? '已在运行：不需要启动' : undefined}
-                  onClick={() => void run(row.id, 'start')}
-                >
-                  启动
-                </button>
-                <button
-                  type="button"
-                  className="wdp-btn"
-                  data-testid={`${CONTAINER_TESTID.stop}-${row.id}`}
-                  disabled={disabled || busy !== null || row.state.toLowerCase() !== 'running'}
-                  title={row.state.toLowerCase() !== 'running' ? '未在运行：停止无意义' : undefined}
-                  onClick={() => void run(row.id, 'stop')}
-                >
-                  停止
-                </button>
-                <button
-                  type="button"
-                  className="wdp-btn"
-                  data-testid={`${CONTAINER_TESTID.restart}-${row.id}`}
-                  disabled={disabled || busy !== null || row.state.toLowerCase() !== 'running'}
-                  title={row.state.toLowerCase() !== 'running' ? '未在运行：请用「启动」' : undefined}
-                  onClick={() => void run(row.id, 'restart')}
-                >
-                  重启
-                </button>
-                <button
-                  type="button"
-                  className="wdp-btn"
-                  data-testid={`${CONTAINER_TESTID.logs}-${row.id}`}
-                  disabled={disabled || busy !== null}
-                  onClick={() => void openLogs(row.id)}
-                >
-                  日志（{DEFAULT_LOG_TAIL} 行）
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {note === null ? null : (
-        <p className="wdp-error" data-testid={CONTAINER_TESTID.error}>
-          {note}
-        </p>
-      )}
-      {logs === null ? null : (
-        <div className="wdp-card" data-testid={CONTAINER_TESTID.logsPanel}>
-          <h4>
-            容器 {logs.id} 的最近 {logs.tail} 行（只在内存，关闭即消失）
-          </h4>
-          <pre className="wdp-pre">{logs.text.trim() === '' ? '（没有日志输出）' : logs.text}</pre>
-          <button type="button" className="wdp-btn" onClick={() => setLogs(null)}>
-            关闭
-          </button>
-        </div>
-      )}
     </section>
   );
 }

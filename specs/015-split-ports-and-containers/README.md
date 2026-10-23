@@ -106,8 +106,9 @@ transitions:
 | 10 | `build-client.mjs` | main **56,182 B** / `client.ports.js` **153,709 B** / `client.containers.js` **23,124 B** |
 | 11 | `tsc -p tsconfig.client.json` | exit 0 |
 
-**转发侧零差异证据**：转发快照 golden、19 条 portproxy 规则、判据文本全部在门 2 的用例里（逐字节断言，未改一条）；
-`client.ports.js` 尺寸 **153,709 B 与 P4 前完全一致**（第二页没有把任何东西塞进转发 chunk）。
+**转发侧零差异证据**：转发快照 golden、19 条 portproxy 规则、判据文本全部在门 2 的用例里（逐字节断言，未改一条）。
+> 🔴 **上句的尺寸读数已被 D1 修正覆盖**：153,709 B 是 D1 **之前**的读数；D1 把容器表/动作 UI 与取数移出转发 chunk 后
+> `client.ports.js` = **139,980 B**（−13,729 B），主包 **56,350 B 不变**（见下节「真机缺陷修正」的门读数）。
 
 > ✅ **订正痕（2026-10-23 第三轮 · 真机缺陷修正，上表读数是当时快照）**：真机抓到三个缺陷（页签不出现 / 点开空表 /
 > 第一版修法把 renderer 搞崩），修完复跑门禁：门 2 **549 tests / 549 pass**、门 3 **20 files / 175 tests**、
@@ -127,15 +128,15 @@ R3（共享层白名单 + 业务词）、R4（公开面无容器导出）、R5�
       路由前缀独立），**未做**真机点击验证。
 - [ ] A3 两个都启用：两页并存、互不干扰、凭据不互通。→ **离线侧已证**（独立命名空间 / 独立 token 键 / 独立 chunk；
       容器侧用例覆盖「A 的 token 打不通 B」的等价断言），**未做**真机点击验证。
-- [x] A4 转发侧回归：**544 条 `node --test` / 173 条 `vitest` 全绿**，19 条规则判据逐字节不变。
-- [x] A5 体积：主包 **56,182 B ≤ 65,536 B**；两个 chunk 各自独立（转发 153,709 B / 容器 23,124 B），
-      容器 UI **零命中**在转发 chunk、转发 UI **零命中**在容器 chunk。
+- [x] A4 转发侧回归：D1/D2 后 **550 条 `node --test` / 20 files·180 条 `vitest` 全绿**，19 条规则判据逐字节不变。
+- [x] A5 体积：主包 **56,350 B ≤ 65,536 B**；两个 chunk 各自独立（转发 **139,980 B** / 容器 **26,139 B**），
+      容器 UI **零命中**在转发 chunk（`assert-client-split` ⑥ 反向判据 + 故障注入 `leak` 判红）。
 
 ## 未做（明确列出）
 
 1. **真机 `netsh` / 真实提权写**：本轮所有写路径只到「计划 + 脚本生成 + golden 断言」为止，未执行任何真实
    `portproxy` / 防火墙写入（也**不允许**在本轮做）。
-2. **真机浏览器点击穿透**（A1–A3 的人工验收）：未启动宿主实例、未在浏览器里真的点两个页签与按钮。
+2. **A3 凭据隔离真机重测**：A1/A2 的两侧单开已在临时实例 `43393/43395` 上复验；凭据隔离仍是 17:5x 的读数，D1/D2 未改凭据面。
 3. **`git commit`**：未提交（主人未授权）。
 4. **主包地板上调的追认**：见 P4 偏差，需主人点头。
 
@@ -151,4 +152,61 @@ R3（共享层白名单 + 业务词）、R4（公开面无容器导出）、R5�
 | 角色判定 | `GET /dsh-wsl-docker-containers/health` → `{"side":"containers","rowId":"dsh-wsl-docker-containers"}` |
 | 控制台 | 零 `console.error` |
 
-**未验（需在插件列表里单开一侧）**：A1「只开转发」、A2「只开容器」——两者都要通过插件开关临时禁用一个 row，属改动 profile 的交互路径，等主人确认后再做。
+**A1/A2 已复核（2026-10-23 19:17，临时实例 `43393` / `43395`）**：只开转发/只开容器的 DOM 与 Network 读数见下节「真机复验」；A3 凭据隔离仍沿用上表 17:5x 读数（D1/D2 未改凭据面）。
+
+## 真机缺陷修正（D1/D2，2026-10-23 傍晚，代码 + 离线门 + 真机复验）
+
+真机（实例 `43393` 只开转发 / `43395` 只开容器）抓到两个残留缺陷：
+
+| 缺陷 | 旧形态（真机 DOM/控件） | 修正 |
+| --- | --- | --- |
+| **D1** | 只开转发时仍有 `tbl-containers` **30 行** + **120 个** `container-start-*` / `container-stop-*` / `container-restart-*` / `container-logs-btn-*` 按钮；`tbl-ports` 只有 1 行（3306） | 删除转发页的容器表/动作/日志 UI 与取数：`pane-tables.tsx` 的 `ContainersBlock`、`pane.tsx` 的 `containerControl`、`page.ts` 的 `buildContainerRows` 与 `containers/containerCount/containerListNote`、`rows.ts` 的容器 TESTID/行构造、`types.ts` 的 `ContainerRowView`；删除 `client/container-control.ts` |
+| **D2** | 只开容器时 `selects: []`，只有 `btn-containers-refresh`；容器页自己的刷新档不可见/不可改 | 新增 `sel-containers-refresh-interval`（`关闭/15 秒/30 秒/60 秒/5 分钟`），**默认 `0` = 关闭**；写回容器行 `refreshIntervalSec`；轮询忽略 `generatedAt`、数据未变不重绘；卸载清理定时器 |
+
+**离线门读数（现行，全部 exit 0）**：
+
+| # | 门 | 读数 |
+| --- | --- | --- |
+| 1 | `tsc -p tsconfig.json` | exit 0 |
+| 2 | `node --test --test-concurrency=1 "tests/**/*.test.ts"` | **550 tests / 550 pass / 0 fail** |
+| 3 | `vitest run` | **20 files / 180 tests pass** |
+| 4 | `assert-client-split.mjs` | **20 项断言 / 0 失败**（新增 ⑥：容器模块标记 0/4 + 字面量 0/5；`leak` 故障注入单独判红 exit 1） |
+| 5 | `verify-client-loader.mjs` | 40 项断言 / 0 失败 |
+| 6 | `check-borders.mjs` | 107 文件：转发 61 / 共享 4 / 容器 7；R1–R5 **0 命中** |
+| 7 | `wsl-shared/scripts/check-size.mjs` | 344 文件；25.5 KB / 40 KB；最大 `elevate/script.ts` = 399 行 / 14,001 B |
+| 8 | `tsc -p tsconfig.build.json` | exit 0 |
+| 9 | `build-client.mjs` | main **56,350 B** / `client.ports.js` **139,980 B** / `client.containers.js` **26,139 B** |
+| 10 | `tsc -p tsconfig.client.json` | exit 0 |
+
+**真机复验（2026-10-23 19:17，页面重载；进程未重启）**：
+
+| 场景 | 读数 |
+| --- | --- |
+| 只开转发 `43393` | `tbl-containers` = **0**、`[data-testid^="container-"]` = **0**（start/stop/restart/logs 各 0）；`tbl-ports` = 1 行（3306）；`sel-refresh-interval` = 15；Network 只有 `client.ports.js`，**无** `client.containers.js` |
+| 只开容器 `43395` | `sel-containers-refresh-interval` 存在、值 **`0`**、5 个 option 逐字为 `关闭/15 秒/30 秒/60 秒/5 分钟`；`tbl-containers-side` **30 行**；动作按钮 start/stop/restart/logs **各 30**；Network 只有 `client.containers.js`，**无** `client.ports.js` |
+| D2 默认关闭 | `43395` 加载后 20 s：`/dsh-wsl-docker-containers/snapshot` 资源计数 **1 → 1**（零轮询） |
+| D2 15 秒档 | 下拉改 `15` 后 33 s：快照计数 **1 → 3**（两次轮询）；改回 `0` 后 20 s：**3 → 3**（停止） |
+| D2 写回与隔离 | 改回 `0` 后重载 `43395`：值仍 `0`（容器命名空间持久化）；同时 `43393` 的 `sel-refresh-interval` 仍为 **15**（转发命名空间未被碰） |
+| 两行都开 `43391` | `[role=tab]` = `WSL Docker 端口` + `WSL Docker 容器`；转发页 `tbl-containers` = 0；切到容器页 `sel-containers-refresh-interval` = `0`、`tbl-containers-side` = 30 行 |
+| 控制台 | `43395` 零 error；`43393` 仅 1 条 **预期 404** `GET /dsh-wsl-docker-containers/health`（容器行被禁用 ⇒ 保守注册路径不显示容器页签，不是容器表/动作） |
+
+**残留观察（不在 D1 范围，未改）**：只开转发时仍有这 1 条容器 health 404 —— 它来自常驻主包的容器页注册壳
+（`containers-surface.ts` 必须先注册 kind，两行都开时容器页签才存在）；要连这条请求也清零，需要把「本行角色」
+从宿主传到客户端并按角色跳过容器注册壳，属额外改动，未在本轮做。
+
+## 单开真机验收（2026-10-23 19:2x，`--patch` 覆盖层禁用一侧，未改 profile）
+
+| 状态 | 实例 | 读数 |
+| --- | --- | --- |
+| **只开转发** | 43393 | `/dsh-wsl-docker-containers/health` **404**、`/snapshot` **404**；转发快照 200（3306 = extra）；页签 = `[WSL Docker 端口]`；只加载 `client.ports.js`；`tbl-ports` 1 行、`tbl-containers` **0**、`container-*` testid **0**、`sel-refresh-interval` = 15 |
+| **只开容器** | 43395 | `/dsh-wsl-docker-ports/snapshot` **404**、`/write/plan` **405（不可达）**；容器 health 200（`rowId: dsh-wsl-docker-containers`）、快照 200（30 容器）；页签 = `[WSL Docker 容器]`；只加载 `client.containers.js`；`tbl-containers-side` **30 行**、`sel-containers-refresh-interval` = **0（关闭）** 五档齐全、30 组动作按钮；无 `sel-refresh-interval` |
+| **两个都开** | 43391 | 两个页签共存；转发页 `tbl-ports` 1 行且**无容器表**（`container-start-*` = 0）；容器页 `tbl-containers-side` 30 行、`sel-containers-refresh-interval` = 0 |
+
+探针实例用完已 kill（43393/43395），覆盖层目录 `%TEMP%\dsh-015-verify` 已删除；`accept-docker-ports` 的 profile 配置**一字未动**。
+
+## D1/D2 残留修复（同日，真机查出）
+
+- **D1 转发页残留容器表**：删 `ContainersBlock`（表/启停/重启/日志）、`page.ts` 容器 view 字段、`rows.ts` 容器 TESTID、`types.ts` 的 `ContainerRowView`、`client/container-control.ts`；`assert-client-split` 新增 **⑥ 反向清单**（4 个容器模块标记 + 5 个 UI 字面量不得出现在转发 chunk）+ `DSH_SPLIT_ASSERT_FAULT=leak` 故障注入（实测 exit 1、只红 ⑥）。
+- **D2 容器页缺刷新间隔**：容器页新增 `sel-containers-refresh-interval`（五档、默认关闭）、`sameContainersPayload` 忽略 `generatedAt`、`refresh.ts` 抽出通用比较器；写回只进容器行命名空间。
+
+字节：主包 **56,350 B 未涨**；`client.ports.js` **139,980 B（−13,729）**；`client.containers.js` **26,139 B（+2,929）**。

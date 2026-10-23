@@ -29,7 +29,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createContainersSurface } from '../../src/client/containers-surface.ts';
-import type { ClientApplyOptions, ClientContextLike, SidebarRightServiceLike, SlotsServiceLike } from '../../src/client/host.ts';
+import type { ClientApplyOptions, ClientContextLike, RemoteSettingsLike, SettingsResponse, SidebarRightServiceLike, SlotsServiceLike } from '../../src/client/host.ts';
 import { CONTAINERS_PAGE_ID, CONTAINERS_PAGE_KIND, TAB_SLOT, TAB_TITLE_SLOT } from '../../src/client/tab-def.ts';
 import type { FetchLike } from '../../src/wire.ts';
 
@@ -223,4 +223,29 @@ test('health 404 ⇒ **撤页**（类型与两个 seat 全撤、一次 openTab �
   );
   assert.deepEqual(disposers, [], '撤页后不该再留任何 disposer（重复撤会二次 unregister）');
   assert.equal(rig.mountSubscribes(), 0);
+});
+
+test('D2 容器页刷新间隔写回**容器行自己的命名空间**（不是转发侧 `dsh-wsl-docker-ports`）', async () => {
+  const updates: { readonly ns: string; readonly patch: unknown }[] = [];
+  const service: RemoteSettingsLike = {
+    describe: async (): Promise<SettingsResponse> => ({ ok: true, value: { revision: 3, namespaces: [] } }),
+    update: async (ns: string, patch: unknown): Promise<SettingsResponse> => {
+      updates.push({ ns, patch });
+      return { ok: true, value: {} };
+    },
+    mutate: async (): Promise<SettingsResponse> => {
+      throw new Error('本用例不该走 mutate');
+    },
+  };
+  const ctx: ClientContextLike = { get: (name: string) => (name === 'remote.settings' ? service : undefined) };
+  const surface = createContainersSurface(ctx, {}, softGet, '[test]');
+
+  const pipe = surface.runtime.settings();
+  assert.ok(pipe, '容器页必须拿到**自己**的 settings 管道');
+  const result = await pipe.writeRefreshInterval(15);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.patch, { refreshIntervalSec: 15 });
+  assert.deepEqual(updates, [{ ns: 'dsh-wsl-docker-containers', patch: { refreshIntervalSec: 15 } }]);
+  assert.notEqual(CONTAINERS_PAGE_ID, 'dsh-wsl-docker-ports');
+  console.log(`  · D2 写回命名空间 ${updates[0]?.ns}，patch ${JSON.stringify(updates[0]?.patch)}`);
 });

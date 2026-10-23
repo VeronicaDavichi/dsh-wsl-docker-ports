@@ -6,6 +6,16 @@
  * ① 主包字节 ≤ **65,536**（§P2 硬判据）+ ≤ **登记上限**（棘轮；SSoT 里下调到实测值后自动收紧）
  * ② 主包 `require.async(` 命中 **≥ 1** ③ chunk **存在** + **被主包引用** + **含 12 个切出模块的标记**（证「搬家不是删除」）
  * ④ 常驻 4 模块标记**在主包** ⑤ 已切出 12 模块标记**不在主包**
+ * ⑥ **D1 反向判据**：容器 UI 的模块标记与 testid 字面量**一个都不许**出现在转发 chunk
+ *
+ * ## D1（2026-10-23 真机）为什么 `CUT_MARKERS` 仍是 12 条、另加反向清单
+ *
+ * 真机缺陷是「容器表仍留在转发页」，但 `pane-tables.tsx` 这个**模块**并没有离开转发 chunk
+ * （端口表、NAT 指引、失败态都还在里面）⇒ 只删了模块内的 `ContainersBlock`。
+ * 所以 12 条切出标记**一条都不会消失**，硬把某条删掉反而会失去「搬家不是删除」的证明。
+ * ⑥ 改为钉**反向**事实：容器页专属模块标记（`containers/pane.tsx` 等）与容器表/动作的
+ * testid 字面量（`tbl-containers`、`container-start-` …）在转发 chunk 里命中数必须为 0。
+ * 这样 D1 的产物级回归不依赖「某模块是否还在」，而是直接钉「容器 UI 有没有漏回来」。
  *
  * ## 标记字符串口径（design §7 留作「实现阶段定」，本脚本定稿）
  *
@@ -26,7 +36,7 @@
  *
  * ## 自证「红得动」：`DSH_SPLIT_ASSERT_FAULT`
  *
- * `DSH_SPLIT_ASSERT_FAULT=<size|ratchet|async|chunk|resident|cut>` 把故障注入**真实读数**（不是只打印一段
+ * `DSH_SPLIT_ASSERT_FAULT=<size|ratchet|async|chunk|resident|cut|leak>` 把故障注入**真实读数**（不是只打印一段
  * 说明）⇒ §2 的判据**真判红** ⇒ 脚本 `exit 1`。这满足 `T1.4` 的验证要求「故意构造超标产物 ⇒ exit ≠ 0」，
  * 且**不用**改仓库里任何文件（注入只活在进程内）。
  */
@@ -64,8 +74,19 @@ const CUT_MARKERS = [
   'src/write/scope-note.ts',
   'src/write/firewall.ts',
 ];
+/**
+ * D1 反向清单：容器页专属模块标记 + 容器表/动作 testid 字面量。
+ * 转发 chunk 里命中任何一条 ⇒ 容器 UI 又漏回转发页（真机 2026-10-23 的 D1 就是这种形态）。
+ */
+const CONTAINER_UI_MARKERS = [
+  'src/client/containers/pane.tsx',
+  'src/client/containers/source.ts',
+  'src/client/containers/runtime.ts',
+  'src/client/container-control.ts',
+];
+const CONTAINER_UI_TEXT = ['tbl-containers', 'container-start-', 'container-stop-', 'container-restart-', 'container-logs-btn-'];
 
-const FAULT_KEYS = ['size', 'ratchet', 'async', 'chunk', 'resident', 'cut'];
+const FAULT_KEYS = ['size', 'ratchet', 'async', 'chunk', 'resident', 'cut', 'leak'];
 const FAULT = process.env.DSH_SPLIT_ASSERT_FAULT ?? '';
 
 let checks = 0;
@@ -129,6 +150,7 @@ if (FAULT !== '') {
     }
     if (FAULT === 'resident') reading.mainText = stripMarker(reading.mainText, RESIDENT_MARKERS[0]);
     if (FAULT === 'cut') reading.mainText = `${reading.mainText}\n// ${CUT_MARKERS[0]}\n`;
+    if (FAULT === 'leak') reading.chunkText = `${reading.chunkText}\n// ${CONTAINER_UI_MARKERS[0]}\n`;
     faultApplied = FAULT;
     console.log(`⚠️ 故障注入已生效：\`${FAULT}\`（注入对象 = **真实读数**，仓库文件零改动）\n`);
   }
@@ -156,6 +178,15 @@ const cutCheck = (r) => {
   const leaked = CUT_MARKERS.filter((rel) => hasMarker(r.mainText, rel));
   return { ok: leaked.length === 0, detail: `仍留在主包 ${String(leaked.length)}/${String(CUT_MARKERS.length)}：${leaked.join('、') || '（无）'}` };
 };
+/** ⑥ D1 反向：容器页专属模块标记 / 容器表与动作 testid 字面量**不得**出现在转发 chunk */
+const containerUiLeakCheck = (r) => {
+  const leakedMarkers = CONTAINER_UI_MARKERS.filter((rel) => hasMarker(r.chunkText, rel));
+  const leakedText = CONTAINER_UI_TEXT.filter((text) => r.chunkText.includes(text));
+  return {
+    ok: leakedMarkers.length === 0 && leakedText.length === 0,
+    detail: `转发 chunk 内：容器模块标记 ${String(leakedMarkers.length)}/${String(CONTAINER_UI_MARKERS.length)}、容器 UI 字面量 ${String(leakedText.length)}/${String(CONTAINER_UI_TEXT.length)}${leakedMarkers.length + leakedText.length === 0 ? '' : `（漏回：${[...leakedMarkers, ...leakedText].join('、')}）`}`,
+  };
+};
 /** 一份读数上当前该红的判据集合（真实读数与哨兵读数走**同一个**函数 ⇒ 期望值不会与判据脱钩） */
 function redIds(r) {
   const red = [];
@@ -165,12 +196,14 @@ function redIds(r) {
   if (!chunkCheck(r).ok) red.push('③');
   if (!residentCheck(r).ok) red.push('④');
   if (!cutCheck(r).ok) red.push('⑤');
+  if (!containerUiLeakCheck(r).ok) red.push('⑥');
   return red;
 }
 
 console.log('=== 1. 清单与口径自检 ===');
 expectScanned('常驻标记清单非空（空清单 ⇒ ④ 恒真）', RESIDENT_MARKERS.length, RESIDENT_MARKERS.length === 4, `常驻 ${String(RESIDENT_MARKERS.length)} 项`);
 expectScanned('切出标记清单非空（空清单 ⇒ ⑤ 恒真）', CUT_MARKERS.length, CUT_MARKERS.length === 12, `切出 ${String(CUT_MARKERS.length)} 项`);
+expectScanned('D1 容器 UI 反向清单非空（空清单 ⇒ ⑥ 恒真）', CONTAINER_UI_MARKERS.length + CONTAINER_UI_TEXT.length, CONTAINER_UI_MARKERS.length + CONTAINER_UI_TEXT.length === 9, `模块 ${String(CONTAINER_UI_MARKERS.length)} 项 + 字面量 ${String(CONTAINER_UI_TEXT.length)} 项`);
 expectScanned('chunk 说明符可从源码解析出**恰好** 1 处（`src/client/index.ts` 的 `PANE_CHUNK`）', chunkSpecHits.length, chunkSpecHits.length === 1, `命中 ${String(chunkSpecHits.length)} 处，值 ${JSON.stringify(chunkSpec)}`);
 check('SSoT 里已登记本包上限（未登记 = 不放行）', registeredLimit !== undefined, `${pkg.name} = 上限 ${String(registeredLimit)} B / nature=${String(budget?.nature)} / 留痕 ${String(budget?.trace)}`);
 
@@ -184,12 +217,13 @@ check('② 主包 `require.async(` 命中 ≥ 1', asyncCheck(reading).ok, asyncC
 check('③ chunk 存在 + 被引用 + 含全部切出标记', chunkCheck(reading).ok, chunkCheck(reading).detail);
 check('④ 常驻 4 模块标记仍在主包', residentCheck(reading).ok, residentCheck(reading).detail);
 check('⑤ 已切出 12 模块标记不在主包', cutCheck(reading).ok, cutCheck(reading).detail);
+check('⑥ 容器 UI 标记/字面量不在转发 chunk（D1 反向）', containerUiLeakCheck(reading).ok, containerUiLeakCheck(reading).detail);
 
 if (faultApplied === '') {
   console.log('\n=== 3. 变异哨兵（喂**同一批**判定函数；没红就是门的错） ===');
   const realRed = redIds(reading);
   console.log(`  ⚑ ⓪ 基线对照：真实产物下判据红 ${String(realRed.length)} 条 ${JSON.stringify(realRed)}（下面哨兵的红才是「新引入的红」）`);
-  expectScanned('⚑ ⓪ 真实产物判绿（证明判据不是恒红）', 6, realRed.length === 0, `红 ${String(realRed.length)} 条 ${JSON.stringify(realRed)}`);
+  expectScanned('⚑ ⓪ 真实产物判绿（证明判据不是恒红）', 7, realRed.length === 0, `红 ${String(realRed.length)} 条 ${JSON.stringify(realRed)}`);
 
   const mutants = [
     { key: 'size', read: { ...reading, mainBytes: P2_HARD_LIMIT + 1 }, how: `人造超限读数 ${String(P2_HARD_LIMIT + 1)}（§P2 硬上限 + 1）` },
@@ -198,6 +232,7 @@ if (faultApplied === '') {
     { key: 'chunk', read: { ...reading, chunkExists: false, chunkText: '' }, how: '说 chunk 不存在', want: ['③'] },
     { key: 'resident', read: { ...reading, mainText: stripMarker(reading.mainText, RESIDENT_MARKERS[0]) }, how: `抹掉常驻标记 ${RESIDENT_MARKERS[0]}`, want: ['④'] },
     { key: 'cut', read: { ...reading, mainText: `${reading.mainText}\n// ${CUT_MARKERS[0]}\n` }, how: `注入切出标记 ${CUT_MARKERS[0]}`, want: ['⑤'] },
+    { key: 'leak', read: { ...reading, chunkText: `${reading.chunkText}\n// ${CONTAINER_UI_MARKERS[0]}\n` }, how: `注入容器 UI 模块标记 ${CONTAINER_UI_MARKERS[0]}`, want: ['⑥'] },
   ];
   for (const mutant of mutants) {
     const red = redIds(mutant.read);

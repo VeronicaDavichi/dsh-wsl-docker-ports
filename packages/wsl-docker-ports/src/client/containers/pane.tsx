@@ -10,21 +10,27 @@
  * 3. **动作有本地闸门**：没凭据 ⇒ **一个请求都不发**（直接提示去保存凭据），
  *    有凭据才 POST —— 与 009 写通道的「本地拦下」同口径。
  *
- * ## 刷新
+ * ## 刷新（015 D2，2026-10-23 真机）
  *
- * 自己的 `refreshIntervalSec`（容器侧命名空间），五档 `0/15/30/60/300`，`0` = 关闭。
- * 取不到配置时**不猜**：按 30s 跑，并在页脚写明「配置不可用 ⇒ 按默认 30s」。
+ * 自己的 `refreshIntervalSec`（容器侧命名空间 `dsh-wsl-docker-containers`），五档
+ * `0/15/30/60/300`，**缺省 `0` = 关闭**。选择器写回的是**容器行自己的配置**，
+ * 与转发侧 `dsh-wsl-docker-ports` 的 `refreshIntervalSec` 互不影响。
+ * 轮询**只在数据变化时重绘**：比较载荷时忽略 `generatedAt`（见 `source.ts` 的
+ * `sameContainersPayload`，与 014 忽略 `refreshedAt` 同一口径）。
+ * 配置服务不可用 ⇒ 仍按「关闭」处理：**不猜一个默认秒数、不偷偷轮询**。
  */
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import type { FetchLike } from '../../wire.ts';
+import { normalizeRefreshIntervalSec, REFRESH_INTERVAL_OPTIONS } from '../refresh.ts';
 import type { ContainersRuntime } from './runtime.ts';
 import {
   fetchContainersLogs,
   fetchContainersSnapshot,
   runContainersAction,
+  sameContainersPayload,
   type ContainerRow,
   type ContainersAction,
   type ContainersSnapshotView,
@@ -33,6 +39,7 @@ import {
 /** 自己的一套 testid（与转发页的 `TESTID` 各管各的，互不复用） */
 export const CID = {
   refresh: 'btn-containers-refresh',
+  refreshInterval: 'sel-containers-refresh-interval',
   table: 'tbl-containers-side',
   empty: 'txt-containers-empty',
   error: 'txt-containers-error',
@@ -48,19 +55,15 @@ export function actionTestId(id: string, action: ContainersAction): string {
   return `btn-containers-${action}-${id}`;
 }
 
-const DEFAULT_REFRESH_SEC = 30;
 const LOG_TAIL = 200;
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined;
 }
 
-/** 从配置视图里取刷新档（只认五档；不在其中一律当 0） */
+/** 从配置视图里取刷新档（只认五档；不在其中 / 缺省一律当 0 = 关闭） */
 export function readRefreshSec(view: unknown): number {
-  const record = asRecord(view);
-  const raw = record?.['refreshIntervalSec'];
-  const value = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : Number.NaN;
-  return value === 15 || value === 30 || value === 60 || value === 300 ? value : 0;
+  return normalizeRefreshIntervalSec(asRecord(view)?.['refreshIntervalSec']);
 }
 
 export function ContainersPane(props: { readonly runtime?: ContainersRuntime }): ReactElement {
@@ -69,11 +72,21 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [logs, setLogs] = useState<{ readonly id: string; readonly text: string } | null>(null);
-  const [refreshSec, setRefreshSec] = useState<number>(DEFAULT_REFRESH_SEC);
+  // D2：默认「关闭」——配置读不到时也不猜默认秒数（不偷偷轮询）
+  const [refreshSec, setRefreshSec] = useState<number>(0);
   const [configNote, setConfigNote] = useState<string | null>(null);
   const [tokenDraft, setTokenDraft] = useState('');
   const [tokenPresent, setTokenPresent] = useState<boolean>(() => (runtime?.token() ?? '') !== '');
   const alive = useRef(true);
+  const lastSnapshot = useRef<ContainersSnapshotView | null>(null);
+  // D2：错误态去重后再 setState —— 轮询成功且数据未变时**连 `setError(null)` 都不发**，
+  // 否则 React 仍会为一次同值 dispatch 付一次提交（实测 1 次重绘，Profiler 计数不撒谎）。
+  const errorRef = useRef<string | null>(null);
+  const writeError = useCallback((message: string | null): void => {
+    if (errorRef.current === message) return;
+    errorRef.current = message;
+    setError(message);
+  }, []);
 
   // 窄化一次：`fetchImpl` 必须在场才谈得上取数（缺它就只报一行原因，不发请求）。
   // 🔴 真机缺陷（2026-10-23）两连击，都在这一行：
@@ -89,57 +102,84 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
     return { fetchImpl, baseUrl: runtime?.baseUrl ?? '', token: runtime?.token };
   }, [runtime]);
 
-  const load = useCallback(async (): Promise<void> => {
+  const load = useCallback(async (onlyIfChanged = false): Promise<void> => {
     if (deps?.fetchImpl === undefined) {
-      setError('没有可用的 fetch：本页无法取容器列表（运行环境没有 fetch）');
+      writeError('没有可用的 fetch：本页无法取容器列表（运行环境没有 fetch）');
       return;
     }
     const result = await fetchContainersSnapshot(deps);
     if (!alive.current) return;
     if (result.ok) {
+      const previous = lastSnapshot.current;
+      // D2：轮询只在数据真变化时重绘（忽略 `generatedAt`）；手动刷新 / 动作后重拉照常更新
+      if (onlyIfChanged && previous !== null && sameContainersPayload(previous, result.value)) {
+        writeError(null);
+        return;
+      }
+      lastSnapshot.current = result.value;
       setSnapshot(result.value);
-      setError(null);
+      writeError(null);
     } else {
-      setError(result.message);
+      writeError(result.message);
     }
-  }, [deps]);
+  }, [deps, writeError]);
 
-  // 首屏 + 定时刷新（频次来自容器侧命名空间；取不到按 30s）
+  // 首屏 + 读频次（频次来自容器侧命名空间；缺省 0 = 关闭，读不到也按关闭）
   useEffect(() => {
     alive.current = true;
-    let timer: ReturnType<typeof setInterval> | undefined;
     const configure = async (): Promise<void> => {
       const pipe = runtime?.settings();
       if (pipe === undefined) {
-        setConfigNote('设置服务不可用：按默认 30s 刷新');
-        setRefreshSec(DEFAULT_REFRESH_SEC);
+        setConfigNote('设置服务不可用：刷新频次保持「关闭」（本会话改档不会落盘）');
+        setRefreshSec(0);
         return;
       }
       try {
         const view = await pipe.readConfig();
-        const sec = readRefreshSec(view);
         if (!alive.current) return;
-        setConfigNote(sec === 0 ? '自动刷新已关闭（容器侧配置 refreshIntervalSec=0）' : null);
-        setRefreshSec(sec === 0 ? 0 : sec);
+        setRefreshSec(readRefreshSec(view));
+        setConfigNote(null);
       } catch {
-        setConfigNote('读容器侧配置失败：按默认 30s 刷新');
-        setRefreshSec(DEFAULT_REFRESH_SEC);
+        if (!alive.current) return;
+        setConfigNote('读容器侧配置失败：刷新频次按「关闭」处理（不猜默认值）');
+        setRefreshSec(0);
       }
     };
     void load();
     void configure();
     return () => {
       alive.current = false;
-      if (timer !== undefined) clearInterval(timer);
     };
   }, [load, runtime]);
 
-  // 频次变了就重排定时器（0 = 不排）
+  // 频次变了就重排定时器（0 = 不排）；卸载/改档时清理，不留无主定时器
   useEffect(() => {
     if (refreshSec <= 0) return;
-    const timer = setInterval(() => void load(), refreshSec * 1000);
+    const timer = setInterval(() => void load(true), refreshSec * 1000);
     return () => clearInterval(timer);
   }, [refreshSec, load]);
+
+  /** D2：改档 = 立即生效（state 驱动定时器）+ 写回**容器行**配置（不碰转发侧命名空间） */
+  const changeRefreshSec = useCallback(
+    async (sec: number): Promise<void> => {
+      const normalized = normalizeRefreshIntervalSec(sec);
+      setRefreshSec(normalized);
+      const pipe = runtime?.settings();
+      if (pipe === undefined) {
+        setConfigNote('设置服务不可用：本次仅本会话生效，未落盘');
+        return;
+      }
+      try {
+        const result = await pipe.writeRefreshInterval(normalized);
+        if (!alive.current) return;
+        setConfigNote(result.ok ? null : `刷新频次未落盘：${result.message}`);
+      } catch (cause) {
+        if (!alive.current) return;
+        setConfigNote(`刷新频次写回抛出异常：${cause instanceof Error ? cause.message : String(cause)}（未重试）`);
+      }
+    },
+    [runtime],
+  );
 
   const act = useCallback(
     async (id: string, action: ContainersAction): Promise<void> => {
@@ -148,7 +188,7 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
       const result = await runContainersAction(deps, id, action);
       if (!alive.current) return;
       setBusy(null);
-      if (!result.ok) setError(result.message);
+      if (!result.ok) writeError(result.message);
       else await load();
     },
     [deps, load],
@@ -162,9 +202,9 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
       if (!alive.current) return;
       setBusy(null);
       if (result.ok) setLogs({ id, text: result.value.text === '' ? '（该容器最近 200 行没有输出）' : result.value.text });
-      else setError(result.message);
+      else writeError(result.message);
     },
-    [deps],
+    [deps, writeError],
   );
 
   const saveToken = useCallback((): void => {
@@ -184,8 +224,19 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
       'div',
       { className: 'wdp-row wdp-toolbar' },
       createElement('button', { type: 'button', 'data-testid': CID.refresh, onClick: () => void load(), disabled: busy !== null }, '刷新'),
+      // D2：容器页自己的五档刷新间隔（testid 与转发页 `sel-refresh-interval` 刻意不同名）
+      createElement(
+        'select',
+        {
+          'data-testid': CID.refreshInterval,
+          'data-settings-control': '1',
+          'aria-label': '容器页自动刷新频次',
+          value: String(refreshSec),
+          onChange: (event: { target: { value: string } }) => void changeRefreshSec(Number(event.target.value)),
+        },
+        REFRESH_INTERVAL_OPTIONS.map((option) => createElement('option', { key: option.value, value: String(option.value) }, option.label)),
+      ),
       createElement('span', { className: 'wdp-muted', 'data-testid': 'txt-containers-distro' }, snapshot?.distro === null || snapshot?.distro === undefined ? '目标发行版：未解析' : `目标发行版：${snapshot.distro.name}`),
-      createElement('span', { className: 'wdp-muted' }, `刷新：${refreshSec === 0 ? '关闭' : `${String(refreshSec)}s`}`),
       createElement('span', { className: 'wdp-muted', 'data-testid': CID.tokenState }, tokenPresent ? '容器通道凭据：已保存（本会话）' : '容器通道凭据：未保存'),
     ),
     createElement(

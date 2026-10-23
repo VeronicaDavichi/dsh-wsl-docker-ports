@@ -281,7 +281,7 @@ test('T6.8 docker 读失败 ⇒ 监听表仍独立判决：有监听判 ok、没
     );
   }
   const page = buildPortsPageView(snapshot);
-  assert.equal(page.containerCount, 0);
+  assert.equal('containers' in page, false, 'D1：转发页视图不再携带容器表（docker 失败也不影响端口行）');
   assert.equal(page.ports.length, 19, 'docker 失败不影响端口行数（判决仍可给）');
   console.log(`  · 扫了 docker 失败分支：reason=${snapshot.docker.ok ? '—' : snapshot.docker.reason}，counts=${JSON.stringify(snapshot.diff.ok ? snapshot.diff.result.counts : {})}`);
 });

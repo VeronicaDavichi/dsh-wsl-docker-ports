@@ -16,7 +16,7 @@
  */
 
 import { PORT_STATES, type ClassifyReason, type PortState, type Scope } from '../diff/types.ts';
-import { buildContainerRows, buildExternalRulesView, buildForwardActions, buildNatGuide, buildPresetOptions, buildScopeControl, buildDriftView, buildUnsupportedRows, managedPortsIssues, managedPortsText, natReason, stateLabel, stateTone, TESTID, UDP_TIP_TEXT, PORT_PRESETS, ELEVATION_CONSENT_NOTICE } from './rows.ts';
+import { buildExternalRulesView, buildForwardActions, buildNatGuide, buildPresetOptions, buildScopeControl, buildDriftView, buildUnsupportedRows, managedPortsIssues, managedPortsText, natReason, stateLabel, stateTone, TESTID, UDP_TIP_TEXT, PORT_PRESETS, ELEVATION_CONSENT_NOTICE } from './rows.ts';
 import { buildDriftFixView } from './drift-fix.ts';
 import type { ManagedPortsFormView } from './types.ts';
 import type { DistroPanelData, ForwardWriteReport } from './host.ts';
@@ -301,7 +301,6 @@ export function buildPortsPageView(snapshot: PortsSnapshot, options: BuildPageOp
     snapshot.diff.ok === true
       ? { ...snapshot.diff.result.counts }
       : { ok: 0, missing: 0, drift: 0, conflict: 0, extra: 0 };
-  const containers = snapshot.docker.ok ? buildContainerRows(snapshot.docker.containers) : [];
   // 013：监听表读失败时给一句人话（受管端口会显示「未知」；「移除」仍可点）
   const listenersNote =
     snapshot.listeners !== undefined && !snapshot.listeners.ok && snapshot.diff.ok
@@ -313,9 +312,6 @@ export function buildPortsPageView(snapshot: PortsSnapshot, options: BuildPageOp
     refreshedAtText: formatTimestamp(snapshot.refreshedAt),
     nat: buildNatPanel(snapshot),
     docker: snapshot.docker,
-    containers,
-    containerCount: containers.length,
-  containerListNote: snapshot.docker.ok ? (snapshot.docker.containerListNote ?? null) : null,
     ports: buildPortRows(snapshot, gate),
     counts,
     portsNote: snapshot.diff.ok === false ? '取不到 eth0：本条判决都不给（不降级、不把全部规则误标为漂移）' : listenersNote,

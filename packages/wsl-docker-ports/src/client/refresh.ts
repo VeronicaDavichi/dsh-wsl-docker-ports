@@ -1,10 +1,11 @@
 /**
- * 014：自动刷新频次的**纯函数面**（只被 chunk 侧的 `pane.tsx` 引用 ⇒ 主包零字节）
+ * 014 / 015 D2：自动刷新频次的**纯函数面**（只被 chunk 侧引用 ⇒ 主包零字节）
  *
  * 三件事，都刻意做成无副作用、无 React 依赖（于是 `node --test` 也能直接证）：
  * 1. 固定五档（`关闭 / 15 秒 / 30 秒 / 60 秒 / 5 分钟`）——口径与宿主 `config-read.ts` 的读者一致；
  * 2. 归一化：只认这五档，其余（`undefined` / 负数 / 未登记秒数 / 乱码）一律 ⇒ `0`（关闭，fail-safe）；
- * 3. 快照比较：**忽略 `refreshedAt`** 后稳定序列化再比 ⇒ 轮询只在数据真变化时重绘。
+ * 3. 快照比较：**忽略顶层时间戳**后稳定序列化再比 ⇒ 轮询只在数据真变化时重绘。
+ *    转发快照忽略 `refreshedAt`（014）；容器快照忽略 `generatedAt`（015 D2，见 `containers/source.ts`）。
  */
 
 import type { PortsSnapshot } from './types.ts';
@@ -44,13 +45,23 @@ function stableKey(value: unknown): string {
 }
 
 /**
+ * 可比较形态：**剔除顶层指定键**后稳定序列化。
+ *
+ * 014 的端口快照忽略 `refreshedAt`；015 的容器快照忽略 `generatedAt`（两者都是「每次拉取
+ * 都会变的时间戳，不是数据」）。共用同一个序列化口径 ⇒ 两页「数据未变不重绘」的判据同源。
+ */
+export function comparablePayload<T extends object>(value: T, ignoredKeys: readonly string[]): string {
+  const record: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+  for (const key of ignoredKeys) delete record[key];
+  return stableKey(record);
+}
+
+/**
  * 快照的可比较形态：**剔除顶层 `refreshedAt`**（它是每次拉取都会变的时间戳，不是数据），
  * 其余字段原样稳定序列化。`refreshedAt` 只可能在快照顶层，嵌套同名字段（若将来出现）不误伤。
  */
 export function snapshotComparable(snapshot: PortsSnapshot): string {
-  const record: Record<string, unknown> = { ...snapshot };
-  delete record['refreshedAt'];
-  return stableKey(record);
+  return comparablePayload(snapshot, ['refreshedAt']);
 }
 
 /** 轮询重绘判据：忽略 `refreshedAt` 后逐字段相等 ⇒ 无变化，**不 setState** */

@@ -22,8 +22,9 @@
  * 旧代码 ⇒ 记录器**零调用**且表里只有「读取中…」这一行；修后 ⇒ 恰好一次 GET + 30 行容器。
  */
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { Profiler } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 
 import { ContainersPane, CID } from '../../src/client/containers/pane.tsx';
@@ -140,5 +141,173 @@ describe('容器页取数：缺省必须回落全局 fetch', () => {
     expect(injected).toHaveLength(1);
     expect(calls).toHaveLength(0);
     console.log(`  · 注入 fetchImpl：注入件 ${String(injected.length)} 次 / 全局 ${String(calls.length)} 次`);
+  });
+});
+
+/* ───────────────────────── D2：容器页自己的刷新间隔（2026-10-23 真机） ───────────────────────── */
+
+interface SettingsWrite {
+  readonly sec: number;
+}
+
+function recordingSettings(initial: number | undefined, writes: SettingsWrite[]): SettingsPipe {
+  return {
+    readConfig: async () => ({ refreshIntervalSec: initial }),
+    writeRefreshInterval: async (sec: number) => {
+      writes.push({ sec });
+      return { ok: true, message: 'ok', patch: { refreshIntervalSec: sec }, revisionPassed: false };
+    },
+  } as unknown as SettingsPipe;
+}
+
+/** 让挂载期的 `load()` / `readConfig()` / setState 全部落地（假定时器下不能等真实时钟） */
+async function flush(): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+}
+
+async function advance(ms: number): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+}
+
+function intervalSelect(): HTMLSelectElement {
+  return screen.getByTestId(CID.refreshInterval) as HTMLSelectElement;
+}
+
+describe('D2 容器页刷新间隔（独立命名空间 / 默认关闭 / 变化才重绘）', () => {
+  let probeCalls = 0;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    probeCalls = 0;
+    // 容器页缺省回落全局 fetch：这里用「按次数给载荷」的替身，既能数请求也能制造数据变化
+    globalThis.fetch = (async () => {
+      probeCalls += 1;
+      return { ok: true, status: 200, json: async () => SNAPSHOT };
+    }) as unknown as typeof globalThis.fetch;
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it('D2-1 默认「关闭」：五档选项齐全、120 秒零轮询、零配置写（旧代码：无此下拉框）', async () => {
+    const writes: SettingsWrite[] = [];
+    const runtime: ContainersRuntime = { ...productionRuntime(), settings: () => recordingSettings(0, writes) };
+    render(<ContainersPane runtime={runtime} /> as ReactElement);
+    await flush();
+    await flush();
+
+    const select = intervalSelect();
+    expect(select.value).toBe('0');
+    expect(Array.from(select.options).map((option) => option.textContent)).toEqual(['关闭', '15 秒', '30 秒', '60 秒', '5 分钟']);
+    // 不得与转发侧控件同名（同名会让「独立」变成一句空话）
+    expect(screen.queryByTestId('sel-refresh-interval')).toBeNull();
+    expect(probeCalls).toBe(1);
+
+    await advance(120_000);
+    expect(probeCalls).toBe(1);
+    expect(writes).toHaveLength(0);
+    console.log(`  · D2-1 扫了 120s：轮询 ${String(probeCalls - 1)} 次、配置写 ${String(writes.length)} 次`);
+  });
+
+  it('D2-2 配置「15 秒」：到点轮询，选择器回填 15（旧代码：无此下拉框）', async () => {
+    const writes: SettingsWrite[] = [];
+    const runtime: ContainersRuntime = { ...productionRuntime(), settings: () => recordingSettings(15, writes) };
+    render(<ContainersPane runtime={runtime} /> as ReactElement);
+    await flush();
+    await flush();
+
+    expect(intervalSelect().value).toBe('15');
+    expect(probeCalls).toBe(1);
+
+    await advance(15_000);
+    expect(probeCalls).toBe(2);
+    await advance(15_000);
+    expect(probeCalls).toBe(3);
+    console.log(`  · D2-2 扫了 30s：15s 档轮询到 ${String(probeCalls - 1)} 次`);
+  });
+
+  it('D2-3 数据未变（只有 generatedAt 变）⇒ 零重绘；数据真变 ⇒ 重绘（旧代码：每次 setSnapshot）', async () => {
+    let version = 0;
+    globalThis.fetch = (async () => {
+      version += 1;
+      probeCalls += 1;
+      const containers = version >= 3 ? CONTAINERS.map((row, index) => (index === 0 ? { ...row, state: 'exited' } : row)) : CONTAINERS;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, snapshot: { ...SNAPSHOT.snapshot, generatedAt: `2026-10-23T00:00:0${String(version)}.000Z`, containers } }),
+      };
+    }) as unknown as typeof globalThis.fetch;
+
+    let renders = 0;
+    const runtime: ContainersRuntime = { ...productionRuntime(), settings: () => recordingSettings(15, []) };
+    render(
+      <Profiler
+        id="containers"
+        onRender={() => {
+          renders += 1;
+        }}
+      >
+        <ContainersPane runtime={runtime} />
+      </Profiler> as ReactElement,
+    );
+    await flush();
+    await flush();
+    expect(intervalSelect().value).toBe('15');
+
+    const loads = probeCalls;
+    renders = 0;
+    await advance(15_000);
+    expect(probeCalls).toBe(loads + 1);
+    expect(renders).toBe(0);
+
+    // 反向对照：数据真变了必须重绘（否则「0 次」可能只是定时器没跑）
+    await advance(15_000);
+    expect(probeCalls).toBe(loads + 2);
+    expect(renders).toBeGreaterThan(0);
+    console.log(`  · D2-3 扫了 2 个周期：仅时间戳变 ⇒ 重绘 0 次；容器状态真变 ⇒ 重绘 ${String(renders)} 次`);
+  });
+
+  it('D2-4 卸载后清定时器：不再轮询', async () => {
+    const runtime: ContainersRuntime = { ...productionRuntime(), settings: () => recordingSettings(15, []) };
+    const view = render(<ContainersPane runtime={runtime} /> as ReactElement);
+    await flush();
+    await flush();
+    expect(intervalSelect().value).toBe('15');
+
+    await advance(15_000);
+    expect(probeCalls).toBe(2);
+
+    view.unmount();
+    const afterUnmount = probeCalls;
+    await advance(60_000);
+    expect(probeCalls).toBe(afterUnmount);
+    console.log(`  · D2-4 卸载后 60s 新增轮询 ${String(probeCalls - afterUnmount)} 次`);
+  });
+
+  it('D2-5 改档：立即生效 + 写回容器行自己的 refreshIntervalSec（不碰转发侧）', async () => {
+    const writes: SettingsWrite[] = [];
+    const runtime: ContainersRuntime = { ...productionRuntime(), settings: () => recordingSettings(0, writes) };
+    render(<ContainersPane runtime={runtime} /> as ReactElement);
+    await flush();
+    await flush();
+    expect(intervalSelect().value).toBe('0');
+
+    fireEvent.change(intervalSelect(), { target: { value: '60' } });
+    await flush();
+    await flush();
+
+    expect(intervalSelect().value).toBe('60');
+    expect(writes).toEqual([{ sec: 60 }]);
+
+    await advance(60_000);
+    expect(probeCalls).toBe(2);
+    console.log(`  · D2-5 写回 ${JSON.stringify(writes)}，60s 后轮询 1 次`);
   });
 });

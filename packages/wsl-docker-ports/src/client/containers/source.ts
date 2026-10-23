@@ -9,7 +9,7 @@
  * | POST | `/action` | 容器侧令牌 | `start` / `stop` / `restart` |
  * | GET | `/logs?id=&tail=` | 容器侧令牌 | 日志文本（服务端夹紧 `1..200`） |
  *
- * ## 三条纪律（与主包 `route-source.ts` / `container-control.ts` 同口径）
+ * ## 三条纪律（与主包 `route-source.ts` 同口径；D1 后容器动作取数**只**在这里）
  *
  * 1. **不抛**：网络错误/非 2xx/形态不对都收敛成 `{ ok:false, message }` —— 页面渲染一行原因，
  *    不炸整棵 React 树；
@@ -18,6 +18,7 @@
  */
 
 import type { FetchLike } from '../../wire.ts';
+import { comparablePayload } from '../refresh.ts';
 
 /** 容器侧前缀（与宿主半 `src/containers/wire.ts` 逐字一致；改一边必须改另一边） */
 export const CONTAINERS_BASE = '/dsh-wsl-docker-containers';
@@ -134,6 +135,16 @@ export function readSnapshotPayload(payload: unknown): Outcome<ContainersSnapsho
 }
 
 const joiner = (deps: ContainersClientDeps): string => (deps.baseUrl ?? '').replace(/\/+$/u, '');
+
+/**
+ * 轮询重绘判据（015 D2）：**忽略 `generatedAt`** 后逐字段相等 ⇒ 无变化，**不 setState**。
+ *
+ * 为什么不是比 `JSON.stringify`：对象键序不同（服务端字段顺序变化 / 新增同义键）会把同一份
+ * 数据误判成变化 ⇒ 每次轮询都重绘。`comparablePayload` 先排序键再序列化（与 014 同一口径）。
+ */
+export function sameContainersPayload(previous: ContainersSnapshotView, next: ContainersSnapshotView): boolean {
+  return comparablePayload(previous, ['generatedAt']) === comparablePayload(next, ['generatedAt']);
+}
 
 async function readJson(response: { json(): Promise<unknown> }): Promise<unknown> {
   try {

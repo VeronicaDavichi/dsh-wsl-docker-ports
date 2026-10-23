@@ -22,15 +22,6 @@ export type { DistroPanelData, DockerView, NatGateView, NatGuideView, PortsSnaps
 /** 中文标签的顺序权威（与五态引擎的 `PORT_STATES` 同源，不另抄一份字面量） */
 export type PortTone = 'ok' | 'warn' | 'danger' | 'muted';
 
-export interface ContainerRowView {
-  readonly id: string;
-  readonly name: string;
-  readonly image: string;
-  readonly state: string;
-  readonly status: string;
-  readonly ports: string;
-}
-
 /** 写控件（转发类）—— 全部带 `data-write-control`，非 NAT 时**一个都不可点**（T5.2） */
 export interface ForwardActionView {
   readonly kind: 'apply' | 'remove' | 'fix-drift';
@@ -177,11 +168,6 @@ export interface PortsPageView {
   readonly refreshedAtText: string;
   readonly nat: NatGatePanelView;
   readonly docker: DockerView;
-  readonly containers: readonly ContainerRowView[];
-  readonly containerCount: number;
-  /** 列表是否**只含运行中**（docker ps -a 失败时的回落说明）；
-ull = 全部容器都列了 */
-  readonly containerListNote: string | null;
   readonly ports: readonly PortRowView[];
   readonly counts: Readonly<Record<PortState, number>>;
   readonly portsNote: string | null;

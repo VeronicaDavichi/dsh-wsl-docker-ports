@@ -286,14 +286,16 @@ test('T5.1 刷新时间戳：快照换了时间戳，页面文本跟着变', () 
   console.log(`  · 扫了 2 个时间戳：「${first.refreshedAtText}」→「${second.refreshedAtText}」`);
 });
 
-test('T5.1 容器表：docker 失败时不给空表冒充「没有容器」', () => {
+test('D1 转发页视图：docker 失败时只剩诊断行，**不再携带容器表**（旧代码有 containers/containerCount）', () => {
   const view = buildPortsPageView(
     snapshot({ docker: { ok: false, reason: 'timeout', message: 'docker ps 超时', hint: '重试一次', raw: 'partial' } }),
   );
-  assert.equal(view.containers.length, 0);
+  assert.equal('containers' in view, false, '转发页视图不得再有容器行数组');
+  assert.equal('containerCount' in view, false, '转发页视图不得再有容器计数');
+  assert.equal('containerListNote' in view, false, '转发页视图不得再有容器列表回落说明');
   assert.equal(view.docker.ok, false);
   assert.ok(view.docker.ok === false && view.docker.reason === 'timeout');
-  console.log(`  · 扫了失败态：容器行 ${String(view.containers.length)}、表区仍渲染 ${String(view.containerCount)}`);
+  console.log('  · 扫了失败态：容器字段 0 个、docker 诊断仍在');
 });
 
 test('T5.4 端口行证据：scopeMismatch 是事实位，不改变状态（design §3 订正②）', () => {
@@ -303,17 +305,18 @@ test('T5.4 端口行证据：scopeMismatch 是事实位，不改变状态（desi
   console.log(`  · 扫了 ${String(rows.length)} 行：state=${String(rows[0]?.state)} scopeMismatch=${String(rows[0]?.scopeMismatch)}`);
 });
 
-test('T5.4 端口行证据：reason 文案与 TESTID 常量对齐 requirements §2 的控件清单', () => {
+test('D1 TESTID：容器表锚点已离开转发侧，剩余 10 个基础控件', () => {
   const ids = Object.values(TESTID);
-  assert.equal(ids.length, 11, `TESTID 应有 11 个基础控件，实际 ${String(ids.length)}`);
-  const requiredIds: readonly string[] = ['btn-refresh', 'tbl-containers', 'tbl-ports', 'tip-udp', 'btn-raw-output', 'sel-elevation', 'btn-nat-guide', 'btn-cs-exec'];
+  assert.equal(ids.length, 10, `TESTID 应有 10 个基础控件，实际 ${String(ids.length)}`);
+  const requiredIds: readonly string[] = ['btn-refresh', 'tbl-ports', 'tip-udp', 'btn-raw-output', 'sel-elevation', 'btn-nat-guide', 'btn-cs-exec'];
   for (const required of requiredIds) assert.ok(ids.includes(required as (typeof ids)[number]), `缺少 ${required}`);
+  assert.equal(ids.includes('tbl-containers' as (typeof ids)[number]), false, '转发页不得再导出容器表 testid');
   assert.equal(TESTID.managedPortsInput, 'inp-managed-ports');
   assert.equal(scopeTestId(3306), 'sel-scope-3306');
   console.log(`  · 扫了 ${String(ids.length)} 个 TESTID：${JSON.stringify(ids)}`);
 });
 
-test('T5.1 容器端口展示：区间映射与未发布映射都能显示', () => {
+test('D1 容器端口映射：不再进入转发页视图（容器端口只在容器页自己的快照里）', () => {
   const rows = buildPortRows(snapshot({}), GATE_OK);
   assert.deepEqual(rows, []);
   const view = buildPortsPageView(
@@ -331,8 +334,7 @@ test('T5.1 容器端口展示：区间映射与未发布映射都能显示', () 
       },
     }),
   );
-  assert.equal(view.containers.length, 1);
-  assert.ok(view.containers[0]?.ports.includes('8080->80-81/tcp'), `实际「${String(view.containers[0]?.ports)}」`);
-  assert.ok(view.containers[0]?.ports.includes('443/tcp'), '未发布到宿主的映射也应显示容器侧端口');
-  console.log(`  · 扫了 ${String(view.containers[0]?.ports.split(', ').length ?? 0)} 条端口映射文本`);
+  assert.equal('containers' in view, false, '容器端口映射文本不得再进转发页视图');
+  assert.equal(view.docker.ok, true);
+  console.log('  · 扫了 1 个带 2 条映射的容器：转发页容器字段 0 个');
 });
