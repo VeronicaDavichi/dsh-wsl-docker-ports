@@ -71,6 +71,8 @@ const READ_ONLY_COMMANDS = [
   'netsh.exe interface portproxy show v4tov4',
   'wsl.exe -d Ubuntu2204 -- docker ps -a --format {{json .}}',
   'wsl.exe -d Ubuntu2204 -- ip -4 -o addr show dev eth0',
+  // 013：监听表（一次 `ss -ltn` 拿全表）—— 新增的**唯一**一条命令，只读、无 shell
+  'wsl.exe -d Ubuntu2204 -- ss -ltn',
   LOCAL_ADDRESSES_COMMAND,
 ];
 
@@ -88,7 +90,8 @@ test('003 修：冷启动实证 ⇒ distro.state 必须记为 Running 且留痕�
   if (!snapshot.diff.ok) return;
   assert.equal(snapshot.diff.result.eth0Ip, ETH0, '前置：eth0 实证与 fixture 一致');
   const inDistro = commandsOf(fake).filter((line) => line.startsWith('wsl.exe -d '));
-  assert.equal(inDistro.length, 2, `前置：两条发行版内命令都真执行了，实际 ${JSON.stringify(inDistro)}`);
+  // 013：第三条 = 监听表（docker / eth0 / ss -ltn）；三条都必须真执行（冷启动已发生）
+  assert.equal(inDistro.length, 3, `前置：三条发行版内命令都真执行了，实际 ${JSON.stringify(inDistro)}`);
   assert.equal(snapshot.distroError, null);
 
   // ── 判据 ①：实证优先 —— 不许再把一次性快照的 `Stopped` 当结论（这就是被修的缺陷）

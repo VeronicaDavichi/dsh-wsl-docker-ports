@@ -121,6 +121,8 @@ export interface SnapshotOptions {
   /** 012：候选监听地址（缺省 = 本机的真机读数形状：`192.168.31.129` 一块物理网卡） */
   readonly localAddresses?: PortsSnapshot['localAddresses'];
   readonly localAddressesError?: string | null;
+  /** 013：监听表证据（缺省 = 旧服务端形状：没有这个字段 ⇒ 客户端不得假设「没有监听」） */
+  readonly listeners?: PortsSnapshot['listeners'];
 }
 
 /** 012 真机读数（2026-10-22：`Get-NetIPAddress` 过滤后只剩这一条） */
@@ -156,6 +158,7 @@ export function snapshot(options: SnapshotOptions = {}): PortsSnapshot {
     iphlpsvcRunning: true,
     localAddresses: options.localAddresses ?? LOCAL_ADDRESSES_FIXTURE,
     localAddressesError: options.localAddressesError ?? null,
+    ...(options.listeners === undefined ? {} : { listeners: options.listeners }),
   };
 }
 

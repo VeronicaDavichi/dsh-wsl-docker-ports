@@ -15,7 +15,7 @@
  * 而是**结构上无物可调**。测试对整棵结果对象做 `assertNoFunctions`。
  */
 
-import { PORT_STATES, type PortState, type Scope } from '../diff/types.ts';
+import { PORT_STATES, type ClassifyReason, type PortState, type Scope } from '../diff/types.ts';
 import { buildContainerRows, buildExternalRulesView, buildForwardActions, buildNatGuide, buildPresetOptions, buildScopeControl, buildDriftView, buildUnsupportedRows, managedPortsIssues, managedPortsText, natReason, stateLabel, stateTone, TESTID, UDP_TIP_TEXT, PORT_PRESETS, ELEVATION_CONSENT_NOTICE } from './rows.ts';
 import { buildDriftFixView } from './drift-fix.ts';
 import type { ManagedPortsFormView } from './types.ts';
@@ -200,6 +200,40 @@ export function buildListenAddressControl(
   };
 }
 
+/**
+ * 013：监听表的**未知**结局。
+ *
+ * 「未知」不是第六个 `PortState`（那会改五态契约与计数）；它由 `extra` + reason 表达 ——
+ * 于是「移除」照旧可点（`buildForwardActions` 对 `extra` 放行，主人明确裁定），
+ * 而**标签与文案**在这一层换成「未知」，绝不显示成「多余规则」。
+ * 旧服务端的 `no-docker-mapping` 同样按未知处理（REQ-1.4：不再出现 docker 那句话）。
+ */
+const UNKNOWN_LISTENER_LABEL = '未知（无法确认服务是否在跑）';
+const UNKNOWN_LISTENER_TEXT = '无法确认服务是否在跑（WSL 停止或探测失败）';
+
+function isUnknownListener(reason: ClassifyReason | null): boolean {
+  return reason === 'listeners-unknown' || reason === 'no-docker-mapping';
+}
+
+/** 2026-10-23（013 REQ-1.4）：这里**不再有**「docker 已不再映射」——判据已换成监听表 */
+function listenerReasonText(reason: ClassifyReason | null): string | null {
+  switch (reason) {
+    case 'wsl-localhost-forwarding':
+      return 'WSL 自带 localhost 转发 ⇒ 该端口无需显式规则';
+    case 'listener-active':
+      return 'WSL 内有进程监听该端口，规则可以连到它';
+    case 'loopback-only':
+      return '该端口只在 WSL 回环上监听，转发规则连不到它';
+    case 'no-listener':
+      return 'WSL 内没有进程监听该端口';
+    case 'listeners-unknown':
+    case 'no-docker-mapping':
+      return UNKNOWN_LISTENER_TEXT;
+    default:
+      return null;
+  }
+}
+
 /** 端口行（五态 + 动作 + 漂移 + 逐端口作用域） */
 export function buildPortRows(snapshot: PortsSnapshot, gate: WriteGate): PortRowView[] {
   if (snapshot.diff.ok === false) return [];
@@ -207,12 +241,13 @@ export function buildPortRows(snapshot: PortsSnapshot, gate: WriteGate): PortRow
   return result.ports.map((classification) => {
     const scope = scopeFor(snapshot, classification.port);
     const portGate = gate;
+    const unknownListener = isUnknownListener(classification.reason);
     return {
       port: classification.port,
       state: classification.state,
-      stateLabel: stateLabel(classification.state),
-      tone: stateTone(classification.state),
-      reasonText: classification.reason === 'wsl-localhost-forwarding' ? 'WSL 自带 localhost 转发 ⇒ 该端口无需显式规则' : classification.reason === 'no-docker-mapping' ? 'docker 已不再映射该端口，规则仍在' : null,
+      stateLabel: unknownListener ? UNKNOWN_LISTENER_LABEL : stateLabel(classification.state),
+      tone: unknownListener ? 'warn' : stateTone(classification.state),
+      reasonText: listenerReasonText(classification.reason),
       scopeMismatch: classification.scopeMismatch,
       scopeControl: buildScopeControl(classification.port, scope, portGate),
       listenAddress: buildListenAddressControl(snapshot, classification.port, scope, portGate),
@@ -267,6 +302,11 @@ export function buildPortsPageView(snapshot: PortsSnapshot, options: BuildPageOp
       ? { ...snapshot.diff.result.counts }
       : { ok: 0, missing: 0, drift: 0, conflict: 0, extra: 0 };
   const containers = snapshot.docker.ok ? buildContainerRows(snapshot.docker.containers) : [];
+  // 013：监听表读失败时给一句人话（受管端口会显示「未知」；「移除」仍可点）
+  const listenersNote =
+    snapshot.listeners !== undefined && !snapshot.listeners.ok && snapshot.diff.ok
+      ? `监听表读取失败：${snapshot.listeners.message} —— 受管端口按「未知」处理（仍可移除）`
+      : null;
 
   return {
     refreshedAt: snapshot.refreshedAt,
@@ -278,7 +318,7 @@ export function buildPortsPageView(snapshot: PortsSnapshot, options: BuildPageOp
   containerListNote: snapshot.docker.ok ? (snapshot.docker.containerListNote ?? null) : null,
     ports: buildPortRows(snapshot, gate),
     counts,
-    portsNote: snapshot.diff.ok === false ? '取不到 eth0：本条判决都不给（不降级、不把全部规则误标为漂移）' : null,
+    portsNote: snapshot.diff.ok === false ? '取不到 eth0：本条判决都不给（不降级、不把全部规则误标为漂移）' : listenersNote,
     eth0: {
       known: snapshot.diff.ok === true,
       ip: snapshot.diff.ok === true ? snapshot.diff.result.eth0Ip : null,

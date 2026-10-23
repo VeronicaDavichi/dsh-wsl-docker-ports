@@ -57,10 +57,12 @@ import { probeLocalAddresses } from './read/local-addresses.ts';
 import type { LocalAddressesOptions } from './read/local-addresses.ts';
 import { readLocalhostForwarding } from './read/localhost-forwarding.ts';
 import type { LocalhostForwardingDeps } from './read/localhost-forwarding.ts';
+import { probeListeners } from './read/listeners-probe.ts';
+import type { ListenersOutcome, ListenersProbeOptions } from './read/listeners-probe.ts';
 import { probePortproxyRules } from './read/netsh-probe.ts';
 import type { NetshProbeOptions } from './read/netsh-probe.ts';
 import { redactOutput } from './read/redact.ts';
-import type { PortsErrorCode, DistroPanelData, DockerView, NatGateView, PortsSnapshot, SnapshotDeclaration } from './wire.ts';
+import type { PortsErrorCode, DistroPanelData, DockerView, ListenersView, NatGateView, PortsSnapshot, SnapshotDeclaration } from './wire.ts';
 
 /** 装配依赖面（**全部可注入** ⇒ 离线测试零真机、零真实进程） */
 export interface SnapshotDeps {
@@ -70,6 +72,8 @@ export interface SnapshotDeps {
   readonly netsh?: NetshProbeOptions | undefined;
   readonly docker?: DockerPsOptions | undefined;
   readonly eth0?: Eth0SourceOptions | undefined;
+  /** 013：监听表探针（`timeoutMs` / `allowColdStart` 可覆盖；探针本身不被注入 ⇒ 测试走假执行器 + 真解析） */
+  readonly listeners?: ListenersProbeOptions | undefined;
   /** 012：候选监听地址探针（`timeoutMs` 可覆盖；**不注入探针本身**，改用假执行器走真解析） */
   readonly localAddresses?: LocalAddressesOptions | undefined;
   /**
@@ -127,6 +131,26 @@ function dockerViewOf(outcome: DockerPsOutcome): DockerView {
   if (outcome.ok) {
     return { ok: true, containers: outcome.containers, emptyAfterRetry: outcome.emptyAfterRetry, argv: outcome.argv, ...(outcome.containerListNote === undefined ? {} : { containerListNote: outcome.containerListNote }) };
   }
+  return { ok: false, reason: outcome.reason, message: outcome.message, hint: outcome.hint, raw: outcome.raw };
+}
+
+/**
+ * 监听表探针结果 → 快照里的证据视图（013 REQ-1.5：**沿用** `dockerViewOf` 的同一套字段）。
+ *
+ * `outcome === null` = 目标发行版都没解析出来（连试都没试）⇒ 仍按**失败**给，
+ * 因为「未知」与「没有监听」必须分开（REQ-1.3）。
+ */
+function listenersViewOf(outcome: ListenersOutcome | null, distroMessage: string): ListenersView {
+  if (outcome === null) {
+    return {
+      ok: false,
+      reason: 'distro-unresolved',
+      message: distroMessage,
+      hint: '先修复发行版解析（见「目标发行版」一栏）：监听表必须钉在一个确定的发行版上',
+      raw: null,
+    };
+  }
+  if (outcome.ok) return { ok: true, entries: outcome.entries, argv: outcome.argv };
   return { ok: false, reason: outcome.reason, message: outcome.message, hint: outcome.hint, raw: outcome.raw };
 }
 
@@ -189,12 +213,24 @@ export function createSnapshotBuilder(deps: SnapshotDeps): SnapshotBuilder {
         const eth0Outcome = eth0Source === null ? null : await eth0Source.probe(options.allowColdStart === undefined ? {} : { allowColdStart: options.allowColdStart });
         const eth0Ip = eth0Outcome !== null && eth0Outcome.ok ? eth0Outcome.ip : null;
 
+        // ⑤.a 监听表（013 REQ-1.1/1.5）：与 eth0 同在发行版内读，**一次** `ss -ltn` 拿全表。
+        //     失败只降级「多余规则」的判据（未知态），**绝不**升级成路由级错误 ——
+        //     与 netsh 那条（读不到规则就无法判决）不同：这里读不到仍能照常展示其余事实。
+        const listenersOutcome =
+          target === null
+            ? null
+            : await probeListeners(deps.executor, target.name, target.distros, {
+                ...(deps.listeners ?? {}),
+                ...(options.allowColdStart === undefined ? {} : { allowColdStart: options.allowColdStart }),
+              });
+
         // ⑤.b 状态调和（003 缺陷修复）：把「后到的实证」接回 ② 那次一次性快照。
         // 只认**成功**的发行版内读取（失败不能当证据：闸门挡下的那类失败恰恰说明「没跑起来」）。
         // 🔴 位置是判据的一部分：必须在**全部**探针之后，理由见文件头「`distro.state`」一节。
         const succeededReads: string[] = [];
         if (dockerOutcome !== null && dockerOutcome.ok) succeededReads.push('docker ps');
         if (eth0Outcome !== null && eth0Outcome.ok) succeededReads.push('eth0 地址');
+        if (listenersOutcome !== null && listenersOutcome.ok) succeededReads.push('ss -ltn 监听表');
         const distroView = reconcileDistroState(distro, { succeededReads });
 
         // ⑥ `.wslconfig` 的 localhostForwarding（读不到 ⇒ null = 「不知道」，不冒充 false）
@@ -225,6 +261,8 @@ export function createSnapshotBuilder(deps: SnapshotDeps): SnapshotBuilder {
           allowedListenAddresses: localAddresses.map((entry) => entry.address),
           // 012 ②：**已选**的具体 IP 是该端口的期望形态 ⇒ 五态才不会把「刚写好的规则」报成冲突。
           listenAddresses,
+          // 013：`extra` 的判据从 docker 映射换成 WSL 监听表（读不到 ⇒ 未知，见引擎）。
+          ...(listenersOutcome === null ? {} : { listeners: listenersOutcome }),
         });
 
         return {
@@ -257,6 +295,8 @@ export function createSnapshotBuilder(deps: SnapshotDeps): SnapshotBuilder {
             localAddresses,
             localAddressesError,
             listenAddresses,
+            // 013：监听表（一次探测的产物）并入快照；失败照实给（客户端据此显示「未知」）
+            listeners: listenersViewOf(listenersOutcome, distroError ?? '目标发行版未解析'),
           },
         };
       } catch (error) {

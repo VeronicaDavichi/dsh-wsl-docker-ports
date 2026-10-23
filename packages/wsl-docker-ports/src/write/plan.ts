@@ -59,9 +59,18 @@ export function resolveScope(scopes: Readonly<Record<string, Scope>> | undefined
   return scopes?.[String(port)] ?? 'loopback';
 }
 
-/** 从既有规则推断当前作用域（`0.0.0.0` ⇒ lan）；没有规则时是 loopback 缺省 */
+/**
+ * 从既有规则推断当前作用域；没有规则时是 loopback 缺省。
+ *
+ * 判据 = 「监听地址是否 loopback 的那一个」：`loopback` 作用域**只能**监听 `127.0.0.1`（没有
+ * 「用哪块网卡」的自由度），所以 `0.0.0.0` 与**具体网卡 IP**（012 起的 lan 形态）都算 `lan`。
+ * 🔴 2026-10-23 修正（缺陷 F1 的连带面）：原先写成「`=== 0.0.0.0` 才算 lan」⇒ 一条
+ * `listenAddress=192.168.31.129` 的规则被推成 loopback，于是 `remove`/`fix` 的脚本会拿
+ * `127.0.0.1` 去删一条监听 `192.168.31.129` 的规则（删不掉、防火墙放行也留着）。
+ */
 export function scopeFromRules(rules: readonly PortproxyRule[]): Scope {
-  return rules.some((rule) => rule.listenAddress === listenAddressForScope('lan')) ? 'lan' : 'loopback';
+  const loopbackAddress = listenAddressForScope('loopback');
+  return rules.some((rule) => rule.listenAddress !== loopbackAddress) ? 'lan' : 'loopback';
 }
 
 /**
@@ -200,9 +209,10 @@ function planRemove(input: WritePlanInput, match: OwnershipMatch): WritePlanOutc
     );
   }
   // ⚠️ 作用域**沿用既有规则**（2026-10-16 收口遗留 ⑬，与 `fix` 的裁定 (a) 同一先例）：`plan.scope` 决定
-  // 脚本删哪个 listen address（`elevate/script.ts`：lan ⇒ `0.0.0.0`，否则 `127.0.0.1`）。留 `input.scope`
-  // 会让脚本去删**另一个**地址（真机上是「删不掉 + 防火墙放行留着」）。**所有权判据仍按 REQ-1.2 字面**
+  // 脚本是否连带删防火墙放行（`removalSteps`）。留 `input.scope` 会让脚本去删**另一个**地址的规则
+  // （真机上是「删不掉 + 防火墙放行留着」）。**所有权判据仍按 REQ-1.2 字面**
   // （`owned` 只来自 `isDeletableRule`）⇒ 作用域跟规则走**不构成**放宽删除；逐条读数见 005 遗留 ⑬。
+  // 2026-10-23：`scopeFromRules` 已把「具体网卡 IP」也认作 lan ⇒ 那条真机 3306 规则现在能删干净。
   const scope = scopeFromRules([owned]);
   return planOf({ ...input, scope }, removalSteps(input, owned, scope), [
     '按 REQ-1.2 精确删除一条规则（listenport + listenaddress），并在同一步里只删本插件建的防火墙规则',
@@ -231,7 +241,7 @@ function planFix(input: WritePlanInput, match: OwnershipMatch): WritePlanOutcome
       'rule-not-owned',
       input.port,
       `drift 规则不满足可修复前置${reasons.length > 0 ? `：${reasons}` : ''}`,
-      '可修复前置（2026-10-16 裁定 (a)）= listenPort ∈ managedPorts + listenAddress ∈ {127.0.0.1, 0.0.0.0} + connectAddress 是合法 IPv4 且 ≠ 当前 eth0；其余形态（如 connectAddress 不是 IPv4）不修改，请手工处理',
+      '可修复前置（2026-10-16 裁定 (a) + 2026-10-23 缺陷 F1）= listenPort ∈ managedPorts + listenAddress 为本插件形态（`127.0.0.1` / `0.0.0.0` / 配置登记的地址 / 候选网卡 IP）+ connectAddress 是合法 IPv4 且 ≠ 当前 eth0；其余形态（如 connectAddress 不是 IPv4）不修改，请手工处理',
     );
   }
   // ⚠️ 作用域**沿用既有规则**，不用 `input.scope`（= 用户配置的 scopes，缺省 loopback）：drift 的 lan
@@ -308,13 +318,16 @@ function planSwitchScope(input: WritePlanInput, match: OwnershipMatch): WritePla
       ],
       [
         `逐端口显式切到 lan：只影响 ${String(input.port)}（REQ-2.4，无隐式批量）`,
-        `提权脚本在 add 前会清掉同端口另一 listen address 的残留规则（只可能是本插件写的 127.0.0.1/0.0.0.0），保证该端口最终只有一条规则`,
+        `提权脚本在 add 前会清掉同端口另一 listen address 的残留规则（只可能是本插件写的：127.0.0.1 / 0.0.0.0 / 配置登记过的地址），保证该端口最终只有一条规则`,
         explainScope('lan', input.localhostForwarding ?? null).message,
       ],
     );
   }
 
-  const lanRules = match.owned.filter((rule) => rule.listenAddress === listenAddressForScope('lan'));
+  // lan 侧的规则 = 所有非 `127.0.0.1` 的本插件规则（`0.0.0.0` 与 012 的具体网卡 IP 都属 lan）；
+  // 2026-10-23 起不再只认 `0.0.0.0`，否则切回 loopback 时那条 `192.168.31.129` 规则**删不掉**。
+  const loopbackAddress = listenAddressForScope('loopback');
+  const lanRules = match.owned.filter((rule) => rule.listenAddress !== loopbackAddress);
   if (lanRules.length === 0) {
     if (match.notOwned.length > 0) {
       const reasons = match.notOwned.map((detail) => detail.ownership.message).join('；');
@@ -323,7 +336,7 @@ function planSwitchScope(input: WritePlanInput, match: OwnershipMatch): WritePla
     return block(
       'state-precondition',
       input.port,
-      `端口 ${String(input.port)} 当前没有本插件的 0.0.0.0 规则：无需切回 loopback`,
+      `端口 ${String(input.port)} 当前没有本插件的 lan 规则（0.0.0.0 或具体网卡 IP）：无需切回 loopback`,
       '规则已不存在，直接刷新状态即可',
     );
   }

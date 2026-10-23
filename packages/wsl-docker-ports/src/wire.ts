@@ -24,6 +24,7 @@
 import type { WslDistro, WslDistroState } from 'dsh-wsl-shared';
 import type { DiffFailure, DiffResult, Scope } from './diff/types.ts';
 import type { DockerContainer } from './read/docker.ts';
+import type { ListenerEntry } from './read/listeners.ts';
 import type { LocalAddressEntry } from './read/local-addresses.ts';
 
 /**
@@ -162,6 +163,19 @@ ull/缺省 = 来自 docker ps -a；字符串 = 退回只看运行中的原因（
     }
   | { readonly ok: false; readonly reason: string; readonly message: string; readonly hint: string; readonly raw: string | null };
 
+/**
+ * 013：WSL 监听表（`ss -ltn` 一次读全表的**证据**）。
+ *
+ * 形状与 `DockerView` 同构（成功带事实 + argv，失败带可区分的 reason + 给人看的三段），
+ * 刻意**不新开一套错误字段**：监听表读不到与 docker 读不到在 UI 上属于同一类失败
+ * （「读失败」≠「确实没有」），两处逐字段一致才好复用渲染与测试口径。
+ *
+ * 失败时 `entries` 不存在（不是空数组）——「读不到」绝不许冒充「没有监听」（REQ-1.3）。
+ */
+export type ListenersView =
+  | { readonly ok: true; readonly entries: readonly ListenerEntry[]; readonly argv: readonly string[] }
+  | { readonly ok: false; readonly reason: string; readonly message: string; readonly hint: string; readonly raw: string | null };
+
 /** 目标发行版（T5.8；由宿主从 `wsl -l -v` + 解析结果给出） */
 export interface DistroPanelData {
   readonly distros: readonly WslDistro[];
@@ -225,6 +239,14 @@ export interface PortsSnapshot {
    * 可选：缺省 = `{}`（等价于「一个都没选」⇒ 行为与 010 逐字一致）。
    */
   readonly listenAddresses?: Readonly<Record<string, string>>;
+  /**
+   * 013：本次判决依据的 WSL 监听表（成功 / 失败都照实给）。
+   *
+   * **可选**是为了兼容：旧服务端没有这个字段 ⇒ 客户端不得假设「没有监听」；而判决本身
+   * 已经由 `diff.result.ports[].reason` 表达（旧端的 `no-docker-mapping` 按未知处理），
+   * 所以这个字段只作**证据**，不参与客户端判决。
+   */
+  readonly listeners?: ListenersView;
 }
 
 /* ───────────────────────── 编码 / 解码（互为逆，两侧共用） ───────────────────────── */

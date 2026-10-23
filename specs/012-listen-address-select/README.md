@@ -85,3 +85,64 @@ transitions:
 授权上限 +400 B，**未超额、未预借**；chunk 143,674 → **145,459 B**（切分边界未动）。第一版实测 +679 B
 （超授权 279 B）⇒ 把**无人消费**的 `readConfig().listenAddresses` 读回路径整段删掉（回填走快照）后回到 +317 B。
 SSoT / 文档表 / changelog 三处同步为 `49500 / debt / 2026-10-22 / #58`。
+
+## 验收期缺陷与修复（2026-10-23，真机 F1：自己写的规则被自己判成 conflict）
+
+### 症状（主人真机反馈，原样）
+
+```
+listenAddress=192.168.31.129  listenPort=3306  connectAddress=172.20.201.152  connectPort=3306
+POST /dsh-wsl-docker-ports/write/plan {"action":"fix","ports":[3306],"scope":"lan"}
+  ⇒ ports[0].blocked.reason = "state-conflict"
+    message: 端口 3306 上有 1 条形态不符的既有规则：listenAddress=192.168.31.129 不在本插件会写的
+             {127.0.0.1, 0.0.0.0} 内：只报告不改动（REQ-1.3）
+```
+
+同一条规则在**页面快照**里是 `ok`（读侧 012 已把「候选清单里的 IP」算作我方形态）⇒ **两侧口径分叉**：
+用户对自己刚让插件写出来的规则点「移除 / 修复漂移」被挡住，自相矛盾。
+
+### 根因
+
+012 只放宽了**读侧**（`diff/engine.ts:isOurListenAddress(value, 候选清单)`），写侧所有权闸门
+（`write/ownership.ts`）当时仍是 `OUR_LISTEN_ADDRESSES.includes(rule.listenAddress)` —— 只认两个默认
+字面量。这正是 AGENTS.md「不许各自解释口径」所忌：判据有两份解释，必然漂移。
+
+### 修复（判据只剩一处）
+
+- **集合与判据的本体**搬到 `src/diff/listen-allowed.ts`（`OUR_LISTEN_ADDRESSES` + `isOurListenAddress`，
+  `diff/engine.ts` 原样转出，既有 import 路径一字不改）。
+- **allowed 的唯一组装点** = `allowedListenAddressesFor({ configured, candidates })`：
+  `{127.0.0.1, 0.0.0.0}` ∪ 该端口配置 `listenAddresses` 登记过的值 ∪ 候选清单里的 IP。
+- 读侧（`diff/engine.ts:classifyPorts`）与写侧（`write/guards.ts:matchOf`）**调同一个函数**；
+  `write/ownership.ts` 的 `classifyRuleOwnership` / `fixableDriftRule` 都走 `isOurListenAddress`。
+- 连带修 `write/plan.ts:scopeFromRules`：原判据「`=== 0.0.0.0` 才算 lan」会把一条 `192.168.31.129`
+  规则推成 `loopback` ⇒ `remove/fix` 的脚本拿 `127.0.0.1` 去删一条监听 `192.168.31.129` 的规则
+  （删不掉 + 防火墙放行留着）。现判据 = 「非 `127.0.0.1` 即 lan」，`switch-scope` 的 `lanRules` 同步。
+- 候选清单读取**懒且可降级**：`transport/plan-port.ts` 只在「两个默认值 + 配置值覆盖不了该端口规则」
+  时才读网卡（默认路径**零探测**不变）；所有权判据用的 `candidates()` **读失败降级为缺席**（只认配置值）。
+  012 的**选择门**语义一个字没动：`add` 一个具体地址而候选清单读不到 ⇒ 仍 `503 rules-unavailable`。
+- 新字段：`WritePlanInput.listenForms`（形态事实）与 `listenAddressInPlace`（`fix` 重写规则**自己那条**
+  地址 ⇒ 不新增暴露面，可跳过候选门；`remove` 则完全不解析监听地址，不再因网卡读不到而 503）。
+
+### 行为（可二值判定，`tests/unit/listen-address-form.test.ts` 10 条新增用例）
+
+| 输入 | 修复前 | 修复后 |
+| --- | --- | --- |
+| 真机那条 `192.168.31.129:3306`（配置已登记）+ `fix` | `state-conflict`，零动作 | `portproxy-delete + portproxy-add`，地址原样 |
+| 同上 + `remove` | `state-conflict` | `portproxy-delete + firewall-delete`（`plan.scope=lan`） |
+| 快照判定同一条规则 | `ok` | `ok`（两侧现在一致） |
+| `10.9.9.9`（未登记、非候选）+ `fix`/`remove` | `state-conflict` | **仍** `state-conflict`，零写入 |
+| `0.0.0.0` / `127.0.0.1`（任意动作） | 逐字不变 | 逐字不变（含候选清单零探测） |
+| 候选清单读失败 + `remove`/`fix`（地址已在规则上） | — | `ready: true`（不 503、不误拦） |
+| 候选清单读失败 + `add` 具体地址 | 503 | **仍** 503（fail-closed 未放宽） |
+
+### 回归实测（Windows 侧，`packages/wsl-docker-ports`）
+
+8 道门 exit 0：`tsc -p tsconfig.json` / `node --test` **522/522**（原 511 + 新增 11）/
+`vitest` **17 文件 154 用例**（未变）/ `assert-client-split`（17 项断言、
+主包 **49,500 B** = 棘轮上限，**零增长**）/ `check-size`（最大 `script.ts` 399 行，仍 < 400）/
+`tsc -p tsconfig.build.json` / `build-client` / `tsc -p tsconfig.client.json`。
+chunk `client.ports.js` 146,798 → **148,301 B（+1,503 B）**（`diff/`、`write/` 本来就在懒加载 chunk 里）。
+
+**未做（刻意）**：真机 `netsh` / 防火墙写（零执行；本修复只改判据与计划，不经手系统状态）；
+真机 GUI 点验（需临时 profile + 浏览器会话）；`013` 未提交的工作树改动一行未碰。

@@ -15,6 +15,7 @@
  * 事实，见 `types.ts` 里 `WriteBlock.steps` 的元组声明）。
  */
 
+import { allowedListenAddressesFor } from '../diff/listen-allowed.ts';
 import { isManagedPort } from '../diff/managed-ports.ts';
 import type { Scope } from '../diff/types.ts';
 import type { PortproxyRule } from '../read/netsh.ts';
@@ -66,9 +67,16 @@ export function blockListenAddress(input: WritePlanInput): WriteBlock {
  * 参数的方向是「什么都不做」，不是「随便写」）。
  *
  * 只在 `lan` 上生效：`loopback` 恒 `127.0.0.1`（作用域说了算，010 的既有口径）。
+ *
+ * 🔴 2026-10-23（真机缺陷 F1 的收口）：`fix` **重写既有规则自己的监听地址**时跳过这一道（
+ * `listenAddressInPlace`）。理由：这道门防的是「新增一块本机没有的入口」；而 `fix` 的目标地址
+ * 就是该规则**此刻正在监听**的地址 —— 重写它不新增任何暴露面（地址万一已不存在，规则照旧接不到
+ * 流量，不会比修复前更糟）。副产品：候选清单恰好读不到时，用户仍能修好自己那条规则的地址漂移，
+ * 不会被 503 卡死（网段退化为 `/32`，**更窄**，绝不放大）。其余动作（`add` / `switch-scope`）不受影响。
  */
 export function listenAddressGate(input: WritePlanInput, scope: Scope): WriteBlock | null {
   if (scope !== 'lan' || input.listenAddress === undefined) return null;
+  if (input.action === 'fix' && input.listenAddressInPlace === true) return null;
   const allowed = input.allowedListenAddresses ?? [];
   if (allowed.includes(input.listenAddress)) return null;
   // 先分清「地址/掩码本身就非法」与「合法但不属于本机」：两者都拦下，但文案必须能区分 ——
@@ -115,12 +123,23 @@ export function conflictGate(match: OwnershipMatch, input: WritePlanInput): Writ
   );
 }
 
-/** 归属匹配（`matchOwnership` 的唯一调用点；入参顺序在这里固定） */
+/**
+ * 归属匹配（`matchOwnership` 的唯一调用点；入参顺序在这里固定）。
+ *
+ * 🔴 2026-10-23（真机缺陷 F1）：「本插件形态」集合在这里**组装**，且只在这里组装一次 ——
+ * `allowedListenAddressesFor({ configured, candidates })`，与读侧
+ * `diff/engine.ts:classifyPorts` 调的是**同一个函数**。写侧再没有第二处解释「哪些地址算我们的」。
+ *
+ * 两个事实都来自服务端现读（`transport/plan-port.ts` 从 `PlanFacts` 取）：
+ * - `configured` = 配置 `listenAddresses[端口]`（用户显式选过的地址）；
+ * - `candidates` = 本机物理网卡 IPv4（**懒读 + 读失败降级为缺席**，不会因此 503）。
+ */
 export function matchOf(input: WritePlanInput): OwnershipMatch {
   return matchOwnership({
     port: input.port,
     rules: input.rules,
     managedPorts: input.managedPorts,
     expectedConnectAddress: input.eth0Ip,
+    allowedListenAddresses: allowedListenAddressesFor(input.listenForms ?? {}),
   });
 }

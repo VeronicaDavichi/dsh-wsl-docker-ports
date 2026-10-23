@@ -155,8 +155,11 @@ const ROWS: readonly Row[] = [
     check: (result) => assert.equal(result.ports[0]?.conflicts[0]?.listenAddress, '10.0.0.5'),
   },
   // ── extra ─────────────────────────────────────────────────────────────
+  // 013：`extra` 的依据从「docker 不再映射」换成「WSL 内没有可用监听」。
+  // 本组用例**不提供**监听表 ⇒ 诚实结果是「未知」（`listeners-unknown`）：
+  // 没探过就不许假装知道 —— 这正是新判据的兼容面（旧调用方不会突然被说成「没人监听」）。
   {
-    name: 'extra①：声明集合里有 7000、规则也在，但 docker 已不再映射它',
+    name: 'extra①：声明集合里有 7000、规则也在，docker 不映射但**没提供监听表** ⇒ 未知（仍可移除）',
     item: {
       name: 'extra①',
       ports: '0.0.0.0:6379->6379/tcp',
@@ -168,15 +171,16 @@ const ROWS: readonly Row[] = [
     port: 7000,
     check: (result) => {
       const one = result.ports.find((item) => item.port === 7000);
-      assert.equal(one?.expected, null, 'extra 没有期望项（docker 已不再映射）');
-      assert.equal(one?.reason, 'no-docker-mapping');
+      assert.equal(one?.expected, null, 'extra 没有期望项（docker 不映射）');
+      assert.equal(one?.reason, 'listeners-unknown', '没提供监听表 ⇒ 未知，不许冒充「没人监听」');
     },
   },
   {
-    name: 'extra②（边界）：一个容器都没有（docker 全停）时，声明过的端口带规则 ⇒ extra',
+    name: 'extra②（边界）：一个容器都没有（docker 全停）时，声明过的端口带规则、无监听表 ⇒ 未知',
     item: { name: 'extra②', managed: [singlePort(9100)], rules: [ruleToEth0(9100)] },
     expected: 'extra',
     port: 9100,
+    check: (result) => assert.equal(result.ports[0]?.reason, 'listeners-unknown'),
   },
 ];
 

@@ -8,7 +8,8 @@
  * ③ **读失败走 T5.4 既有失败分支**（T6.8 判据 ②）：eth0 取不到 ⇒ `diff.ok:false`、
  *    页面端口判决 **0 行**、外部规则条数**不变**；
  * ④ 规则读失败 ⇒ `rules-unavailable`（**不许**用空集合冒充「没有规则」）；
- * ⑤ docker 失败 ⇒ 快照内失败态 + 判决如实变成 `extra`（不冒充 `ok`）。
+ * ⑤ docker 失败 ⇒ 快照内失败态；判决改由**监听表**独立给出（有监听 ⇒ ok + listener-active，
+ *    没人听 ⇒ extra + no-listener；**不**因为 docker 读不到就把所有规则打成多余）。
  *
  * fixture 全是真的：19 条 portproxy（`netsh-portproxy-v4tov4.raw`）+ `docker ps` 真样本。
  */
@@ -22,6 +23,7 @@ import { buildPortsPageView } from '../../src/client/page.ts';
 import { diff } from '../../src/diff/engine.ts';
 import { parseManagedPorts } from '../../src/diff/managed-ports-parse.ts';
 import { probeDockerPs } from '../../src/read/docker-probe.ts';
+import { probeListeners } from '../../src/read/listeners-probe.ts';
 import { probePortproxyRules } from '../../src/read/netsh-probe.ts';
 import { createSnapshotBuilder, natGateOf } from '../../src/snapshot.ts';
 import type { SnapshotDeps } from '../../src/snapshot.ts';
@@ -124,9 +126,16 @@ test('T6.8 判据①：路由返回的快照与 diff 输入一致（19 条真规
   assert.equal(sum, 19, `五态之和必须等于端口数，实际 ${String(sum)}`);
   // 🔴 真实判决不是「全 ok」：原脚本硬编码的 19 个端口里，**docker 现在只发布 7 个**
   //    （fixture：6379 / 8194 / 8080 / 50051 / 5432 / 5002-5003）⇒ 余下 12 条规则 docker 已不再
-  //    映射，正确判决是 `extra`（REQ-3.3 design §3 ③），不是 `ok`、更不是 `missing`。
+  //    映射；013 起**再按监听表判**：fixture 的 `ss -ltn` 恰好只监听这 7 个 ⇒ 余下 12 条
+  //    `extra` + `no-listener`（不是 ok、更不是 missing）。
   assert.equal(counts.ok, expectedOk.length, `docker 仍发布的声明端口 ⇒ ok（独立扫出 ${expectedOk.length} 个：${JSON.stringify(expectedOk)}）`);
   assert.equal(counts.extra, expectedExtra.length, `docker 已不发布的声明端口 ⇒ extra（独立扫出 ${expectedExtra.length} 个）`);
+  // 013：fixture 的 `ss -ltn` 只监听 docker 已发布的那些端口 ⇒ 余下 12 条**确实没人监听**（不是「未知」）
+  assert.equal(
+    result.ports.filter((port) => port.state === 'extra').every((port) => port.reason === 'no-listener'),
+    true,
+    `fixture 里没有非 docker 的监听 ⇒ 每条 extra 都必须给 no-listener，实际 ${JSON.stringify(result.ports.filter((port) => port.state === 'extra').map((port) => port.reason))}`,
+  );
   assert.equal(counts.missing, 0, '19 条规则都在 ⇒ 没有一个缺规则');
   assert.equal(counts.drift, 0, 'fixture 的 connectAddress 就是当前 eth0 ⇒ 无漂移');
   assert.equal(counts.conflict, 0, '声明集合内的规则不算 conflict');
@@ -140,18 +149,20 @@ test('T6.8 判据①：路由返回的快照与 diff 输入一致（19 条真规
   // ── 🔴 判据①的强形态：**独立复算** —— 用同一批事实直接喂 diff()，与路由返回的判决逐字相等
   // （顺序：先把「本次 build 跑了哪些命令」钉死，再做复算 —— 复算自己也会调探针）
   const commands = fake.calls.map((call) => [call.file, ...call.argv].join(' '));
-  assert.deepEqual(commands.slice(0, 4), [
+  assert.deepEqual(commands.slice(0, 5), [
     'wsl.exe -l -v',
     'netsh.exe interface portproxy show v4tov4',
     'wsl.exe -d Ubuntu2204 -- docker ps -a --format {{json .}}',
     'wsl.exe -d Ubuntu2204 -- ip -4 -o addr show dev eth0',
-  ], `命令集的前 4 条必须逐字不变，实际 ${JSON.stringify(commands)}`);
-  // 012（2026-10-22）：第 5 条 = 候选监听地址的**只读**枚举（新增的唯一一条命令）
-  assert.equal(commands.length, 5, `命令集必须恰好 5 条只读命令（含 012 的网卡枚举），实际 ${JSON.stringify(commands)}`);
+    // 013：监听表（一次 `ss -ltn` 拿全表）—— 与 eth0 同在发行版内读，只读、无 shell
+    'wsl.exe -d Ubuntu2204 -- ss -ltn',
+  ], `命令集的前 5 条必须逐字不变，实际 ${JSON.stringify(commands)}`);
+  // 012（2026-10-22）：第 6 条 = 候选监听地址的**只读**枚举
+  assert.equal(commands.length, 6, `命令集必须恰好 6 条只读命令（含 012 的网卡枚举 + 013 的监听表），实际 ${JSON.stringify(commands)}`);
   assert.match(
-    commands[4] ?? '',
+    commands[5] ?? '',
     /^powershell\.exe -NoProfile -NonInteractive -Command .*Get-NetIPAddress/u,
-    '第 5 条必须是 powershell 的只读 Get-NetIPAddress 枚举',
+    '第 6 条必须是 powershell 的只读 Get-NetIPAddress 枚举',
   );
   assert.equal(commands.some((line) => /portproxy (add|delete|reset)|Start-Process|gsudo|Set-NetIPAddress|New-NetIPAddress/u.test(line)), false, '只读路径不得出现任何写/提权命令');
 
@@ -159,14 +170,17 @@ test('T6.8 判据①：路由返回的快照与 diff 输入一致（19 条真规
   assert.equal(distros.ok, true);
   const rules = await probePortproxyRules(fake.executor, {});
   const containers = await probeDockerPs(fake.executor, 'Ubuntu2204', distros.ok ? distros.distros : [], {});
+  // 013：复算必须喂**同一张监听表** —— 缺了它，extra 会退化成 listeners-unknown，判决自然对不上
+  const listeners = await probeListeners(fake.executor, 'Ubuntu2204', distros.ok ? distros.distros : [], {});
   assert.equal(rules.ok, true);
   assert.equal(containers.ok, true);
+  assert.equal(listeners.ok, true, 'fixture 的 ss 输出必须能解析（否则复算的口径不成立）');
   const parsed = parseManagedPorts([...FIXTURE_PORTS]);
   assert.equal(parsed.ok, true);
-  if (rules.ok && containers.ok && parsed.ok && distros.ok) {
+  if (rules.ok && containers.ok && parsed.ok && distros.ok && listeners.ok) {
     for (const rule of rules.rules) rulePorts.add(rule.listenPort);
     assert.deepEqual([...rulePorts].sort((a, b) => a - b), [...declaredNumbers].sort((a, b) => a - b), 'fixture 的规则端口集合 = 声明集合（否则「全 extra」的推理不成立）');
-    const recomputed = diff({ containers: containers.containers, managedPorts: parsed.ports, rules: rules.rules, eth0Ip: ETH0, localhostForwarding: true, scopes: {} });
+    const recomputed = diff({ containers: containers.containers, managedPorts: parsed.ports, rules: rules.rules, eth0Ip: ETH0, localhostForwarding: true, scopes: {}, listeners });
     assert.deepEqual(snapshot.diff, recomputed, '装配层不得丢事实/改事实：快照里的判决必须与「同批事实直接喂引擎」完全一致');
   }
 
@@ -232,7 +246,7 @@ test('T6.8 未预期异常 ⇒ internal，且错误文案过一遍脱敏（REQ-3
   console.log(`  · 扫了 1 次抛出 → code=${outcome.code}，脱敏命中 ${String(outcome.message.includes('<已脱敏>'))}`);
 });
 
-test('T6.8 docker 读失败 ⇒ 快照内失败态，判决如实变成 extra（不冒充 ok）', async () => {
+test('T6.8 docker 读失败 ⇒ 监听表仍独立判决：有监听判 ok、没人监听判 extra（不冒充）', async () => {
   const fake = routingExecutor({ docker: false });
   const outcome = await createSnapshotBuilder(depsOf(fake)).build(DECLARATION, {});
   assert.equal(outcome.ok, true);
@@ -245,8 +259,26 @@ test('T6.8 docker 读失败 ⇒ 快照内失败态，判决如实变成 extra（
   }
   assert.equal(snapshot.diff.ok, true, 'docker 失败不影响 eth0 ⇒ 判决照给');
   if (snapshot.diff.ok) {
-    assert.equal(snapshot.diff.result.counts.extra, 19, `声明了 19 个端口、规则都在、docker 却读不到 ⇒ 全 extra（不冒充 ok），实际 ${JSON.stringify(snapshot.diff.result.counts)}`);
-    assert.equal(snapshot.diff.result.counts.ok, 0);
+    // 013：判据换成监听表后，docker 读不到**不再**等于「全部 extra」——
+    // 有进程在听的 7 条规则是**真在工作**的（`ok` + `listener-active`），
+    // 只有没人听的才 extra。期望值独立从 docker 原文算出，不借被测代码。
+    const published = scanDockerFixture(readFixture('docker-ps.redacted.jsonl')).published;
+    const declared = FIXTURE_PORTS.map(Number);
+    const listening = declared.filter((port) => published.includes(port));
+    const counts = snapshot.diff.result.counts;
+    assert.equal(counts.ok, listening.length, `有监听的声明端口 ⇒ ok（独立扫出 ${JSON.stringify(listening)}），实际 ${JSON.stringify(counts)}`);
+    assert.equal(counts.extra, declared.length - listening.length, `没人监听的声明端口 ⇒ extra（不冒充 ok），实际 ${JSON.stringify(counts)}`);
+    assert.equal(counts.ok + counts.extra, declared.length, '每端口恰好一条（不重不漏）');
+    assert.equal(
+      snapshot.diff.result.ports.filter((port) => port.state === 'extra').every((port) => port.reason === 'no-listener'),
+      true,
+      '没人监听的 extra 必须给 no-listener（不是 listeners-unknown）',
+    );
+    assert.equal(
+      snapshot.diff.result.ports.filter((port) => port.state === 'ok').every((port) => port.reason === 'listener-active'),
+      true,
+      'docker 失败时判 ok 的唯一依据就是 listener-active（不许拿 docker 当借口）',
+    );
   }
   const page = buildPortsPageView(snapshot);
   assert.equal(page.containerCount, 0);

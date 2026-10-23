@@ -15,6 +15,7 @@
  */
 
 import type { ManagedPorts } from '../diff/managed-ports.ts';
+import type { AllowedListenFacts } from '../diff/listen-allowed.ts';
 import type { PortState, Scope } from '../diff/types.ts';
 import type { PortproxyRule } from '../read/netsh.ts';
 
@@ -125,6 +126,25 @@ export interface WritePlanInput {
    * 🔴 给了 `listenAddress` 就必须在这里面：不在 ⇒ `listen-address-invalid`、零步骤
    * （**绝不**静默回退 `0.0.0.0`）。清单**缺席 = 空集**（fail-closed）—— 这个字段不是可选装饰，
    * 漏传的后果是「什么都不做」，不是「随便写」。
+   *
+   * ⚠️ 2026-10-23（缺陷 F1）：本字段只服务**选择门**（能不能写这个地址）。判「既有规则算不算
+   * 本插件形态」用的是下面的 `listenForms` —— 两者故意分开，别把这里的 fail-closed 语义
+   * 混进所有权判据（那会把「配置里登记过的值」也当成需要候选清单背书的地址）。
    */
   readonly allowedListenAddresses?: readonly string[];
+  /**
+   * 2026-10-23（真机缺陷 F1）：**本插件形态**判据的两项事实 = 该端口配置里登记的监听地址 +
+   * 候选清单。缺省 ⇒ 只认 `{127.0.0.1, 0.0.0.0}`（= 010 及之前的行为，一条断言不变）。
+   *
+   * 组装点唯一：`write/guards.ts:matchOf` 调 `diff/listen-allowed.ts:allowedListenAddressesFor`，
+   * 读侧（`diff/engine.ts`）调的是**同一个函数** ⇒「快照说 ok、计划说 conflict」不可能再出现。
+   */
+  readonly listenForms?: AllowedListenFacts;
+  /**
+   * 2026-10-23（缺陷 F1）：`listenAddress` 是不是**该端口既有规则此刻正在监听**的那个地址。
+   *
+   * 只对 `fix` 有用：重写一条规则自己已有的监听地址**不新增暴露面** ⇒ 可以跳过候选清单那道门
+   * （`guards.ts:listenAddressGate`）。否则该短条件不成立时行为一字不变（门照旧 fail-closed）。
+   */
+  readonly listenAddressInPlace?: boolean;
 }

@@ -22,6 +22,7 @@ import { listDistros } from 'dsh-wsl-shared';
 import { diff } from '../../src/diff/engine.ts';
 import { parseManagedPorts } from '../../src/diff/managed-ports-parse.ts';
 import { probeDockerPs } from '../../src/read/docker-probe.ts';
+import { probeListeners } from '../../src/read/listeners-probe.ts';
 import { probePortproxyRules } from '../../src/read/netsh-probe.ts';
 import { registerPortsRoute } from '../../src/route.ts';
 import { createSnapshotBuilder } from '../../src/snapshot.ts';
@@ -219,10 +220,12 @@ test('T6.8 ③+④ 端到端：200 + 真 fixture 装配，且返回的判决与�
   const distros = await listDistros(fake.executor);
   const rules = await probePortproxyRules(fake.executor, {});
   const containers = distros.ok ? await probeDockerPs(fake.executor, 'Ubuntu2204', distros.distros, {}) : null;
+  // 013：复算必须喂同一张监听表（否则 extra 会退化成 listeners-unknown，判决对不上）
+  const listeners = distros.ok ? await probeListeners(fake.executor, 'Ubuntu2204', distros.distros, {}) : null;
   const parsed = parseManagedPorts([...FIXTURE_PORTS]);
-  assert.equal(rules.ok && parsed.ok && containers !== null && containers.ok, true);
-  if (rules.ok && parsed.ok && containers !== null && containers.ok) {
-    const recomputed = diff({ containers: containers.containers, managedPorts: parsed.ports, rules: rules.rules, eth0Ip: ETH0, localhostForwarding: true, scopes: {} });
+  assert.equal(rules.ok && parsed.ok && containers !== null && containers.ok && listeners !== null && listeners.ok, true);
+  if (rules.ok && parsed.ok && containers !== null && containers.ok && listeners !== null && listeners.ok) {
+    const recomputed = diff({ containers: containers.containers, managedPorts: parsed.ports, rules: rules.rules, eth0Ip: ETH0, localhostForwarding: true, scopes: {}, listeners });
     assert.deepEqual(snapshot.diff, recomputed, '判据①：路由返回的快照必须与 diff 的输入一致（装配层不得丢/改事实）');
   }
   // 传输层必须是纯数据：JSON 往返逐字相等

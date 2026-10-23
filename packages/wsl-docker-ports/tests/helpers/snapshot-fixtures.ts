@@ -41,6 +41,11 @@ export interface FixtureFailureOverrides {
    * 本 fake 不模拟闸门（`probeDockerPs` / `probeEth0` 内部走的是生产代码）。
    */
   readonly wslState?: 'Running' | 'Stopped';
+  /**
+   * 013：`false` = 让监听表探测失败（`ss` 不可用）⇒ 受管端口应显示「未知」而不是「没有监听」。
+   * 缺省回 `ss-ltn.raw`（**只含 docker 已发布的那 7 个宿主端口** ⇒ 旧 fixture 的 ok/extra 计数不变）。
+   */
+  readonly listeners?: boolean;
 }
 
 /** 分流 fake：按命令行回真 fixture 的字节（**不跑任何真进程**） */
@@ -66,6 +71,12 @@ export function routingExecutor(overrides: FixtureFailureOverrides = {}): Return
         : ok(readFixture('docker-ps.redacted.jsonl'));
     }
     if (line.includes('addr show dev eth0')) return overrides.eth0 === false ? failure('NonZeroExit', { exitCode: 1, stderr: 'eth0 未就绪' }) : ok(ETH0_TEXT);
+    // 013：监听表探针（`wsl.exe -d Ubuntu2204 -- ss -ltn`）；失败态 = `ss` 不可用（exit 127）
+    if (line.includes('ss -ltn')) {
+      return overrides.listeners === false
+        ? failure('NonZeroExit', { exitCode: 127, stderr: 'ss: command not found' })
+        : ok(readFixture('ss-ltn.raw'));
+    }
     return failure('Unexpected', { stderr: `未预期的命令：${line}` });
   });
 }
