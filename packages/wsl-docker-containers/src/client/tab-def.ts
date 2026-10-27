@@ -21,7 +21,7 @@
 import type { SidebarRightTabDefinitionLike, SlotsServiceLike } from './host.ts';
 
 /** 容器侧页类型 id / kind / 标题（id 同时是配置命名空间，与行 id 逐字一致） */
-export const PAGE_ID = 'dsh-wsl-docker-containers';
+export const PAGE_ID = 'wsl-containers';
 export const PAGE_KIND = 'wslDockerContainers';
 export const PAGE_TITLE = 'WSL Docker 容器';
 

@@ -63,7 +63,7 @@ describe('REQ-1.1 监听地址下拉（lan 才有）', () => {
     await waitFor(() => expect(test.recorded.updates).toHaveLength(1));
 
     expect((screen.getByTestId('sel-listen-address') as HTMLSelectElement).value).toBe(LAN_IP);
-    expect(test.recorded.updates[0]?.ns).toBe('dsh-wsl-docker-ports');
+    expect(test.recorded.updates[0]?.ns).toBe('wsl-ports');
     expect(test.recorded.updates[0]?.patch).toEqual({ listenAddresses: { '3306': LAN_IP } });
     // 只写配置：不触发任何提权/写通道调用（选监听地址不是写动作）
     expect(test.recorded.elevation).toHaveLength(0);

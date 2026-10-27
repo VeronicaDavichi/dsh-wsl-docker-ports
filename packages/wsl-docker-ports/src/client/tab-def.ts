@@ -25,7 +25,7 @@
 import type { SidebarRightTabDefinitionLike, SlotsServiceLike } from './host.ts';
 
 /** 转发侧页类型 id / kind / 标题 */
-export const PAGE_ID = 'dsh-wsl-docker-ports';
+export const PAGE_ID = 'wsl-ports';
 export const PAGE_KIND = 'wslDockerPorts';
 export const PAGE_TITLE = 'WSL Docker 端口';
 

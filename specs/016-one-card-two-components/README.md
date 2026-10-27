@@ -53,3 +53,10 @@ dsh-wsl-docker-core        (纯库 ⇒ 无 dsh 段)
 
 - 不改宿主的取名逻辑（组件标题仍按模块名）。
 - 不再拆成两张卡。
+
+## 补记（2026-10-27，主人两处细节）
+
+1. **显示名改英文**：`locale/{zh,en}.json` 的 `meta.title` = `WSL Port Forwarding` / `Docker Containers`（中文太抽象）。
+2. **组件行重复文字**：宿主 `RowsSection` 对每题行**同时**渲染 `rowId` 与 `moduleName`，两者相同时就出现两行一样的 `dsh-wsl-docker-ports`。修法 = 行 id 用短名：`wsl-ports` / `wsl-containers`（行 id 同时是 settings 命名空间 ⇒ 同步 `settings-pipe.ts` / `config-slot.ts` / `tab-def.ts` / `credential.ts` + profile 的 `- id:` 已迁移，备份 `cordis.patch.yml.bak-016b`）。
+
+真机复核：卡片「已安装 1 · WSL Port Forwarding」，组件两条分别显示 `wsl-ports` + `dsh-wsl-docker-ports`、`wsl-containers` + `dsh-wsl-docker-containers`（不再重复）；容器页 30 行 / 刷新「关闭」；转发页刷新 **15**（新命名空间下 profile 配置真生效）⇒ 行 id 迁移没丢配置。

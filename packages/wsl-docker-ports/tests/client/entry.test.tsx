@@ -93,9 +93,10 @@ describe('T5.1 客户端入口形状', () => {
     console.log(`  · inject = ${JSON.stringify(entry.inject)}`);
   });
 
-  it('行 id 与包名一致（同时是配置命名空间与 patch 条目 id）', () => {
+  it('行 id 与包名**分开**：行 id 是短名（settings 命名空间 / patch 条目 id），模块名才是包名', () => {
     expect(entry.name).toBe('dsh-wsl-docker-ports');
-    expect(PAGE_ID).toBe(entry.name);
+    expect(PAGE_ID).toBe('wsl-ports');
+    expect(PAGE_ID).not.toBe(entry.name);
     console.log(`  · name = ${entry.name} / pageId = ${PAGE_ID}`);
   });
 });
@@ -239,7 +240,7 @@ describe('T5.1 注册形状（contract §C9/§C10）', () => {
     expect(paneSeats.map((registration) => registration.options['name'])).toEqual([TAB_SLOT, TAB_TITLE_SLOT]);
     expect(paneSeats.map((registration) => registration.options['key'])).toEqual([PAGE_ID, PAGE_ID]);
     // 配置槽的 key = 该行的 patch 条目 id（不是 PAGE_ID）—— 混用会让宿主找不到配置行；015 起有**两个**配置槽
-    expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === CONFIG_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['dsh-wsl-docker-ports']);
+    expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === CONFIG_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['wsl-ports']);
     expect(fake.slotRegistrations.every((registration) => typeof registration.component === 'function')).toBe(true);
     // 016：样式 / 右栏注册 / 配置槽 —— 只剩本包一条 ⇒ 3 个 effect
     expect(fake.effects).toHaveLength(3);

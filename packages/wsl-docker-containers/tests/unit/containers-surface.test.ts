@@ -137,12 +137,12 @@ test('拆包后**无探活**：注册即成功 + 主动 openTab + 零 store 订�
   );
   assert.equal(rig.openTabArgs.length, 1, '恰好开一次（`multiple:false` ⇒ 重复 openTab 只 reveal）');
   assert.equal(rig.openTabArgs[0]?.kind, 'wslDockerContainers');
-  assert.equal(PAGE_ID, 'dsh-wsl-docker-containers');
+  assert.equal(PAGE_ID, 'wsl-containers');
   assert.equal(rig.mountSubscribes(), 0, '🔴 必须直连 `openTab`、不经宿主 store（崩溃根因）');
   assert.deepEqual(surface.registerTab(tabs, slots, sidebar).length, 3, '一次注册返回 3 个 disposer（类型 + 两个 seat）');
 });
 
-test('配置槽用**本行 id** 注册（`dsh-wsl-docker-containers`，不是转发侧）', () => {
+test('配置槽用**本行 id** 注册（`wsl-containers`，不是转发侧）', () => {
   const rig = harness({});
   const surface = surfaceOf(rig);
   surface.registerConfig(rig.ctx);
@@ -241,7 +241,7 @@ test('D2 容器页刷新间隔写回**容器行自己的命名空间**（不是�
   const result = await pipe.writeRefreshInterval(15);
   assert.equal(result.ok, true);
   assert.deepEqual(result.patch, { refreshIntervalSec: 15 });
-  assert.deepEqual(updates, [{ ns: 'dsh-wsl-docker-containers', patch: { refreshIntervalSec: 15 } }]);
-  assert.notEqual(PAGE_ID, 'dsh-wsl-docker-ports');
+  assert.deepEqual(updates, [{ ns: 'wsl-containers', patch: { refreshIntervalSec: 15 } }]);
+  assert.notEqual(PAGE_ID, 'wsl-ports');
   console.log(`  · D2 写回命名空间 ${updates[0]?.ns}，patch ${JSON.stringify(updates[0]?.patch)}`);
 });

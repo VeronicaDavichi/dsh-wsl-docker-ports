@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Docker 容器",
+    "title": "Docker Containers",
     "description": "列出本发行版的容器并启动／停止／重启、查看日志（只读列表，动作需容器通道凭据）。"
   }
 }

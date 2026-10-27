@@ -26,7 +26,7 @@
 export const CONFIG_SLOT_NAME = 'plugins.row.config';
 
 /** 注册键 = 本包 patch 条目 id = 包名（逐字一致；不一致会让配置行指不到我们的页） */
-export const CONFIG_ROW_KEY = 'dsh-wsl-docker-ports';
+export const CONFIG_ROW_KEY = 'wsl-containers';
 
 export const AUTO_FORM_EFFECT_LABEL = `${CONFIG_SLOT_NAME}: auto-form off`;
 

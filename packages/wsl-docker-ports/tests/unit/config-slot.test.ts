@@ -1,7 +1,7 @@
 /**
  * 010 `T7.3` 的配置页接线判据（`node --test`，零 DOM）：
  *
- * - `U3`：注册键 = `plugins.row.config` + `key = dsh-wsl-docker-ports`（本包 patch 条目 id）；
+ * - `U3`：注册键 = `plugins.row.config` + `key = wsl-ports`（本包 patch 条目 id）；
  * - `REQ-12.1`：`configure({ auto: false }, ctx.fiber)` 被调用**且带 fiber**（宿主没给 fiber 时不瞎传）；
  * - 失败一律降级不抛（配置页是可选入口）；`dispose` 幂等。
  */
@@ -68,11 +68,11 @@ test('U3 · 注册键 = plugins.row.config + 本包 patch 条目 id；关闭自�
 
   assert.equal(result.registered, true);
   assert.equal(result.slotName, 'plugins.row.config');
-  assert.equal(result.key, 'dsh-wsl-docker-ports');
+  assert.equal(result.key, 'wsl-ports');
   assert.equal(CONFIG_SLOT_NAME, 'plugins.row.config');
-  assert.equal(CONFIG_ROW_KEY, 'dsh-wsl-docker-ports');
+  assert.equal(CONFIG_ROW_KEY, 'wsl-ports');
   assert.deepEqual(calls.injects, ['plugins.row.config']);
-  assert.deepEqual(calls.registers, [{ name: 'plugins.row.config', key: 'dsh-wsl-docker-ports' }]);
+  assert.deepEqual(calls.registers, [{ name: 'plugins.row.config', key: 'wsl-ports' }]);
   assert.equal(configureCalls.length >= 1, true, 'configure({auto:false}) 必须真调（否则同一份配置出现两张表单）');
   assert.deepEqual(configureCalls.at(-1), { auto: false, fiber: { fake: 'fiber' } });
   assert.equal(result.autoForm.kind, 'configured');

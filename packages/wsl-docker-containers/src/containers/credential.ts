@@ -24,7 +24,7 @@ import {
 import { createConfigFieldReader, readConfigToken, unwrapConfigRefreshInterval, unwrapConfigString, type ConfigValueSource } from 'dsh-wsl-docker-core';
 
 /** 容器侧的行 id（与 `cordis.patch.yml` 的 `- id` 一致；也是配置命名空间） */
-export const CONTAINERS_ROW_ID = 'dsh-wsl-docker-containers';
+export const CONTAINERS_ROW_ID = 'wsl-containers';
 
 /** 容器侧服务名（`ctx.provide` 的键；与转发侧的 `wslDockerPorts` 并列，互不覆盖） */
 export const CONTAINERS_SERVICE = 'wslDockerContainers';

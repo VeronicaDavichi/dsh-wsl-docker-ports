@@ -32,7 +32,7 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.
 
 /** 转发侧的字面量（**只作为字符串**出现在反向断言里：容器包不许 import 转发包） */
 const PORTS_PREFIX = '/dsh-wsl-docker-ports';
-const PORTS_ROW_ID = 'dsh-wsl-docker-ports';
+const PORTS_ROW_ID = 'wsl-ports';
 const PORTS_SERVICE = 'wslDockerPorts';
 
 /**
@@ -96,7 +96,7 @@ test('D3-3 前缀互不包含（宿主按最长前缀分派，前缀前缀会互
 });
 
 test('D3-4 行 id / 服务名 / settings 命名空间三件套与转发侧零重叠', () => {
-  assert.equal(CONTAINERS_ROW_ID, 'dsh-wsl-docker-containers');
+  assert.equal(CONTAINERS_ROW_ID, 'wsl-containers');
   assert.equal(CONTAINERS_SERVICE, 'wslDockerContainers');
 
   assert.notEqual(CONTAINERS_ROW_ID, PORTS_ROW_ID, '行 id = patch 条目的命名空间，撞了就等于共用配置');
@@ -159,7 +159,7 @@ test('D3-6 只有转发包是 bundle（出卡）；容器包是组件包（不�
   }
 });
 
-test('D3-7 一张卡两个组件：转发包的 patch 插两行，各自指向**不同模块**（标题因此可分开）', () => {
+test('D3-7 一张卡两个组件：转发包的 patch 插两行，指向不同模块；行 id 短于包名（避免组件行重复文字）', () => {
   const patchFile = path.join(REPO, 'packages/wsl-docker-ports/cordis.patch.yml');
   const yml = readFileSync(patchFile, 'utf8');
 
@@ -168,14 +168,20 @@ test('D3-7 一张卡两个组件：转发包的 patch 插两行，各自指向**
 
   assert.equal(rows.length, 2, `patch 必须恰好插两行（一张卡两个组件），实际 ${rows.length}：${JSON.stringify(rows)}`);
   assert.deepEqual(
-    rows.map((row) => row.id),
-    ['dsh-wsl-docker-ports', 'dsh-wsl-docker-containers'],
-    '两行的 id 必须分别是两个包（行 id 是配置命名空间）',
-  );
-  assert.deepEqual(
     rows.map((row) => row.name),
     ['dsh-wsl-docker-ports', 'dsh-wsl-docker-containers'],
     '两行的 name 必须指向**不同模块** —— 组件的标题是按模块名取 locale 的（同名 + 同模块 ⇒ 必然同名）',
   );
   assert.notEqual(rows[0]!.name, rows[1]!.name, '两行 name 相同就退回「同名组件」');
+
+  // 🔴 行 id 必须与模块名不同：宿主的组件行会**同时**渲染 rowId 与 moduleName，
+  //    两者相同 ⇒ 卡片里出现两行一模一样的代码字面量（真机截图见过 `dsh-wsl-docker-ports` ×2）。
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ['wsl-ports', 'wsl-containers'],
+    '行 id 是短名（同时是 settings 命名空间），不许退化成包名',
+  );
+  for (const row of rows) {
+    assert.notEqual(row.id, row.name, `行 id 与模块名相同会让组件行重复渲染同一串文字：${row.id}`);
+  }
 });

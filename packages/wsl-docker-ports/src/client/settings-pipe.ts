@@ -38,7 +38,7 @@ import type { ElevationPolicyValue } from '../wire.ts';
 import type { RemoteSettingsLike, SettingsPathOp, SettingsResponse } from './host.ts';
 
 /** 命名空间 = patch 条目 id（同时是包名，见 `cordis.patch.yml`） */
-export const SETTINGS_NAMESPACE = 'dsh-wsl-docker-ports';
+export const SETTINGS_NAMESPACE = 'wsl-ports';
 
 /**
  * 提权策略与作用域的字面量**不在这里另立一份**：

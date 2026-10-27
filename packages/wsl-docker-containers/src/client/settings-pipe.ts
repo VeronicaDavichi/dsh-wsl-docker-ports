@@ -29,7 +29,7 @@
 import type { RemoteSettingsLike, SettingsPathOp, SettingsResponse } from './host.ts';
 
 /** 命名空间 = 容器侧 patch 条目 id（**与包名逐字一致**） */
-export const SETTINGS_NAMESPACE = 'dsh-wsl-docker-containers';
+export const SETTINGS_NAMESPACE = 'wsl-containers';
 
 /** 结构化 patch（绝不拼字符串 YAML） */
 export interface SettingsPatch {
