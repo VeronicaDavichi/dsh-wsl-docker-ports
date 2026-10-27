@@ -45,16 +45,25 @@ describe('017 行级配置页（点「WSL Port Forwarding」名字进去的那�
       reads += 1;
       return SAMPLE;
     }} />);
-    const button = screen.getByTestId('config-raw-output');
-    fireEvent.click(button);
+    // 主人 2026-10-27：「查看 / 收起 理应是两个按钮」⇒ 各是一个按钮，各自管一件事
+    const open = screen.getByTestId('config-raw-output');
+    expect(open.textContent).toBe('查看原始输出');
+    fireEvent.click(open);
     await waitFor(() => {
       expect(screen.getByTestId('config-raw-output-body').textContent ?? '').toContain('nginx:latest');
     });
     expect(reads).toBe(1);
-    expect(button.textContent).toBe('收起原始输出');
+    // 展开后**只剩**收起按钮；原文在「下拉窗口」（panel）里
+    expect(screen.queryByTestId('config-raw-output')).toBeNull();
+    expect(screen.getByTestId('config-raw-output-collapse').textContent).toBe('收起原始输出');
+    expect(screen.getByTestId('config-raw-output-panel').contains(screen.getByTestId('config-raw-output-body'))).toBe(true);
 
-    fireEvent.click(button); // 收起
-    fireEvent.click(button); // 再展开
+    fireEvent.click(screen.getByTestId('config-raw-output-collapse')); // 收起
+    await waitFor(() => {
+      expect(screen.getByTestId('config-raw-output').textContent).toBe('查看原始输出');
+    });
+    expect(screen.queryByTestId('config-raw-output-panel')).toBeNull();
+    fireEvent.click(screen.getByTestId('config-raw-output')); // 再展开
     await act(async () => {
       await Promise.resolve();
     });

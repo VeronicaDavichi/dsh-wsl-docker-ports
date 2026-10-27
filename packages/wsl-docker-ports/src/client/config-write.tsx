@@ -79,23 +79,43 @@ export function RawOutputSection(props: RawOutputSectionProps): ReactElement {
         tag="只在点开时读"
         hint="docker ps 这一次读的原文（已脱敏）。点开才读一次，加载期零读，展开/收起不重复读。"
       >
+        {/* 主人 2026-10-27：「查看原始输出/收起原始输出 理应是两个按钮，点击查看原始输出的时候
+            下拉一个窗口展开里面是内容，点收起的时候收回」⇒ 两个**独立**的按钮，各管一件事：
+            `config-raw-output` 只负责展开（读一次），`config-raw-output-collapse` 只负责收回。 */}
         <div className="wdp-cfg-field-body" data-testid="config-raw-output-card" data-open={open ? '1' : '0'}>
-          <button
-            type="button"
-            className="wdp-textbtn"
-            data-testid="config-raw-output"
-            disabled={busy || load === undefined}
-            title={load === undefined ? '原始输出未接线：主包壳没注入读取器' : '按需读一次 docker ps，看它在这次读里的原文'}
-            onClick={() => {
-              void toggle();
-            }}
-          >
-            {open ? '收起原始输出' : '查看原始输出'}
-          </button>
+          {open ? (
+            <button
+              type="button"
+              className="wdp-textbtn"
+              data-testid="config-raw-output-collapse"
+              title="收回这个窗口（已读到的原文留在内存里，再展开不重复读）"
+              onClick={() => {
+                setOpen(false);
+              }}
+            >
+              收起原始输出
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="wdp-textbtn"
+              data-testid="config-raw-output"
+              disabled={busy || load === undefined}
+              title={load === undefined ? '原始输出未接线：主包壳没注入读取器' : '按需读一次 docker ps，看它在这次读里的原文'}
+              onClick={() => {
+                void toggle();
+              }}
+            >
+              {busy ? '读取中…' : '查看原始输出'}
+            </button>
+          )}
           {open && text !== null ? (
-            <pre className="wdp-pre" data-testid="config-raw-output-body">
-              {text}
-            </pre>
+            // 「下拉一个窗口」：展开区是一块有边框底色的面板，原文在面板里（横向可滚，不撑破页面）
+            <div className="wdp-cfg-raw-panel" data-testid="config-raw-output-panel">
+              <pre className="wdp-pre" data-testid="config-raw-output-body">
+                {text}
+              </pre>
+            </div>
           ) : null}
           {note === '' ? null : <p className="wdp-cfg-hint">{note}</p>}
         </div>

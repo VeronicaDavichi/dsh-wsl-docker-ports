@@ -448,3 +448,14 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
   转发行页 8 个字段里**没有**「容器页刷新频次」，`.wdp-cfg-raw` 与上方保存条的实测间距 **52 px**。
 - 证据：[evidence-containers-row-refresh.png](./evidence-containers-row-refresh.png)、
   [evidence-ports-row-gap-52.png](./evidence-ports-row-gap-52.png)。
+
+#### 六订·十一（同日，主人第九次拍板）
+
+主人原话：「查看原始输出/收起原始输出 理应是两个按钮，点击查看原始输出的时候下拉一个窗口展开里面是内容，点收起的时候收回」。
+
+- **两个独立按钮**：`config-raw-output`（只看展开，文案「查看原始输出」/ 读取中「读取中…」）与
+  `config-raw-output-collapse`（只看收回，文案「收起原始输出」）；展开后第一个按钮**不渲染**，
+  收起后第二个**不渲染** —— 不是同一个按钮换字。
+- **下拉一个窗口**：原文包在 `.wdp-cfg-raw-panel`（1px 边框 + `radius-md` + `bg-layer-2` +
+  `padding 10/12` + `max-height 260px` 可滚）里，`config-raw-output-panel` 是它的 testid。
+- 缓存语义不变：展开读一次，收起/再展开**零新增读**（`reads` 仍为 1）。

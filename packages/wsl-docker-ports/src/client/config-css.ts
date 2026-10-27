@@ -45,6 +45,9 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
    两块都改成与其他项同构的 field；控件竖向排、原文占满整行。 */
 /* 017 六订·八（主人 2026-10-27：「原始输出 这个标签离上面再远点」）：它与上面的保存条之间留足呼吸（28 → 52 px，主人连说两次「再远点」） */
 .wdp-cfg-raw { margin-top: 52px; }
+/* 主人 2026-10-27：「点击查看原始输出的时候下拉一个窗口展开里面是内容」⇒ 展开区是一块面板 */
+.wdp-cfg-raw-panel { display: flex; flex-direction: column; align-self: stretch; max-width: 100%; max-height: 260px; overflow: auto; padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-2); }
+.wdp-cfg-raw-panel .wdp-pre { margin: 0; }
 .wdp-cfg-field-body { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .wdp-cfg-field-body .wdp-pre { align-self: stretch; max-width: 100%; }
 .wdp-cfg-field { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; }
