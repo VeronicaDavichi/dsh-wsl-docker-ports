@@ -218,3 +218,38 @@ ports `node --test` **442/442**、vitest **19 files / 170 tests**（165 → 170�
 `verify-client-loader` 40/40、`check-size` 最大 399 行、`p2-main-bundle-gate` 0；
 主包 **51,883 B**（地板 56,350，余 4,467 B）、chunk 161,379 B。
 拆文件：`config-write.tsx`（52 行，把写通道区连同前提/指路拆出来，`config-page.tsx` 388 行守 400 SHALL）。
+
+### 版式返工（同日第二轮：主人「ui！！！！」）
+
+**问题**：写通道块搬进配置页后仍穿右栏页那身衣服 —— 自带 `<h3>`（和外层「写通道预演」标题**重复一遍**）、
+一个 1px 边框 + layer-1 底的 `.wdp-card` 盒子（嵌套在配置页字段流里像「贴了别人的卡片」）、
+三个控件挤在一行（`wdp-inline`）且用 2px 内边距的小 `.wdp-btn`（高度 ~26px，而上面字段是 34px）。
+
+**改法**：给 `WriteChannelBlock` 加 `variant`（`card` 缺省 / `field`），配置页用 `field`：
+
+| 项 | `card`（右栏页，原样不动） | `field`（配置页） |
+| --- | --- | --- |
+| 容器 | `.wdp-card`（1px 边 + layer-1 底） | `.wdp-cfg-write`（无色无框，纯行流） |
+| 标题 | 自带 `<h3>写通道（确认后执行）</h3>` | **无**（标题由外层「写通道预演」那一行给） |
+| 控件 | 一行 `.wdp-inline` + `.wdp-btn` | 逐行 `.wdp-cfg-row`：`13px/500` 标签在上 → `.wdp-input`（34px，`radius-md`，layer-3 底）在下 |
+| 端口输入 | `.wdp-btn` | `.wdp-input.wdp-cfg-input-plain`（去掉 select 那颗 ▼ 背景图） |
+| 预演按钮 | `.wdp-btn` | `.wdp-cfg-btn`（34px 次级按钮，0.5px 边 + layer-3 底） |
+| 提示 / 报错 | `.wdp-muted` / `.wdp-error` | `.wdp-cfg-sublabel` / `.wdp-cfg-notice` |
+| 计划 / 回执 | 各自一张 `.wdp-card` | `.wdp-cfg-plan` 内嵌面板（0.5px 边 + layer-2 底，标题 12px 次级色），里面的按钮统一 30px |
+
+**另外两处**：
+① 两段提示（NAT 前提 + 凭据指路）原来各占一段，中间空出一条「像漏了一段」的间距 ⇒ 合成一段两行
+（`<br/>` 分开，`config-write-premise` / `config-write-token-pointer` 两个 testid 保留）；
+② `write-result.test.tsx` 的第 ⑨ 条门（「组件里用到的类名必须在样式表里」）原来只认 `PAGE_CSS`；
+`write-panel.tsx` 现在一个组件两种版式、样式分居两张真表 ⇒ 白名单改取 **PAGE_CSS ∪ CONFIG_CSS**
+并各要求至少命中 1 个（防止并集放过「写错表」）；零 hex 与 `var(--dsw-*)` 断言不变。
+
+**真机实测（同 instance）**：`{"row":{"h":60},"action":{"h":34,"cls":"wdp-input"},"ports":{"h":34,"cls":"wdp-input wdp-cfg-input-plain"},"preview":{"h":34,"cls":"wdp-cfg-btn"},"hasNestedCard":false}`
+⇒ 控件 34px 与上方字段一致、无嵌套卡片；预演真跑通（8080 不在声明集合 ⇒ 服务端回「被拦下、零动作」，
+计划面板里「确认并执行」置灰 + 写明 `ports[].blocked`，与本轮版式无关的既有语义未被改动）。
+截图：[evidence-config-write-field.png](./evidence-config-write-field.png)。
+
+**用例**：`write-panel.test.tsx` **+2**（field 版式：无 `h3` / 容器类 `wdp-cfg-write` / 三个控件含 `wdp-input` /
+预演 `wdp-cfg-btn`；card 版式反向对照：`h3` 仍在、控件仍是 `wdp-btn`）⇒ vitest **19 files / 172 tests**。
+门：`node --test` 442/442、三 tsconfig 0、borders 233 文件 R1–R6 绿、exports 25/25、split 20/20、loader 40/40、
+p2 0、主包 51,883 B、chunk **165,887 B**。

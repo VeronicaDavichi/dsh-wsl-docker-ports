@@ -39,14 +39,17 @@ export function WriteChannelSection(props: WriteChannelSectionProps): ReactEleme
         <span className="wdp-cfg-label">写通道预演</span>
         <span className="wdp-cfg-tag">只在确认后执行</span>
       </div>
-      <p className="wdp-cfg-sublabel" data-testid="config-write-premise">
-        前提：WSL 必须是 NAT 网络模式（mirrored 下规则会指向失效地址）。预演只读计划、不发任何写；
-        NAT 不满足时预演会当场报出原因，不会静默失败。
+      {/* 两句话合成一段：分成两段时中间会空出一条「没内容的间距」，看起来像漏了一段（主人 2026-10-27 的 ui 反馈） */}
+      <p className="wdp-cfg-sublabel">
+        <span data-testid="config-write-premise">
+          前提：WSL 必须是 NAT 网络模式（mirrored 下规则会指向失效地址）。预演只读计划、零写入；NAT 不满足时会当场报出原因，不静默。
+        </span>
+        <br />
+        <span data-testid="config-write-token-pointer">
+          凭据不在这儿：「WSL Docker 端口」右栏页的「写通道凭据」块生成；没有凭据时预演会在本地被拦下（零请求）。
+        </span>
       </p>
-      <p className="wdp-cfg-sublabel" data-testid="config-write-token-pointer">
-        凭据（token）不在这儿：到「WSL Docker 端口」右栏页的「写通道凭据」块生成 / 清除。没有凭据时预演会在本地被拦下（零请求）并给出提示。
-      </p>
-      <WriteChannelBlock write={write} enabled={write !== undefined} disabledReason={null} />
+      <WriteChannelBlock write={write} enabled={write !== undefined} disabledReason={null} variant="field" />
     </section>
   );
 }

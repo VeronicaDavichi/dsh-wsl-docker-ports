@@ -23,6 +23,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PAGE_CSS } from '../../src/client/styles.ts';
+import { CONFIG_CSS } from '../../src/client/config-css.ts';
 import { createWriteChannel, type WriteChannel, type WriteWiring } from '../../src/client/write-channel.ts';
 import { WRITE_TESTID } from '../../src/client/write-confirm.tsx';
 import { WriteChannelBlock } from '../../src/client/write-panel.tsx';
@@ -252,9 +253,21 @@ describe('009 T1.3 ⑨：零硬编码 hex / 判定色只来自宿主 token', () 
     expect(files.length).toBeGreaterThan(0);
     expect(bytes).toBeGreaterThan(0);
     expect(tokens.size).toBeGreaterThan(0);
-    for (const token of tokens) expect(PAGE_CSS).toContain(`.${token}`);
+    // 🔴 017 三订：write-panel.tsx 现在**一个组件两种版式** —— card（右栏页，样式在 PAGE_CSS）
+    // 与 field（配置页，样式在 CONFIG_CSS）。两张表都是真样式表 ⇒ 白名单取并集，
+    // 「每个类名都能在某张表里查到」的判据不变；另各要求至少命中 1 个，防止并集放过「写错表」。
+    let inPage = 0;
+    let inConfig = 0;
+    for (const token of tokens) {
+      const page = PAGE_CSS.includes(`.${token}`);
+      const config = CONFIG_CSS.includes(`.${token}`);
+      expect(page || config, `类名 .${token} 既不在 PAGE_CSS 也不在 CONFIG_CSS`).toBe(true);
+      if (page) inPage += 1;
+      if (config) inConfig += 1;
+    }
     expect([...PAGE_CSS.matchAll(/var\(--dsw-/gu)].length).toBeGreaterThan(0);
-    console.log(`  · 扫了 ${String(files.length)} 文件 / ${String(bytes)} 字节：hex 0 处；用到 ${String(tokens.size)} 个类名，全在 PAGE_CSS 白名单内`);
+    expect([...CONFIG_CSS.matchAll(/var\(--dsw-/gu)].length).toBeGreaterThan(0);
+    console.log(`  · 扫了 ${String(files.length)} 文件 / ${String(bytes)} 字节：hex 0 处；用到 ${String(tokens.size)} 个类名（PAGE_CSS 命中 ${String(inPage)} / CONFIG_CSS 命中 ${String(inConfig)}），无一处落空`);
   });
 });
 

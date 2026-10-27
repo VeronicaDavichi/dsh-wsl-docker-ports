@@ -73,7 +73,25 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
 .wdp-save:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, currentColor)); outline-offset: 1px; }
 .wdp-textbtn { appearance: none; border: none; background: none; padding: 0; font: inherit; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-secondary, inherit); cursor: pointer; }
 .wdp-textbtn:hover:not([disabled]) { color: var(--dsw-alias-label-primary, inherit); }
-.wdp-textbtn[disabled] { cursor: default; opacity: 0.5; }`;
+.wdp-textbtn[disabled] { cursor: default; opacity: 0.5; }
+/* 017 三订：写通道预演在配置页里的宿主表单语法（标签在上 / 34px 控件 / 无内层卡片标题）。
+   右栏页那张独立卡片仍走 wdp-card（variant=card），这套只作用于 variant=field。 */
+.wdp-cfg-write { display: flex; flex-direction: column; gap: 10px; }
+.wdp-cfg-write .wdp-cfg-label { flex: none; }
+.wdp-cfg-rows { display: flex; flex-direction: column; gap: 10px; }
+.wdp-cfg-row { display: flex; flex-direction: column; gap: 6px; }
+.wdp-input.wdp-cfg-input-plain { padding: 0 12px; background-image: none; }
+.wdp-cfg-btn { appearance: none; align-self: flex-start; box-sizing: border-box; height: 34px; padding: 0 14px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-md, 8px); background: var(--dsw-alias-bg-layer-3, transparent); font: inherit; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); cursor: pointer; }
+.wdp-cfg-btn:hover:not([disabled]) { border-color: var(--dsw-alias-border-l2, currentColor); }
+.wdp-cfg-btn:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, currentColor)); outline-offset: 1px; }
+.wdp-cfg-btn[disabled] { opacity: 0.4; cursor: default; }
+.wdp-cfg-notice { margin: 0; padding: 6px 10px; border: 0.5px solid var(--dsw-alias-state-error-primary, currentColor); border-radius: var(--dsw-radius-sm, 6px); font-size: 12px; line-height: 1.6; color: var(--dsw-alias-state-error-primary, inherit); overflow-wrap: anywhere; }
+/* 计划 / 回执：配置页里是一块内嵌面板（0.5px 边 + layer-2 底），不再是第二张 wdp-card */
+.wdp-cfg-plan .wdp-card { border: 0.5px solid var(--dsw-alias-border-l2, currentColor); border-radius: var(--dsw-radius-md, 8px); padding: 10px 12px; background: var(--dsw-alias-bg-layer-2, transparent); }
+.wdp-cfg-plan .wdp-card > h3 { font-size: 12px; font-weight: 500; color: var(--dsw-alias-label-secondary, inherit); }
+/* 计划面板里的按钮跟配置页同一套尺寸（原来是右栏页那套 2px 内边距的小按钮，贴在 34px 控件下面像缩水了） */
+.wdp-cfg-plan .wdp-btn { height: 30px; padding: 0 12px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-sm, 6px); background: var(--dsw-alias-bg-layer-3, transparent); font-size: 13px; }
+.wdp-cfg-plan .wdp-btn:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, currentColor)); outline-offset: 1px; }`;
 
 /** 挂载时注入、返回移除器；同一 id 的旧节点先摘掉（重复挂载不产生第二份） */
 export function installConfigStyles(): () => void {

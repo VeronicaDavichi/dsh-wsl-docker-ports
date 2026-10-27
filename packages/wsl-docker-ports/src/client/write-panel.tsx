@@ -76,10 +76,21 @@ export interface WriteChannelBlockProps {
   /** 外部前置（NAT 硬前提 / 读模型可用性）；`false` ⇒ 全部写控件置灰 */
   readonly enabled: boolean;
   readonly disabledReason: string | null;
+  /**
+   * 版式（017 三订起）：
+   * - `card`（缺省）：右栏页那张独立卡片 —— **原样不动**，既有用例与像素都按它写；
+   * - `field`：配置页里的**宿主表单行**（标签在上、控件在下、34px 高 `.wdp-input`、
+   *   无自带标题、无边框盒子）—— 因为配置页上面那几个字段就是这个语法，
+   *   混两种语法会像「页面里又贴了一张别人的卡片」（主人 2026-10-27：「ui！！！…」）。
+   */
+  readonly variant?: 'card' | 'field' | undefined;
 }
 
 export function WriteChannelBlock(props: WriteChannelBlockProps): ReactElement {
   const { write, enabled } = props;
+  /** `field` ⇒ 跟配置页那几个字段同一套语法（标签在上 / `.wdp-input` 控件 / 无内层标题） */
+  const asField = props.variant === 'field';
+  const controlClass = asField ? 'wdp-input' : 'wdp-btn';
   const [action, setAction] = useState<WriteActionInput>('add');
   const [portsText, setPortsText] = useState('');
   const [scope, setScope] = useState<WriteScopeInput>('loopback');
@@ -163,16 +174,22 @@ export function WriteChannelBlock(props: WriteChannelBlockProps): ReactElement {
   }
 
   return (
-    <section className="wdp-card" data-testid={WRITE_TESTID.block} data-wired={wired ? '1' : '0'}>
-      <h3>写通道（确认后执行）</h3>
-      <p className="wdp-muted">
-        写动作需要服务端签发的计划与一次性票据：先「预演」看逐条命令原文，确认后才发 apply；改一个字都要重新预演。
-      </p>
-      <div className="wdp-inline">
-        <label>
-          动作
+    <section
+      className={asField ? 'wdp-cfg-write' : 'wdp-card'}
+      data-testid={WRITE_TESTID.block}
+      data-wired={wired ? '1' : '0'}
+    >
+      {asField ? null : <h3>写通道（确认后执行）</h3>}
+      {asField ? null : (
+        <p className="wdp-muted">
+          写动作需要服务端签发的计划与一次性票据：先「预演」看逐条命令原文，确认后才发 apply；改一个字都要重新预演。
+        </p>
+      )}
+      <div className={asField ? 'wdp-cfg-rows' : 'wdp-inline'}>
+        <label className={asField ? 'wdp-cfg-row' : undefined}>
+          {asField ? <span className="wdp-cfg-label">动作</span> : '动作'}
           <select
-            className="wdp-btn"
+            className={controlClass}
             data-testid={WRITE_TESTID.action}
             data-write-control="1"
             disabled={!usable || busy}
@@ -184,10 +201,10 @@ export function WriteChannelBlock(props: WriteChannelBlockProps): ReactElement {
             <option value="fix">修复地址漂移（先删后加）</option>
           </select>
         </label>
-        <label>
-          端口
+        <label className={asField ? 'wdp-cfg-row' : undefined}>
+          {asField ? <span className="wdp-cfg-label">端口</span> : '端口'}
           <input
-            className="wdp-btn"
+            className={asField ? 'wdp-input wdp-cfg-input-plain' : 'wdp-btn'}
             data-testid={WRITE_TESTID.ports}
             data-write-control="1"
             disabled={!usable || busy}
@@ -196,10 +213,10 @@ export function WriteChannelBlock(props: WriteChannelBlockProps): ReactElement {
             onChange={(event) => setPortsText(event.target.value)}
           />
         </label>
-        <label>
-          作用域
+        <label className={asField ? 'wdp-cfg-row' : undefined}>
+          {asField ? <span className="wdp-cfg-label">作用域</span> : '作用域'}
           <select
-            className="wdp-btn"
+            className={controlClass}
             data-testid={WRITE_TESTID.scope}
             data-write-control="1"
             disabled={!usable || busy}
@@ -212,7 +229,7 @@ export function WriteChannelBlock(props: WriteChannelBlockProps): ReactElement {
         </label>
         <button
           type="button"
-          className="wdp-btn"
+          className={asField ? 'wdp-cfg-btn' : 'wdp-btn'}
           data-testid={WRITE_TESTID.preview}
           data-write-control="1"
           disabled={!usable || busy}
@@ -223,29 +240,35 @@ export function WriteChannelBlock(props: WriteChannelBlockProps): ReactElement {
         </button>
       </div>
       {action === 'fix' ? (
-        <p className="wdp-muted" data-testid={WRITE_TESTID.fixHint}>
+        <p className={asField ? 'wdp-cfg-sublabel' : 'wdp-muted'} data-testid={WRITE_TESTID.fixHint}>
           修复只改 connectAddress：作用域沿用既有规则（不受上面「作用域」选择影响 —— 改作用域是「切换作用域」，本页不做）；
           命令是「先精确删除那条旧规则，再按当前地址重建」，且只对声明集合内、地址确实漂移的规则放行（判定全在服务端，客户端不判）。
         </p>
       ) : null}
       {action === 'remove' ? (
-        <p className="wdp-muted" data-testid={WRITE_TESTID.removeHint}>
+        <p className={asField ? 'wdp-cfg-sublabel' : 'wdp-muted'} data-testid={WRITE_TESTID.removeHint}>
           移除也沿用既有规则的作用域（删的是那条规则**自己的** listen address，不受上面「作用域」选择影响）：
           只有满足 REQ-1.2 字面前置（集合内 + 地址匹配当前 eth0）的规则才可删，服务端判，客户端不判。
         </p>
       ) : null}
-      {!usable ? <p className="wdp-muted">{reason}</p> : null}
+      {!usable ? <p className={asField ? 'wdp-cfg-sublabel' : 'wdp-muted'}>{reason}</p> : null}
       {notice === null ? null : (
-        <p className="wdp-error" data-testid={WRITE_TESTID.notice}>
+        <p className={asField ? 'wdp-cfg-notice' : 'wdp-error'} data-testid={WRITE_TESTID.notice}>
           {notice}
         </p>
       )}
       {plan === null ? null : (
-        <WriteConfirmDialog plan={plan} busy={busy} blocked={enabled ? null : reason} onConfirm={() => void confirm()} onCancel={cancel} />
+        <div className={asField ? 'wdp-cfg-plan' : undefined}>
+          <WriteConfirmDialog plan={plan} busy={busy} blocked={enabled ? null : reason} onConfirm={() => void confirm()} onCancel={cancel} />
+        </div>
       )}
       {report === null ? null : (
-        <section className="wdp-card" data-testid={WRITE_TESTID.result} data-status={report.status}>
-          <h3>最近一次执行结果（保留展示：重新预演不会清掉它，直到下一次确认返回）</h3>
+        <section
+          className={asField ? 'wdp-cfg-plan' : 'wdp-card'}
+          data-testid={WRITE_TESTID.result}
+          data-status={report.status}
+        >
+          {asField ? null : <h3>最近一次执行结果（保留展示：重新预演不会清掉它，直到下一次确认返回）</h3>}
           <WriteResultPanel report={report} />
         </section>
       )}

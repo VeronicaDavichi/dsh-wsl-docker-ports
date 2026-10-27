@@ -296,3 +296,31 @@ describe('T3.1 票据失效 / 计划不符 ⇒ 重新 plan + 重新确认（不�
     console.log('  · 扫了 1 条 401：apply 1 次 / 总请求 2 / 提示凭据且不重试');
   });
 });
+
+describe('017 三订 UI：配置页版式（variant="field"）与右栏页卡片版式分离', () => {
+  it('field 版式：无内层标题、三个控件都是 34px 宿主控件、预演是次级按钮', () => {
+    const rig = createFetchRig([{ status: 200, payload: planPayload() }]);
+    const { wiring } = wiringFor(rig);
+    render(<WriteChannelBlock write={wiring} enabled disabledReason={null} variant="field" />);
+    const block = screen.getByTestId(WRITE_TESTID.block);
+    // 配置页里标题由外层「写通道预演」那一行给 ⇒ 组件内不许再出一遍
+    expect(block.querySelector('h3')).toBeNull();
+    expect(block.className).toBe('wdp-cfg-write');
+    for (const id of [WRITE_TESTID.action, WRITE_TESTID.ports, WRITE_TESTID.scope]) {
+      expect((screen.getByTestId(id) as HTMLElement).className).toContain('wdp-input');
+    }
+    expect((screen.getByTestId(WRITE_TESTID.preview) as HTMLElement).className).toBe('wdp-cfg-btn');
+    console.log(`  · field 版式：h3 0 个 / 3 个 wdp-input / 预演 wdp-cfg-btn`);
+  });
+
+  it('card 版式（右栏页）保持原样：有内层标题、控件仍是 wdp-btn（不因这次改动回退）', () => {
+    const rig = createFetchRig([{ status: 200, payload: planPayload() }]);
+    const { wiring } = wiringFor(rig);
+    render(<WriteChannelBlock write={wiring} enabled disabledReason={null} />);
+    const block = screen.getByTestId(WRITE_TESTID.block);
+    expect(block.className).toBe('wdp-card');
+    expect(block.querySelector('h3')?.textContent).toContain('写通道');
+    expect((screen.getByTestId(WRITE_TESTID.action) as HTMLElement).className).toBe('wdp-btn');
+    console.log('  · card 版式：h3 在 / 控件仍 wdp-btn');
+  });
+});
