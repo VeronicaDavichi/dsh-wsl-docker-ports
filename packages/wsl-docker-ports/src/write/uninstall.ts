@@ -28,7 +28,7 @@ import { join } from 'node:path';
 
 import type { ManagedPorts } from '../diff/managed-ports.ts';
 import { TEMP_PREFIX } from '../elevate/script.ts';
-import type { PortproxyRule } from '../read/netsh.ts';
+import type { PortproxyRule } from 'dsh-wsl-docker-core';
 import { buildCleanupManifest, buildCleanupSteps, type CleanupManifest } from './cleanup.ts';
 import type { WriteStep } from './types.ts';
 

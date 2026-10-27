@@ -23,10 +23,12 @@
  * （`write/cleanup.ts:76` 直接取本步骤的 `commandText`）随之同步 —— 否则清单上的命令会比插件多删。
  */
 
+// 🔴 016：这条链在**客户端 chunk** 里（drift-fix → plan → guards → 本文件）⇒ 必须走 browser 子入口
+import { FIREWALL_NAME_PREFIX } from 'dsh-wsl-docker-core/browser';
 import type { WriteStep } from './types.ts';
 
 /** 规则名前缀 / 分组名（REQ-2.6；两处都靠它可识别） */
-export const FIREWALL_NAME_PREFIX = 'dsh-wsl-docker-ports';
+export { FIREWALL_NAME_PREFIX } from 'dsh-wsl-docker-core/browser';
 export const FIREWALL_GROUP = 'dsh-wsl-docker-ports';
 
 /** 端口是否是可放行的合法端口（1..65535 的整数；非整数/越界一律拒） */

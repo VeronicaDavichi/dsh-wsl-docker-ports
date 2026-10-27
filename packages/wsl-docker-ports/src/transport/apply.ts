@@ -56,7 +56,7 @@ import type { Scope } from '../diff/types.ts';
 import { resolvePolicy } from '../elevate/backend.ts';
 import { defaultElevationDeps, runElevate } from '../elevate/runner.ts';
 import type { ElevateRequest, ElevateResult, ElevationDeps, ElevationPolicy, RequestSource } from '../elevate/types.ts';
-import type { PortproxyRule } from '../read/netsh.ts';
+import type { PortproxyRule } from 'dsh-wsl-docker-core';
 import { portproxyDeleteStep } from '../write/plan.ts';
 import type { WriteAction, WriteStep, WriteStepKind } from '../write/types.ts';
 import type { AuditLog, AuditOrigin } from './audit.ts';

@@ -16,7 +16,7 @@ import { test } from 'node:test';
 import { diff } from '../../src/diff/engine.ts';
 import { singlePort } from '../../src/diff/managed-ports.ts';
 import type { DiffResult, PortClassification } from '../../src/diff/types.ts';
-import type { ListenerEntry, ListenerTable } from '../../src/read/listeners-probe.ts';
+import type { ListenerEntry, ListenerTable } from 'dsh-wsl-docker-core';
 import { container, ETH0, rule } from '../helpers/factories.ts';
 
 function tableOf(...entries: readonly (readonly [number, string])[]): ListenerTable {

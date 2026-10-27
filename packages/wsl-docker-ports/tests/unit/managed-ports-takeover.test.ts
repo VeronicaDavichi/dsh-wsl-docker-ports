@@ -25,8 +25,8 @@ import { isManagedPort, type ManagedPorts } from '../../src/diff/managed-ports.t
 import { parseManagedPorts, type ManagedPortsDecl } from '../../src/diff/managed-ports-parse.ts';
 import { PORT_PRESETS } from '../../src/diff/port-presets.ts';
 import type { Scope } from '../../src/diff/types.ts';
-import type { DockerContainer } from '../../src/read/docker.ts';
-import { parsePortproxyTable, type PortproxyRule } from '../../src/read/netsh.ts';
+import type { DockerContainer } from 'dsh-wsl-docker-core';
+import { parsePortproxyTable, type PortproxyRule } from 'dsh-wsl-docker-core';
 import { fixtureText } from '../helpers/fake-executor.ts';
 import { container, ETH0, ruleToEth0 } from '../helpers/factories.ts';
 

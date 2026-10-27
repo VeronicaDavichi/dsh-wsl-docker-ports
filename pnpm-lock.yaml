@@ -73,8 +73,61 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@26.6.4)(jsdom@25.0.1)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2))
 
+  packages/wsl-docker-containers:
+    dependencies:
+      dsh-wsl-docker-core:
+        specifier: workspace:*
+        version: link:../wsl-docker-core
+      dsh-wsl-shared:
+        specifier: workspace:*
+        version: link:../wsl-shared
+    devDependencies:
+      '@testing-library/dom':
+        specifier: ^10.4.2
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+      '@types/react':
+        specifier: 18.3.12
+        version: 18.3.12
+      '@types/react-dom':
+        specifier: 18.3.1
+        version: 18.3.1
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
+      jsdom:
+        specifier: ^25.0.1
+        version: 25.0.1
+      react:
+        specifier: 18.2.0
+        version: 18.2.0
+      react-dom:
+        specifier: 18.2.0
+        version: 18.2.0(react@18.2.0)
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@types/node@26.6.4)(jsdom@25.0.1)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2))
+
+  packages/wsl-docker-core:
+    dependencies:
+      dsh-wsl-shared:
+        specifier: workspace:*
+        version: link:../wsl-shared
+    devDependencies:
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@types/node@26.6.4)(jsdom@25.0.1)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2))
+
   packages/wsl-docker-ports:
     dependencies:
+      dsh-wsl-docker-containers:
+        specifier: workspace:*
+        version: link:../wsl-docker-containers
+      dsh-wsl-docker-core:
+        specifier: workspace:*
+        version: link:../wsl-docker-core
       dsh-wsl-shared:
         specifier: workspace:*
         version: link:../wsl-shared
@@ -1259,7 +1312,6 @@ packages:
   whatwg-encoding@3.1.1:
     resolution: {integrity: sha512-6qN4hJdMwfYBtE3YBTTHhoeuUrDBPZmbQaxWAqSALV/MeEnR5z1xd8UKud2RAkFoPkmB+hli1TZSnyi84xz1vQ==}
     engines: {node: '>=18'}
-    deprecated: Use @exodus/bytes instead for a more spec-conformant and faster implementation
 
   whatwg-mimetype@4.0.0:
     resolution: {integrity: sha512-QaKxh0eNIi2mE9p2vEdzfagOKHCcj1pJ56EEHGQOVxp8r9/iszLUUV7v89x9O1p/T+NlTM5W7jW6+cz4Fq1YVg==}

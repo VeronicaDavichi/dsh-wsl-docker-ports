@@ -46,16 +46,16 @@ import { diff } from './diff/engine.ts';
 import type { DiffInput, DiffOutcome } from './diff/types.ts';
 import { createHostConfigReaders } from './config-read.ts';
 import { createElevationAvailabilityProbe } from './elevate/backend.ts';
-import { probeDockerPs } from './read/docker-probe.ts';
-import type { DockerPsOutcome } from './read/docker-probe.ts';
-import { createEth0Source } from './read/eth0-source.ts';
-import type { Eth0SourceOptions } from './read/eth0-source.ts';
-import { readLocalhostForwarding } from './read/localhost-forwarding.ts';
-import type { LocalhostForwardingOutcome } from './read/localhost-forwarding.ts';
-import { probePortproxyRules } from './read/netsh-probe.ts';
-import type { PortproxyOutcome } from './read/netsh-probe.ts';
+import { probeDockerPs } from 'dsh-wsl-docker-core';
+import type { DockerPsOutcome } from 'dsh-wsl-docker-core';
+import { createEth0Source } from 'dsh-wsl-docker-core';
+import type { Eth0SourceOptions } from 'dsh-wsl-docker-core';
+import { readLocalhostForwarding } from 'dsh-wsl-docker-core';
+import type { LocalhostForwardingOutcome } from 'dsh-wsl-docker-core';
+import { probePortproxyRules } from 'dsh-wsl-docker-core';
+import type { PortproxyOutcome } from 'dsh-wsl-docker-core';
 // 012：写通道的监听地址候选清单（与快照的 `localAddresses` 同源：`read/local-addresses.ts`）
-import { probeLocalAddresses } from './read/local-addresses.ts';
+import { probeLocalAddresses } from 'dsh-wsl-docker-core';
 import { registerPortsRoute } from './route.ts';
 import { attachWriteChannel, createDefaultLocalhostForwarding, createPluginFacts } from './transport/wire-plugin.ts';
 import type { PortsRouteRegistration } from './route.ts';
@@ -63,10 +63,6 @@ import { createSnapshotBuilder } from './snapshot.ts';
 import type { SnapshotBuilder, SnapshotDeps } from './snapshot.ts';
 import { PORTS_SNAPSHOT_PATH } from './wire.ts';
 import type { Eth0Outcome } from 'dsh-wsl-shared';
-import { resolvePluginRole } from './role.ts';
-// 🔴 015 的**唯一**一条「转发侧 → 容器侧」边（`scripts/check-borders.mjs` 的 R2 白名单里逐字登记）：
-// `apply` 是两条行共用的入口，靠行 id 分派。除这一行之外，转发侧任何文件都不许 import `containers/**`。
-import { applyWslDockerContainers } from './containers/plugin.ts';
 
 /** 插件名（供 profile 清单的 `id` 引用；**与包名逐字一致** —— 二者不一致会让 patch 行指不到东西） */
 export const name = 'dsh-wsl-docker-ports';
@@ -106,19 +102,13 @@ import type {
 /**
  * 宿主入口（cordis 调用；返回值被忽略）。
  *
- * ## 015：同一个包、同一个 `name`、**两条行**
+ * ## 016：**只有转发侧**（角色分派已删除）
  *
- * 两条行的 `apply` 都是本函数 ⇒ 必须在这里**按行 id 分派**（判据见 `./role.ts`）：
- * `- id: dsh-wsl-docker-containers` ⇒ 装配容器侧；其余（含判不出来）⇒ 装配转发侧。
- * 「判不出来走转发侧」是硬要求：015 之前的 profile 里那条行没写 `-containers` 后缀，
- * 不能让它们突然装不上转发侧。
+ * 015 时这里按行 id 分派到容器侧；016 把容器侧拆成独立包 `dsh-wsl-docker-containers`
+ * （它有自己的 `apply`）⇒ 本包不再需要「这一行是谁」的判定，`src/role.ts` 随之删除。
+ * 唯一的 `apply` 实体 = `applyWslDockerPorts`（行为与 015 的转发侧逐字节一致）。
  */
 export function apply(ctx: PluginContextLike, config?: PortsPluginConfigLike | undefined): void {
-  const decision = resolvePluginRole(ctx, config);
-  if (decision.role === 'containers') {
-    applyWslDockerContainers(ctx, config);
-    return;
-  }
   applyWslDockerPorts(ctx, config);
 }
 

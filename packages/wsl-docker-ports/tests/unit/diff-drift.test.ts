@@ -11,7 +11,7 @@ import { test } from 'node:test';
 
 import { diff } from '../../src/diff/engine.ts';
 import { singlePort } from '../../src/diff/managed-ports.ts';
-import { createEth0Source } from '../../src/read/eth0-source.ts';
+import { createEth0Source } from 'dsh-wsl-docker-core';
 import { createFakeExecutor, failure, ok } from '../helpers/fake-executor.ts';
 import { container, distro, ETH0, rule, ruleToEth0 } from '../helpers/factories.ts';
 

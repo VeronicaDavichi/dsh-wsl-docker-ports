@@ -49,9 +49,10 @@
  * 「动作」全部属于 005，这里连一个可调用的钩子都不放，从结构上排除「引擎顺手做了写操作」。
  */
 
-import type { ListenerEntry, ListenerTable } from '../read/listeners.ts';
-import { isEth0Bind, isLoopbackBind, isWildcardBind } from '../read/listeners.ts';
-import type { PortproxyRule } from '../read/netsh.ts';
+import type { ListenerEntry, ListenerTable } from 'dsh-wsl-docker-core';
+// 🔴 016：diff 引擎在**客户端 chunk** 里（page.ts → engine）⇒ 必须走 browser 子入口
+import { isEth0Bind, isLoopbackBind, isWildcardBind } from 'dsh-wsl-docker-core/browser';
+import type { PortproxyRule } from 'dsh-wsl-docker-core';
 import { buildExpectedForwards } from './expected.ts';
 import { isManagedPort, type ManagedPorts } from './managed-ports.ts';
 import {

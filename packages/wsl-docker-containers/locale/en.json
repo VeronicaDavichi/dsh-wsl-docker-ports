@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Docker Containers",
+    "description": "List the containers of the target distro, start/stop/restart them and read logs (read-only list; actions need the container channel token)."
+  }
+}

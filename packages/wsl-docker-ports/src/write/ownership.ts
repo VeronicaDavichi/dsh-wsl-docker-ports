@@ -39,7 +39,7 @@ import { expectedListenAddress } from '../diff/engine.ts';
 import { describeAllowedListenAddresses, isOurListenAddress } from '../diff/listen-allowed.ts';
 import { isManagedPort, type ManagedPorts } from '../diff/managed-ports.ts';
 import type { Scope } from '../diff/types.ts';
-import type { PortproxyRule } from '../read/netsh.ts';
+import type { PortproxyRule } from 'dsh-wsl-docker-core';
 
 /**
  * 形态判据：**共用** `diff/listen-allowed.ts` 的 `isOurListenAddress`，本文件不再自己比字面量。

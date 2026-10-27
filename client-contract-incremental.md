@@ -259,6 +259,7 @@ export interface DshPackageManifest {
 | --- | --- | --- | --- | --- |
 | `dsh-terminal-profiles` | 65536 | hard | 2026-10-12 | #50 |
 | `dsh-wsl-docker-ports` | 56350 | debt | 2026-10-23 | #61 |
+| `dsh-wsl-docker-containers` | 31324 | debt | 2026-10-27 | #62 |
 <!-- main-bundle-budgets:SSoT:end -->
 > ✅ **订正痕（2026-10-22，原文一字未删，只追加）**：012 `listenAddress` 贯通（选值 → 写配置 → 计划 → 提权脚本 → 防火墙）在常驻侧新增 `SettingsPatch.listenAddresses` + `writeListenAddress`（settings 管道第 9 个方法）+ `serializeTarget` 的 `listenAddress` 键 ⇒ **现行登记 = 49500 / debt / 2026-10-22 / #58**（标记块已同步）。**2026-10-22 主人授权：012 listenAddress 贯通**（授权上限 **+400 B**，实测 **+317 B**，未超额、未预借）。⚠️ 第一版实测 +679 B（超授权 279 B）⇒ 按「只做要求内的改动」把**用不到的** `readConfig().listenAddresses` 读回路径整段删掉（回填下拉走快照 `snapshot.listenAddresses`，客户端只保留「写」一条路）⇒ 回到 +317 B。**未删功能、未动切分边界**（`lib/client.ports.js` 143,674 → **145,459 B**）。🔴 **§P2 硬判据 65,536 B 不动**（余 **16,036 B**）。
 > ✅ **订正痕（2026-10-14，原文一字未删，只追加）**：上面标记块里的 `dsh-wsl-docker-ports | 38640 | debt | 2026-10-13 | #54` 是 011 `Phase 1` 切分后的登记；011 `T2.4`（`REQ-BS-5` 可解释降级）落地后**现行登记 = 43857 / debt（**棘轮地板**，仍只许降）/ 2026-10-14 / #55**（标记块已同步）。原因：降级面**必须常驻主包** —— 失败的那一半**正是 chunk** ⇒ 新增常驻模块 `src/client/chunk-degrade.ts`（+5,217 B：五类原因文案 + 状态码探测 + 重试），**未删任何功能、未动切分边界**。🔴 **§P2 硬判据 65,536 B 不动**（余 **21,679 B**）—— 地板是「不许再涨」的快照，**不是**功能上限。留痕 = changelog **#55**。

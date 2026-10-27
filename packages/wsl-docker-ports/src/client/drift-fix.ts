@@ -28,8 +28,12 @@
 
 import type { ManagedPorts } from '../diff/managed-ports.ts';
 import type { Scope } from '../diff/types.ts';
-import type { PortproxyRule } from '../read/netsh.ts';
-import { buildWritePlan, portproxyAddStep, portproxyDeleteStep, type WritePlanOutcome } from '../write/index.ts';
+import type { PortproxyRule } from 'dsh-wsl-docker-core';
+// 🔴 016：只取 plan 模块（barrel 会带进 write/snapshot.ts → 探针 → 执行器，浏览器里无从执行）
+import { buildWritePlan, portproxyAddStep, portproxyDeleteStep } from '../write/plan.ts';
+// 类型从 `types.ts` 取：`WritePlanOutcome` 是 `plan.ts` 的**内部**类型（它只把函数导出），
+// 从 `plan.ts` 拿会 TS2459；而 `types.ts` 是纯类型模块，`import type` 编译后被抹掉、不进 bundle。
+import type { WritePlanOutcome } from '../write/types.ts';
 import type { DriftFixView } from './types.ts';
 
 export interface DriftFixInput {
