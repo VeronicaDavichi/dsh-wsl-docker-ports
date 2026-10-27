@@ -47,7 +47,6 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
 .wdp-cfg-label { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
 .wdp-cfg-tag { flex: none; font-size: 11px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); }
 .wdp-cfg-sublabel { font-size: 12px; color: var(--dsw-alias-label-secondary, inherit); }
-.wdp-input.wdp-textarea { height: auto; min-height: 74px; padding: 8px 12px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.6; background-image: none; }
 .wdp-cfg-presets { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 2px 0; }
 .wdp-cfg-preset { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dsw-alias-label-secondary, inherit); }
 .wdp-cfg-issues { margin: 0; padding: 6px 10px; list-style: none; display: flex; flex-direction: column; gap: 4px; border: 0.5px solid var(--dsw-alias-state-error-primary, currentColor); border-radius: var(--dsw-radius-sm, 6px); font-size: 12px; color: var(--dsw-alias-state-error-primary, inherit); }.wdp-cfg-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); overflow-wrap: anywhere; }

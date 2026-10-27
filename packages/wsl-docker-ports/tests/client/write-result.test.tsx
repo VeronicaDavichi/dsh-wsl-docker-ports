@@ -11,7 +11,7 @@
  * ① `executed` 态（`apply.ts:383`）· ② `failed` 态 + **每条原因在同一条目内**（`:385-387`）·
  * ③ 空原因 ⇒ 兜底文案 · ④ `skipped` 态（`:384`，明写「服务端未给逐条原因」）·
  * ⑤ `rolledBack` 态（`:317-348`，含 `message`）· ⑥ 四态分色互不相同且类名在 `styles.ts` 白名单内 ·
- * ⑦ 空态不渲染空段 · ⑧ 逐步顺序 = 服务端顺序（不排序、不跨清单合并）· ⑨ T1.3 零 hex ·
+ * ⑦ 空态不渲染空段 · ⑧ 逐步顺序 = 服务端顺序（不排序、不跨清单合并）· ⑨ 静态样式门见 write-style-gate.test.tsx ·
  * ⑩ 端到端四态可见 + plan 1 / apply 1 · ⑪ DOM/console 零凭据 + 结果区无执行入口 · ⑫ 结果保留。
  */
 
@@ -23,7 +23,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PAGE_CSS } from '../../src/client/styles.ts';
-import { CONFIG_CSS } from '../../src/client/config-css.ts';
 import { createWriteChannel, type WriteChannel, type WriteWiring } from '../../src/client/write-channel.ts';
 import { WRITE_TESTID } from '../../src/client/write-confirm.tsx';
 import { WriteChannelBlock } from '../../src/client/write-panel.tsx';
@@ -234,40 +233,6 @@ describe('009 T1.1 ⑥⑦⑧：分色可区分 / 空态 / 逐步顺序', () => {
     expect(rows.failed[0]?.detail).toContain(FAILURE_REASON_FALLBACK);
     expect(rows.rolledBack).toEqual([]);
     console.log('  · 扫了 1 份回执：行序原样、空原因走兜底、空清单 = []');
-  });
-});
-
-describe('009 T1.3 ⑨：零硬编码 hex / 判定色只来自宿主 token', () => {
-  it('⑨ 组件零 hex；四态类名都在 PAGE_CSS 里；PAGE_CSS 真引用 var(--dsw-*)（非空扫描）', () => {
-    const files = ['write-result.tsx', 'write-panel.tsx'];
-    const hits: string[] = [];
-    let bytes = 0;
-    const tokens = new Set<string>();
-    for (const file of files) {
-      const text = readFileSync(path.join(CLIENT_DIR, file), 'utf8');
-      bytes += Buffer.byteLength(text);
-      for (const match of text.matchAll(/#[0-9a-fA-F]{3,8}\b/gu)) hits.push(`${file}:${match[0]}`);
-      for (const match of text.matchAll(/wdp-[a-z0-9-]+/gu)) tokens.add(match[0]);
-    }
-    expect(hits).toEqual([]);
-    expect(files.length).toBeGreaterThan(0);
-    expect(bytes).toBeGreaterThan(0);
-    expect(tokens.size).toBeGreaterThan(0);
-    // 🔴 017 三订：write-panel.tsx 现在**一个组件两种版式** —— card（右栏页，样式在 PAGE_CSS）
-    // 与 field（配置页，样式在 CONFIG_CSS）。两张表都是真样式表 ⇒ 白名单取并集，
-    // 「每个类名都能在某张表里查到」的判据不变；另各要求至少命中 1 个，防止并集放过「写错表」。
-    let inPage = 0;
-    let inConfig = 0;
-    for (const token of tokens) {
-      const page = PAGE_CSS.includes(`.${token}`);
-      const config = CONFIG_CSS.includes(`.${token}`);
-      expect(page || config, `类名 .${token} 既不在 PAGE_CSS 也不在 CONFIG_CSS`).toBe(true);
-      if (page) inPage += 1;
-      if (config) inConfig += 1;
-    }
-    expect([...PAGE_CSS.matchAll(/var\(--dsw-/gu)].length).toBeGreaterThan(0);
-    expect([...CONFIG_CSS.matchAll(/var\(--dsw-/gu)].length).toBeGreaterThan(0);
-    console.log(`  · 扫了 ${String(files.length)} 文件 / ${String(bytes)} 字节：hex 0 处；用到 ${String(tokens.size)} 个类名（PAGE_CSS 命中 ${String(inPage)} / CONFIG_CSS 命中 ${String(inConfig)}），无一处落空`);
   });
 });
 

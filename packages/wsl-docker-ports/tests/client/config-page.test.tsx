@@ -40,14 +40,14 @@ function ok(patch: Record<string, unknown>): SettingsWriteResult {
   return { ok: true, message: 'ok', patch: patch as never, revisionPassed: true };
 }
 
-function fakePipe(writes: Write[], overrides: { readonly failNs?: string } = {}): SettingsPipe {
+function fakePipe(writes: Write[], overrides: { readonly failNs?: string; readonly managedPorts?: readonly string[] } = {}): SettingsPipe {
   const record = (ns: string, patch: Record<string, unknown>): SettingsWriteResult => {
     if (overrides.failNs === ns) return { ok: false, message: `${ns} 被拒绝`, patch: patch as never, revisionPassed: false };
     writes.push({ ns, patch });
     return ok(patch);
   };
   return {
-    readConfig: async () => BASE,
+    readConfig: async () => (overrides.managedPorts === undefined ? BASE : { ...BASE, managedPorts: [...overrides.managedPorts] }),
     readNamespace: async (ns: string) => (ns === CONTAINERS_SETTINGS_NAMESPACE ? { ...CONTAINERS_NS_VIEW } : null),
     writeDistro: async (name: string) => record('wsl-ports', { distro: name }),
     writeRefreshInterval: async (sec: number) => record('wsl-ports', { refreshIntervalSec: sec }),
@@ -119,7 +119,7 @@ function fakeWrite(options: { readonly token?: string } = {}): { readonly write:
   };
   return { write, requests: () => calls };
 }
-async function mount(writes: Write[], overrides: { readonly failNs?: string; readonly write?: WriteWiring } = {}): Promise<void> {
+async function mount(writes: Write[], overrides: { readonly failNs?: string; readonly write?: WriteWiring; readonly managedPorts?: readonly string[] } = {}): Promise<void> {
   render(<ConfigPage settings={fakePipe(writes, overrides)} write={overrides.write} />);
   await act(async () => {
     await Promise.resolve();
@@ -227,11 +227,16 @@ describe('017 bundle 级配置页', () => {
   it('C6 端口声明：勾 preset + 填区间 ⇒ 与其它字段共用一次「保存设置」，写的是合并后的数组', async () => {
     const writes: Write[] = [];
     await mount(writes);
-    expect((screen.getByTestId('config-managed-ports') as HTMLTextAreaElement).value).toBe('3306');
+    const field = screen.getByTestId('config-managed-ports') as HTMLInputElement;
+    expect(field.value).toBe('3306');
+    // 主人 2026-10-27：不能「每行一项」⇒ 单行 input + 半角逗号，占位符把写法示范出来
+    expect(field.tagName).toBe('INPUT');
+    expect(field.placeholder).toContain(',');
     expect((screen.getByTestId('config-preset-mysql') as HTMLInputElement).checked).toBe(true);
 
     fireEvent.click(screen.getByTestId('config-preset-spring-boot'));
-    fireEvent.change(screen.getByTestId('config-managed-ports'), { target: { value: '3306\n1000-3000' } });
+    // 半角逗号分隔（含空格）⇒ 与换行写法等价
+    fireEvent.change(screen.getByTestId('config-managed-ports'), { target: { value: '3306, 1000-3000' } });
     fireEvent.click(screen.getByTestId(CONFIG_PAGE_TESTID.save));
     await act(async () => {
       await Promise.resolve();
@@ -263,7 +268,7 @@ describe('017 bundle 级配置页', () => {
   it('C8 端口声明写失败 ⇒ 页面如实报失败（不谎报已保存）', async () => {
     const writes: Write[] = [];
     await mount(writes, { failNs: 'wsl-ports' });
-    fireEvent.change(screen.getByTestId('config-managed-ports'), { target: { value: '3306\n9999' } });
+    fireEvent.change(screen.getByTestId('config-managed-ports'), { target: { value: '3306, 9999' } });
     fireEvent.click(screen.getByTestId(CONFIG_PAGE_TESTID.save));
     await act(async () => {
       await Promise.resolve();
@@ -300,5 +305,34 @@ describe('017 bundle 级配置页', () => {
     // 原因挂在按钮 title 上（既有的 008 口径：置灰必须有话说，不静默）
     expect(preview.title).toContain('remote.settings');
     console.log(`  · C10 未接线：data-wired=0、预演置灰、原因「${preview.title.slice(0, 34)}…」`);
+  });
+});
+
+describe('017 端口声明输入形态（2026-10-27 主人：不能每行一项，要半角逗号）', () => {
+  it('C11 粘贴「每行一项」的旧文本 ⇒ 自动转成逗号（单行 input 本身会被浏览器吃掉换行，所以必须拦粘贴）', async () => {
+    const writes: Write[] = [];
+    await mount(writes);
+    const field = screen.getByTestId('config-managed-ports') as HTMLInputElement;
+    field.setSelectionRange(field.value.length, field.value.length);
+    fireEvent.paste(field, {
+      clipboardData: { getData: () => '1000-3000\n5432\n' },
+    });
+    // 原有的 3306 不动，粘进来的两行转成逗号；尾随换行不产生孤零零的逗号
+    expect(field.value).toBe('3306, 1000-3000, 5432');
+    fireEvent.click(screen.getByTestId(CONFIG_PAGE_TESTID.save));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(writes).toContainEqual({ ns: 'wsl-ports', patch: { managedPorts: ['3306', '1000-3000', '5432'] } });
+    });
+    console.log(`  · C11 换行写法 ⇒ ${JSON.stringify(writes)}（逗号是主用法，换行不判非法）`);
+  });
+
+  it('C12 回填是逗号形态：打开配置页看到的不是「每行一项」', async () => {
+    const writes: Write[] = [];
+    await mount(writes, { managedPorts: ['3306', '5432', '1000-3000'] });
+    expect((screen.getByTestId('config-managed-ports') as HTMLInputElement).value).toBe('3306, 5432, 1000-3000');
+    console.log('  · C12 三项声明回填 = 「3306, 5432, 1000-3000」');
   });
 });

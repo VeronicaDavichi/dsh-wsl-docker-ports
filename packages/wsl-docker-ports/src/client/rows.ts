@@ -249,9 +249,14 @@ export function buildPresetOptions(
   }));
 }
 
-/** 区间输入框里的原文（多行 → 用一个字符串，逗号/换行都算分隔；UI 只负责展示与回写原文） */
+/**
+ * 区间输入框里的原文（用一个字符串展示；UI 只负责展示与回写原文）。
+ *
+ * 🔴 **2026-10-27 主人拍板**：「端口或区间（每行一项…）这个不行，不能每行，要支持半角逗号分隔」
+ * ⇒ 回写一律用 **半角逗号 + 一个空格**（`3306, 5432, 1000-3000`），读入侧仍兼容换行（旧配置/旧习惯）。
+ */
 export function managedPortsText(decls: readonly string[]): string {
-  return decls.join('\n');
+  return decls.join(', ');
 }
 
 /**
@@ -277,7 +282,11 @@ export function mergeManagedPortsDecl(draft: string, presetPorts: readonly numbe
     seenNumbers.add(asNumber);
     items.push(String(asNumber));
   };
-  for (const line of draft.split(/[\n,]/)) push(line);
+  // 分隔符：半角逗号（主用法，主人 2026-10-27 指定）+ 换行（旧习惯/粘贴多行）+
+  // 全角逗号 / 顿号（中文输入法顺手打出来的，当分隔符不算数据）。
+  // ⚠️ **不把空格当分隔**：空格在 `1000 - 3000` 里是排版，静默拆开会改写用户原意，
+  // 那类原文该原样进解析器、由解析器报「不是数字」并带出所在项。
+  for (const line of draft.split(/[\n,，、]+/u)) push(line);
   for (const port of presetPorts) push(String(port));
   return items;
 }

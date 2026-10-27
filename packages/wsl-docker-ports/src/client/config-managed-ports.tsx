@@ -9,8 +9,8 @@
  *
  * ## 语义没变
  *
- * - 区间原文（多行 / 逗号分隔）+ presets 勾选 → `mergeManagedPortsDecl` 合成**同一个**
- *   `managedPorts` 数组（REQ-16.4：不另建存储）；
+ * - 区间原文（**半角逗号分隔**，2026-10-27 主人拍板；读入侧仍兼容换行）+ presets 勾选 →
+ *   `mergeManagedPortsDecl` 合成**同一个** `managedPorts` 数组（REQ-16.4：不另建存储）；
  * - 勾选本身**零写入**（REQ-16.4），只有点「保存设置」才发一次配置写；
  * - 非法项**原样留在输入里**并就地报原因（REQ-16.1），不静默丢弃。
  */
@@ -24,8 +24,11 @@ export interface ManagedPortPresetView {
   readonly checked: boolean;
 }
 
+/** 输入框占位符：把「半角逗号分隔」这件事直接示范出来，不用读提示语 */
+const PLACEHOLDER = '3306, 5432, 1000-3000';
+
 export interface ManagedPortsFieldProps {
-  /** 区间原文（多行） */
+  /** 区间原文（半角逗号分隔的单行文本） */
   readonly text: string;
   readonly presets: readonly ManagedPortPresetView[];
   /** 解析出来的非法项原因（空数组 = 合法） */
@@ -50,18 +53,39 @@ export function ManagedPortsField(props: ManagedPortsFieldProps): ReactElement {
         <span className="wdp-cfg-tag">只写配置，不写规则</span>
       </div>
       <label className="wdp-cfg-sublabel" htmlFor="config-managed-ports">
-        端口或区间（每行一项，如 3306 或 1000-3000）
+        端口或区间，用半角逗号分隔（如 3306, 5432, 1000-3000）；从别处粘贴「每行一项」的旧文本会自动转成逗号
       </label>
-      <textarea
+      {/* 单行 input 而不是 textarea：既然分隔符是逗号，「每行一项」的形态会把人往错处带（主人 2026-10-27） */}
+      <input
         id="config-managed-ports"
-        className="wdp-input wdp-textarea"
+        type="text"
+        className="wdp-input wdp-cfg-input-plain"
         data-testid="config-managed-ports"
-        rows={3}
+        placeholder={PLACEHOLDER}
         spellCheck={false}
         value={text}
         disabled={disabled}
         onChange={(event) => {
           onChangeText(event.target.value);
+        }}
+        onPaste={(event) => {
+          // 单行 input 的浏览器行为会**吃掉换行**（`3306\n1000-3000` 变成 `33061000-3000`）
+          // ⇒ 粘贴里带换行 / 全角逗号 / 顿号时，先转成「半角逗号 + 空格」再落值。
+          // 这样「旧的每行一项」照样粘得进来，而输入框本身坚持单行形态。
+          const raw = event.clipboardData?.getData('text') ?? '';
+          if (!/[\r\n，、]/u.test(raw)) return;
+          event.preventDefault();
+          const target = event.currentTarget;
+          const at = target.selectionStart ?? target.value.length;
+          const end = target.selectionEnd ?? at;
+          const before = target.value.slice(0, at);
+          const after = target.value.slice(end);
+          // 空格子扔掉（尾随换行不该留一个孤零零的逗号），并在需要时补一个分隔逗号
+          const parts = raw.split(/[\r\n，、]+/u).map((part) => part.trim()).filter((part) => part !== '');
+          if (parts.length === 0) return;
+          const head = before === '' || /,\s*$/u.test(before) ? before : `${before}, `;
+          const tail = after === '' || /^\s*,/u.test(after) ? after : `, ${after}`;
+          onChangeText(`${head}${parts.join(', ')}${tail}`);
         }}
       />
       <div className="wdp-cfg-presets">

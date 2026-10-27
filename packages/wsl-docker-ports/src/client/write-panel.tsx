@@ -47,7 +47,7 @@ export function parsePortsText(text: string): { readonly ok: true; readonly port
     .split(/[\s,，、;；]+/u)
     .map((token) => token.trim())
     .filter((token) => token !== '');
-  if (tokens.length === 0) return { ok: false, message: '请先填要处理的端口（空格或逗号分隔，如 3306 5432）—— 零请求。' };
+  if (tokens.length === 0) return { ok: false, message: '请先填要处理的端口（半角逗号或空格分隔，如 3306, 5432）—— 零请求。' };
   const ports: number[] = [];
   for (const token of tokens) {
     const value = Number(token);
@@ -209,7 +209,7 @@ export function WriteChannelBlock(props: WriteChannelBlockProps): ReactElement {
             data-write-control="1"
             disabled={!usable || busy}
             value={portsText}
-            placeholder="3306 5432"
+            placeholder="3306, 5432"
             onChange={(event) => setPortsText(event.target.value)}
           />
         </label>

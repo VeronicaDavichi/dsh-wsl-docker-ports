@@ -191,9 +191,27 @@ test('T5.7 区间 + 勾选：合并结果写进同一个数组，非法项原样
   console.log(`  · 扫了 ${String(merged.length)} 项声明，非法 ${String(parsed.issues.length)} 项`);
 });
 
-test('T5.7 区间显示：原文按行回填（不丢用户写法）', () => {
-  assert.equal(managedPortsText(['3306', '1000-3000']), '3306\n1000-3000');
-  console.log('  · 扫了 2 项声明回填原文');
+test('T5.7 区间显示：原文按**半角逗号**回填（主人 2026-10-27：不能每行一项）', () => {
+  assert.equal(managedPortsText(['3306', '1000-3000']), '3306, 1000-3000');
+  console.log(`  · 回填原文 = 「${managedPortsText(['3306', '1000-3000'])}」`);
+});
+
+test('T5.7 分隔符：半角逗号是主用法，换行 / 全角逗号 / 顿号都当分隔（不算数据）', () => {
+  const expected = ['3306', '1000-3000', '5432'];
+  for (const draft of ['3306,1000-3000,5432', '3306, 1000-3000, 5432', '3306\n1000-3000\n5432', '3306，1000-3000，5432', '3306、1000-3000、5432']) {
+    const merged = mergeManagedPortsDecl(draft, []);
+    assert.deepEqual(merged, expected, `「${draft}」⇒ ${JSON.stringify(merged)}`);
+  }
+  console.log('  · 扫了 5 种写法（半角逗号 / 逗号+空格 / 换行 / 全角逗号 / 顿号）⇒ 同一个数组');
+});
+
+test('T5.7 空格不当分隔：`1000 - 3000` 是**一项**（原样进解析器，由解析器按区间判，UI 不改写用户原文）', () => {
+  const merged = mergeManagedPortsDecl('1000 - 3000', []);
+  assert.deepEqual(merged, ['1000 - 3000'], `空格被当成分隔符了：${JSON.stringify(merged)}`);
+  const parsed = managedPortsIssues(merged);
+  assert.equal(parsed.ok, true, `解析器本来就容忍区间两侧的排版空格：${JSON.stringify(parsed.issues)}`);
+  assert.deepEqual(parsed.ports, [{ start: 1000, end: 3000 }]);
+  console.log('  · 空格写法 ⇒ 1 项 / 区间 1000-3000（未被拆成两项）');
 });
 
 test('T5.6 漂移：显示「旧 → 新」两个地址，不只说「漂移了」', () => {
