@@ -252,11 +252,13 @@ export function buildPresetOptions(
 /**
  * 区间输入框里的原文（用一个字符串展示；UI 只负责展示与回写原文）。
  *
- * 🔴 **2026-10-27 主人拍板**：「端口或区间（每行一项…）这个不行，不能每行，要支持半角逗号分隔」
- * ⇒ 回写一律用 **半角逗号 + 一个空格**（`3306, 5432, 1000-3000`），读入侧仍兼容换行（旧配置/旧习惯）。
+ * 🔴 **2026-10-27 主人两次拍板**：
+ * 1. 先：「端口或区间（每行一项…）这个不行，不能每行，要支持**半角逗号分隔**」⇒ 读入侧逗号是主用法；
+ * 2. 再：「这个还是做成 **textarea** 吧，如果多了的话这里一个长条会很难维护」
+ *    ⇒ 控件回到多行 textarea，**回写用换行**（一行一项最好读、最好改）；逗号照样认，两种写法等价。
  */
 export function managedPortsText(decls: readonly string[]): string {
-  return decls.join(', ');
+  return decls.join('\n');
 }
 
 /**
@@ -282,7 +284,7 @@ export function mergeManagedPortsDecl(draft: string, presetPorts: readonly numbe
     seenNumbers.add(asNumber);
     items.push(String(asNumber));
   };
-  // 分隔符：半角逗号（主用法，主人 2026-10-27 指定）+ 换行（旧习惯/粘贴多行）+
+  // 分隔符：半角逗号（主人 2026-10-27 指定）+ 换行（textarea 里一行一项，多了好维护）+
   // 全角逗号 / 顿号（中文输入法顺手打出来的，当分隔符不算数据）。
   // ⚠️ **不把空格当分隔**：空格在 `1000 - 3000` 里是排版，静默拆开会改写用户原意，
   // 那类原文该原样进解析器、由解析器报「不是数字」并带出所在项。

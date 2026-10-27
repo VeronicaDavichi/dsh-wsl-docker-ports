@@ -283,3 +283,28 @@ p2 0、主包 51,883 B、chunk **165,887 B**。
 静态样式门迁出 1 条 ⇒ **`node --test` 444/444、vitest 20 files / 174 tests**。
 **真机**：输入 `3306, 1000-3000, 5432` ⇒ 无非法项、保存亮起；`onPaste` 派发 `8080\n9000\n`
 ⇒ `defaultPrevented=true`、值变 `…, 8080, 9000`（截图 [evidence-managed-ports-comma.png](./evidence-managed-ports-comma.png)，**未保存**，配置仍是 `["3306"]`）。
+
+### 端口声明控件回退成 textarea（同日第四轮：主人「还是做成 textarea 吧」）
+
+**原话**：「这个还是做成 textarea 吧，如果多了的话这里一个长条会很难维护」。
+
+**判定**：第三轮把控件压成单行 `<input>` 是**过度修正** —— 逗号分隔是对的，单行形态不是。
+真到了十几二十个声明（本机原有 19 条规则），一个横向长条根本没法逐项看/逐项改。
+
+**最终形态**（第二轮「逗号」与第四轮「多行」都保住）：
+
+| 项 | 第三轮（单行 input） | 现在（textarea） |
+| --- | --- | --- |
+| 控件 | `<input type="text">` 34px | `<textarea rows=3>`，min-height 74px、`resize: vertical`、等宽字体（`.wdp-input.wdp-textarea`，样式行按原字节恢复） |
+| 回填 | `join(', ')` | `join('\n')`（一行一项，多了好改） |
+| 提示 | 「用半角逗号分隔…粘贴旧文本会自动转成逗号」 | 「端口或区间，半角逗号或换行分隔都行（如 3306, 5432, 1000-3000；一行一项也可以，多了分行更好改）」 |
+| 占位符 | `3306, 5432, 1000-3000` | 不变 |
+| 分隔符 | `split(/[\n,，、]+/u)` | **不变**（半角逗号为主 + 换行 + 全角逗号/顿号；空格仍不当分隔符） |
+| `onPaste` | 必须拦（单行 input 会吃掉换行） | **删除** —— textarea 天然保留换行，不再有那类陷阱 |
+
+**用例**：`client-rows.test.ts` 的回填断言改回 `'3306\n1000-3000'`；`config-page.test.tsx` 的
+C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项回填」、新增 C13「换行 / 逗号 / 混写 ⇒
+同一个声明数组」⇒ **`node --test` 444/444、vitest 20 files / 175 tests**。
+**真机**（最终包）：`tag=TEXTAREA`、`rows=3`、高 76px、`resize: vertical`、等宽字体；填
+`3306\n1000-3000, 5432\n\n8080`（换行 + 逗号 + 空行混写）⇒ 无非法项、保存亮起；
+截图 [evidence-managed-ports-textarea.png](./evidence-managed-ports-textarea.png)（**未保存**，profile 仍 `["3306"]`）。

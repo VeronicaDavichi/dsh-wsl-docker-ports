@@ -80,6 +80,7 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
 .wdp-cfg-rows { display: flex; flex-direction: column; gap: 10px; }
 .wdp-cfg-row { display: flex; flex-direction: column; gap: 6px; }
 .wdp-input.wdp-cfg-input-plain { padding: 0 12px; background-image: none; }
+.wdp-input.wdp-textarea { height: auto; min-height: 74px; padding: 8px 12px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.6; background-image: none; }
 .wdp-cfg-btn { appearance: none; align-self: flex-start; box-sizing: border-box; height: 34px; padding: 0 14px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-md, 8px); background: var(--dsw-alias-bg-layer-3, transparent); font: inherit; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); cursor: pointer; }
 .wdp-cfg-btn:hover:not([disabled]) { border-color: var(--dsw-alias-border-l2, currentColor); }
 .wdp-cfg-btn:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, currentColor)); outline-offset: 1px; }

@@ -227,10 +227,10 @@ describe('017 bundle 级配置页', () => {
   it('C6 端口声明：勾 preset + 填区间 ⇒ 与其它字段共用一次「保存设置」，写的是合并后的数组', async () => {
     const writes: Write[] = [];
     await mount(writes);
-    const field = screen.getByTestId('config-managed-ports') as HTMLInputElement;
+    const field = screen.getByTestId('config-managed-ports') as HTMLTextAreaElement;
     expect(field.value).toBe('3306');
-    // 主人 2026-10-27：不能「每行一项」⇒ 单行 input + 半角逗号，占位符把写法示范出来
-    expect(field.tagName).toBe('INPUT');
+    // 主人 2026-10-27 二次拍板：控件是 textarea（多了分行好改），半角逗号照样是主用法
+    expect(field.tagName).toBe('TEXTAREA');
     expect(field.placeholder).toContain(',');
     expect((screen.getByTestId('config-preset-mysql') as HTMLInputElement).checked).toBe(true);
 
@@ -308,17 +308,11 @@ describe('017 bundle 级配置页', () => {
   });
 });
 
-describe('017 端口声明输入形态（2026-10-27 主人：不能每行一项，要半角逗号）', () => {
-  it('C11 粘贴「每行一项」的旧文本 ⇒ 自动转成逗号（单行 input 本身会被浏览器吃掉换行，所以必须拦粘贴）', async () => {
+describe('017 端口声明输入形态（主人两次拍板：半角逗号照认，但控件回到 textarea）', () => {
+  it('C11 逗号写法照样能保存（半角逗号是主用法）', async () => {
     const writes: Write[] = [];
     await mount(writes);
-    const field = screen.getByTestId('config-managed-ports') as HTMLInputElement;
-    field.setSelectionRange(field.value.length, field.value.length);
-    fireEvent.paste(field, {
-      clipboardData: { getData: () => '1000-3000\n5432\n' },
-    });
-    // 原有的 3306 不动，粘进来的两行转成逗号；尾随换行不产生孤零零的逗号
-    expect(field.value).toBe('3306, 1000-3000, 5432');
+    fireEvent.change(screen.getByTestId('config-managed-ports'), { target: { value: '3306, 1000-3000, 5432' } });
     fireEvent.click(screen.getByTestId(CONFIG_PAGE_TESTID.save));
     await act(async () => {
       await Promise.resolve();
@@ -326,13 +320,38 @@ describe('017 端口声明输入形态（2026-10-27 主人：不能每行一项�
     await waitFor(() => {
       expect(writes).toContainEqual({ ns: 'wsl-ports', patch: { managedPorts: ['3306', '1000-3000', '5432'] } });
     });
-    console.log(`  · C11 换行写法 ⇒ ${JSON.stringify(writes)}（逗号是主用法，换行不判非法）`);
+    console.log(`  · C11 逗号写法 ⇒ ${JSON.stringify(writes)}`);
   });
 
-  it('C12 回填是逗号形态：打开配置页看到的不是「每行一项」', async () => {
+  it('C12 控件是 textarea、回填一行一项（多了好改；逗号/换行两种写法等价）', async () => {
     const writes: Write[] = [];
     await mount(writes, { managedPorts: ['3306', '5432', '1000-3000'] });
-    expect((screen.getByTestId('config-managed-ports') as HTMLInputElement).value).toBe('3306, 5432, 1000-3000');
-    console.log('  · C12 三项声明回填 = 「3306, 5432, 1000-3000」');
+    const field = screen.getByTestId('config-managed-ports') as HTMLTextAreaElement;
+    expect(field.tagName).toBe('TEXTAREA');
+    expect(field.value).toBe('3306\n5432\n1000-3000');
+    expect(field.placeholder).toContain(',');
+    console.log(`  · C12 textarea 回填 = 「${field.value.replaceAll('\n', '⏎')}」`);
+  });
+
+  it('C13 换行 / 逗号 / 混着写 ⇒ 同一个声明数组（textarea 不再需要拦粘贴）', async () => {
+    const cases: readonly (readonly [string, readonly string[]])[] = [
+      ['3306\n1000-3000', ['3306', '1000-3000']],
+      ['3306, 1000-3000', ['3306', '1000-3000']],
+      ['3306,1000-3000\n5432', ['3306', '1000-3000', '5432']],
+    ];
+    for (const [draft, expected] of cases) {
+      const writes: Write[] = [];
+      await mount(writes);
+      fireEvent.change(screen.getByTestId('config-managed-ports'), { target: { value: draft } });
+      fireEvent.click(screen.getByTestId(CONFIG_PAGE_TESTID.save));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(writes).toContainEqual({ ns: 'wsl-ports', patch: { managedPorts: expected } });
+      });
+      cleanup();
+    }
+    console.log(`  · C13 扫了 ${String(cases.length)} 种写法（换行 / 逗号 / 混写）⇒ 同一个数组`);
   });
 });

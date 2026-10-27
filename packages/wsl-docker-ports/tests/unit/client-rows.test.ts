@@ -191,9 +191,9 @@ test('T5.7 区间 + 勾选：合并结果写进同一个数组，非法项原样
   console.log(`  · 扫了 ${String(merged.length)} 项声明，非法 ${String(parsed.issues.length)} 项`);
 });
 
-test('T5.7 区间显示：原文按**半角逗号**回填（主人 2026-10-27：不能每行一项）', () => {
-  assert.equal(managedPortsText(['3306', '1000-3000']), '3306, 1000-3000');
-  console.log(`  · 回填原文 = 「${managedPortsText(['3306', '1000-3000'])}」`);
+test('T5.7 区间显示：原文按**换行**回填（textarea 一行一项最好维护；逗号仍是合法输入）', () => {
+  assert.equal(managedPortsText(['3306', '1000-3000']), '3306\n1000-3000');
+  console.log(`  · 回填原文 = 「${managedPortsText(['3306', '1000-3000']).replaceAll('\n', '⏎')}」`);
 });
 
 test('T5.7 分隔符：半角逗号是主用法，换行 / 全角逗号 / 顿号都当分隔（不算数据）', () => {
