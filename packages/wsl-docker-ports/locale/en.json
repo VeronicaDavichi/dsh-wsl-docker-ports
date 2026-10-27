@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "WSL Port Forwarding",
-    "description": "Inspect container port mappings and portproxy rules, then apply or remove forwarding per port (read-only facts, no side effects on open)."
-  }
-}

@@ -35,7 +35,7 @@ import {
   unwrapConfigStringRecord,
   unwrapConfigRefreshInterval,
   type ConfigValueSource,
-} from 'dsh-wsl-docker-core';
+} from './shared/config-read.ts';
 
 /**
  * 三个纯归一化工具在本文件**原样再导出**：既有调用点与测试的 `from './config-read.ts'`
@@ -50,8 +50,8 @@ export {
   readConfigToken,
   unwrapConfigRefreshInterval,
   createConfigFieldReader,
-} from 'dsh-wsl-docker-core';
-export type { ConfigValueSource, VolatileRefLike } from 'dsh-wsl-docker-core';
+} from './shared/config-read.ts';
+export type { ConfigValueSource, VolatileRefLike } from './shared/config-read.ts';
 
 /** 本包宿主面用到的**七个**配置字段的**活体读取面**（每次调用现读，不吃缓存） */
 export interface PortsConfigReaders {

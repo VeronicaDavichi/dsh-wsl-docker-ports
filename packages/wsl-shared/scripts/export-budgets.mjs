@@ -16,8 +16,6 @@
  * | `dsh-wsl-shared` | 12 | 25 | 硬预算（= REQ-6.4 原文） |
  * | `dsh-terminal-profiles` | 31 | 45 | **存量欠账（不是认可值）** |
  * | `dsh-wsl-docker-ports` | 12 | 25 | 硬预算（沿用 003 收敛时的 12 / 25） |
- * | `dsh-wsl-docker-core` | 48 | 38 | **首次登记（按现状设上限）**：016 拆出的纯库 |
- * | `dsh-wsl-docker-containers` | 12 | 25 | 硬预算：016 拆出的容器插件包 |
  *
  * ## 棘轮语义（怎么才算「改上限」合法）
  *
@@ -78,24 +76,7 @@ export const EXPORT_BUDGETS = {
     nature: 'hard',
     recorded: '2026-10-12',
     trace: '#51',
-    note: '沿用 003 T6.7⑤ 收敛时引入的本包副本门预算（运行时 12 / 类型 25）；实测 6 / 9（016 拆分后更小）',
-  },
-  // 🔴 016：拆分出的两个真包，各自首次登记（按**实测现状**设上限，棘轮只许降）
-  'dsh-wsl-docker-core': {
-    runtime: 48,
-    types: 38,
-    nature: 'debt',
-    recorded: '2026-10-27',
-    trace: '#62',
-    note: '016 拆出的纯库：把原本散在 wsl-docker-ports 的探针 / 配置 / 凭据 / 错误模型 / HTTP 收成一份公开面（48 / 38 是按现状设上限，不是认可值；方向是随消费方收敛而下降）',
-  },
-  'dsh-wsl-docker-containers': {
-    runtime: 12,
-    types: 25,
-    nature: 'hard',
-    recorded: '2026-10-27',
-    trace: '#62',
-    note: '016 拆出的容器插件包：运行时面与转发包同口径（name / inject / apply / Config / 服务名），实测 6 / 8',
+    note: '沿用 003 T6.7⑤ 收敛时引入的本包副本门预算（运行时 12 / 类型 25）；实测远在预算内',
   },
 };
 

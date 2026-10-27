@@ -27,8 +27,8 @@ import { createHash } from 'node:crypto';
 
 import type { ManagedPorts } from '../diff/managed-ports.ts';
 import type { PortState, Scope } from '../diff/types.ts';
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
-import type { LocalAddressEntry } from 'dsh-wsl-docker-core';
+import type { PortproxyRule } from '../read/netsh.ts';
+import type { LocalAddressEntry } from '../read/local-addresses.ts';
 import { createListenResolver } from './listen-address.ts';
 import { planPortDtoOf, type PlanPortDto } from './plan-port.ts';
 import { isPortNumber } from '../write/firewall.ts';

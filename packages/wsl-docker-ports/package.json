@@ -3,14 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "WSL Docker 管理器 · 端口转发可视化（插件包）：只读事实层（docker／netsh）与提权写路径",
+  "description": "WSL Docker 管理器 + 端口转发可视化（插件包）：只读事实层（docker / netsh）与（后续）写路径",
   "exports": {
     ".": "./lib/index.js",
     "./client": {
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
     },
-    "./locale/*": "./locale/*",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -32,11 +31,9 @@
     "check:client": "node scripts/verify-client-loader.mjs && node scripts/assert-client-split.mjs",
     "check:exports": "node scripts/check-exports.mjs",
     "check:size": "node ../wsl-shared/scripts/check-size.mjs",
-    "check:host": "node scripts/verify-host-entry.mjs",
-    "check:borders": "node ../../wsl-docker-core/scripts/check-borders.mjs"
+    "check:host": "node scripts/verify-host-entry.mjs"
   },
   "dependencies": {
-    "dsh-wsl-docker-core": "workspace:*",
     "dsh-wsl-shared": "workspace:*"
   },
   "devDependencies": {
@@ -51,7 +48,6 @@
     "vitest": "^5.0.3"
   },
   "files": [
-    "lib/**",
-    "locale/**"
+    "lib/**"
   ]
 }

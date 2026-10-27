@@ -18,7 +18,7 @@
 import { allowedListenAddressesFor } from '../diff/listen-allowed.ts';
 import { isManagedPort } from '../diff/managed-ports.ts';
 import type { Scope } from '../diff/types.ts';
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
+import type { PortproxyRule } from '../read/netsh.ts';
 
 import { cidrFor, isPortNumber } from './firewall.ts';
 import { matchOwnership, type OwnershipMatch } from './ownership.ts';

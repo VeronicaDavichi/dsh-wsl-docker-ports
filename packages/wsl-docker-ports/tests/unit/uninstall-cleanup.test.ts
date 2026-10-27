@@ -17,7 +17,7 @@ import { join } from 'node:path';
 
 import { singlePort, type ManagedPortRange } from '../../src/diff/managed-ports.ts';
 import { TEMP_PREFIX } from '../../src/elevate/script.ts';
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
+import type { PortproxyRule } from '../../src/read/netsh.ts';
 import { buildCleanupSteps } from '../../src/write/cleanup.ts';
 import { firewallRuleName } from '../../src/write/firewall.ts';
 import type { WriteStep } from '../../src/write/types.ts';

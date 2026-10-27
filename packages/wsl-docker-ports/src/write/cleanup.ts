@@ -20,7 +20,7 @@
  */
 
 import type { ManagedPorts } from '../diff/managed-ports.ts';
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
+import type { PortproxyRule } from '../read/netsh.ts';
 import { buildFirewallDeleteStep, firewallRuleName } from './firewall.ts';
 import { isDeletableRule } from './ownership.ts';
 import { portproxyDeleteStep } from './plan.ts';

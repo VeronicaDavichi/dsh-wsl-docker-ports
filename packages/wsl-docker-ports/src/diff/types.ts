@@ -5,9 +5,9 @@
  * 所以每条字段都写清「它是哪个 REQ 要求的」。
  */
 
-import type { DockerContainer, DockerPortProtocol } from 'dsh-wsl-docker-core';
-import type { ListenerTable } from 'dsh-wsl-docker-core';
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
+import type { DockerContainer, DockerPortProtocol } from '../read/docker.ts';
+import type { ListenerTable } from '../read/listeners.ts';
+import type { PortproxyRule } from '../read/netsh.ts';
 import type { ManagedPorts } from './managed-ports.ts';
 
 /** 端口作用域（005 REQ-2.1：逐端口，**默认 loopback**） */

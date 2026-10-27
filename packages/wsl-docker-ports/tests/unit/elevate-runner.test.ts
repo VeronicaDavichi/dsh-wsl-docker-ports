@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { singlePort } from '../../src/diff/managed-ports.ts';
-import { parsePortproxyTable, type PortproxyRule } from 'dsh-wsl-docker-core';
+import { parsePortproxyTable, type PortproxyRule } from '../../src/read/netsh.ts';
 import { runElevate } from '../../src/elevate/runner.ts';
 import { buildWritePlan } from '../../src/write/plan.ts';
 import type { WritePlan } from '../../src/write/types.ts';

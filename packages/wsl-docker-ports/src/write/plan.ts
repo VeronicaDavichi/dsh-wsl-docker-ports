@@ -29,7 +29,7 @@
 
 import { isManagedPort, type ManagedPorts } from '../diff/managed-ports.ts';
 import type { PortState, Scope } from '../diff/types.ts';
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
+import type { PortproxyRule } from '../read/netsh.ts';
 
 import {
   buildFirewallAddStep,

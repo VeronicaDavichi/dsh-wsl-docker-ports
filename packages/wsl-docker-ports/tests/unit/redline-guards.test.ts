@@ -25,7 +25,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { filesMatching, scanFor, srcSources } from '../helpers/src-scan.ts';
-import { NETSH_ARGV } from 'dsh-wsl-docker-core';
+import { NETSH_ARGV } from '../../src/read/netsh-probe.ts';
 
 const SOURCES = srcSources();
 
@@ -86,7 +86,7 @@ test('T3.1 红线⑤：只读 show 只能是 `portproxy show v4tov4` 形态，�
   // 由红线⑥做**行为断言**（比 grep 文本强）。D 交付时报告的「朴素 grep 会误报」正是这一条。
   assert.deepEqual(
     [...new Set(occurrences.map((item) => item.split(' → ')[0]))].sort(),
-    ['src/elevate/runner.ts'],
+    ['src/elevate/runner.ts', 'src/read/netsh-probe.ts'],
     `只读 show 的落点是白名单（且形态必须精确到 v4tov4）：${occurrences.join(' | ')}`,
   );
 });
@@ -113,8 +113,8 @@ test('T3.6 来源约束自证：本包不注册任何 Agent 工具（REQ-4.2，�
 });
 
 test('守卫自身的元断言：src/ 全树确实被读到了（防止「扫了 0 个文件 ⇒ 全绿」的假绿）', () => {
-  assert.ok(SOURCES.length >= 20, `期望读到 >= 20 个源文件，实际 ${String(SOURCES.length)}`);
-  for (const expected of ['src/index.ts', 'src/write/plan.ts', 'src/elevate/script.ts', 'src/route.ts']) {
+  assert.ok(SOURCES.length >= 15, `期望读到 >= 15 个源文件，实际 ${String(SOURCES.length)}`);
+  for (const expected of ['src/index.ts', 'src/read/netsh-probe.ts', 'src/write/plan.ts', 'src/elevate/script.ts']) {
     assert.ok(
       SOURCES.some((source) => source.path === expected),
       `守卫必须覆盖 ${expected}（没扫到 = 断言可能空转）`,

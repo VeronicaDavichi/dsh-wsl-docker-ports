@@ -20,7 +20,7 @@ import type { ManagedPorts } from '../diff/managed-ports.ts';
 import type { AllowedListenFacts } from '../diff/listen-allowed.ts';
 import { isOurListenAddress } from '../diff/listen-allowed.ts';
 import type { PortState, Scope } from '../diff/types.ts';
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
+import type { PortproxyRule } from '../read/netsh.ts';
 import { buildWritePlan } from '../write/plan.ts';
 import type { WriteAction, WriteBlockReason, WritePlanInput, WriteStep } from '../write/types.ts';
 import { listenFactsOf, type ListenResolver } from './listen-address.ts';

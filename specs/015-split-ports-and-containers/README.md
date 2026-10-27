@@ -213,26 +213,3 @@ R3（共享层白名单 + 业务词）、R4（公开面无容器导出）、R5�
 - **D2 容器页缺刷新间隔**：容器页新增 `sel-containers-refresh-interval`（五档、默认关闭）、`sameContainersPayload` 忽略 `generatedAt`、`refresh.ts` 抽出通用比较器；写回只进容器行命名空间。
 
 字节：主包 **56,350 B 未涨**；`client.ports.js` **139,980 B（−13,729）**；`client.containers.js` **26,139 B（+2,929）**。
----
-
-## ⚠️ 已被 016 取代（2026-10-27，原文一字未删，只追加）
-
-本 Spec 的核心形态假设 **已被 [016](../016-split-into-two-real-packages/README.md) 取代**，以下三处不再成立：
-
-1. **「不做两个独立 npm 包」（已拍板 1）**：宿主按**包**取客户端产物（dsh.client + xports["./client"]），
-   一个包只能有一份 client.js ⇒ 同包双行在客户端侧必然共用一份 bundle 与同一批模块级状态
-   （「一行失败连累另一行」正是本 Spec design §4 想排除的）。016 改为**三个真包**（core 纯库 + 两个插件包）。
-2. **「每包仍然只有一个 Config（7 字段），容器行加载同一份 schema」（追加裁定 5）**：016 起
-   容器包有自己的 Config（3 字段：distro / writeToken / efreshIntervalSec），转发行保留自己那 5 个；
-   src/role.ts 与「按角色隐藏字段」整段**删除**（每个包只有一个角色，不需要运行时判角色）。
-3. **src/shared/** 作为同包薄层（P1）**：016 把这层**下沉成独立包** dsh-wsl-docker-core
-   （另加一个浏览器安全的 ./browser 子入口，用来解决客户端 chunk 被 node 侧拖累的构建期缺陷）。
-
-仍然有效的部分（016 全部继承）：REQ-1.2 单开互不影响、REQ-1.3 独立命名空间与独立 writeToken、
-REQ-1.4 转发侧逐字节不变、REQ-1.5 共用只读探针不复制、REQ-1.6 两方 UI 不互相打包、REQ-1.7 插入行不带 disabled；
-以及 D1/D2 两条真机修复的**判据**（转发页不许有容器表、容器页五档刷新默认关闭）。
-
-⚠️ 注意本 Spec 里 cordis.patch.yml 的**同 
-ame、两条 - id:** 形态（P2）：016 起两个插件包各带
-**自己的** cordis.patch.yml，各插入**一条** id = 
-ame = 包名的行 ⇒ 不再有「同包双行」。

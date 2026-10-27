@@ -102,8 +102,6 @@
     | `dsh-wsl-shared` | 12 | 25 | #1–#50 |
     | `dsh-terminal-profiles` | 31 | 45 | #51 |
     | `dsh-wsl-docker-ports` | 12 | 25 | #51 |
-    | `dsh-wsl-docker-core` | 48 | 38 | #62 |
-    | `dsh-wsl-docker-containers` | 12 | 25 | #62 |
     <!-- export-budgets:SSoT:end -->
   - **行尾归一痕（2026-10-12）**：`stack-decision.md` 与 `stack-decision-changelog.md` 里各 **1 处** lone-LF 行尾（两文件里**同一逻辑行** = changelog **#46**「提权 订正（真机）」行）**已归一为 CRLF**（= 两文件的主导 EOL）；**非内容变更**，该行正文字节一字未改。留痕见 changelog **#51**。
   - **软阈值变更留痕（2026-10-08 同日二次拍板：20 → 25）**：Phase 4 后实测**运行时 7/12 ✅、类型 15（合计 22 > 20）**；阈值 20 是「只有 3 个模块」时定的，包已长到 7 个模块，而 15 个类型**逐个都有消费方**（002/003/005 的配置与 UI）⇒ 提高软指标并留痕，**不砍类型、不拆包**。运行时 SHALL（≤ 12）与判定逻辑不变，只换阈值；`check-exports.mjs` 头部、`AGENTS.md` 硬规则表、`tasks.md`（校验门行/口径节/T6.1）、`README.md` 已同步。

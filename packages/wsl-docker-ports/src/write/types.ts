@@ -17,7 +17,7 @@
 import type { ManagedPorts } from '../diff/managed-ports.ts';
 import type { AllowedListenFacts } from '../diff/listen-allowed.ts';
 import type { PortState, Scope } from '../diff/types.ts';
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
+import type { PortproxyRule } from '../read/netsh.ts';
 
 /** 写动作（REQ-1.2 / REQ-2.4 / design §2） */
 export type WriteAction = 'add' | 'remove' | 'fix' | 'switch-scope';

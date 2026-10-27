@@ -24,22 +24,30 @@ import type {
 } from './types.ts';
 
 /**
- * 页定义 / seat 注册参数已拆到 [`tab-def.ts`](./tab-def.ts)（主包常驻面只装那一小块）。
- * 这里**原样转发**（**只转发侧**：016 起容器页定义属于容器包自己的 bundle）。
+ * 015 `P4`：页定义 / seat 注册参数已拆到 [`tab-def.ts`](./tab-def.ts)（主包常驻面只装那一小块）。
+ * 这里**原样转发**（含 015 新加的容器页）⇒ 本文件既有的 import 路径与测试断言一字不变。
  */
 export {
   PAGE_ID,
   PAGE_KIND,
   PAGE_TITLE,
+  CONTAINERS_PAGE_ID,
+  CONTAINERS_PAGE_KIND,
+  CONTAINERS_PAGE_TITLE,
   TAB_SLOT,
   TAB_TITLE_SLOT,
   GUIDE_ENTRY_ID,
   GUIDE_ENTRY_ORDER,
   GUIDE_ENTRY_TITLE,
   GUIDE_ENTRY_DESCRIPTION,
+  CONTAINERS_GUIDE_ENTRY_ID,
+  CONTAINERS_GUIDE_ENTRY_ORDER,
+  CONTAINERS_GUIDE_TITLE,
+  CONTAINERS_GUIDE_DESCRIPTION,
   TAB_SEATS,
   paneTabDefinition,
   portsTabDefinition,
+  containersTabDefinition,
   registerTabSeats,
 } from './tab-def.ts';
 

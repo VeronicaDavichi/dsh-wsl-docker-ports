@@ -39,6 +39,9 @@ const outfile = path.join(pkgRoot, 'lib', 'client.js');
 /** 渲染面 chunk 的文件名（= 主包 `PANE_CHUNK` 说明符的 basename = `chunk-ports.ts` 的产物名） */
 const chunkName = 'client.ports.js';
 const chunkOutfile = path.join(pkgRoot, 'lib', chunkName);
+/** 容器页 chunk 的文件名（= 主包 `CONTAINERS_CHUNK` 说明符的 basename = `chunk-containers.ts` 的产物名） */
+const containersChunkName = 'client.containers.js';
+const containersChunkOutfile = path.join(pkgRoot, 'lib', containersChunkName);
 
 /**
  * esbuild 的 `external` = 「不要打进 bundle」。
@@ -107,6 +110,6 @@ async function buildEntry(entryPoint, outfilePath, jsBanner) {
 }
 
 // ① 主包（tab 注册壳 + 取块调用点）② 渲染面 chunk（`pane.tsx` 整棵子树 + 写路径内核）
-// 🔴 016：容器页的 chunk（`client.containers.js`）随容器包搬走 ⇒ 本包只建自己的两个产物
 await buildEntry(path.join(pkgRoot, 'src', 'client', 'index.ts'), outfile, banner);
 await buildEntry(path.join(pkgRoot, 'src', 'client', 'chunk-ports.ts'), chunkOutfile, chunkBanner);
+await buildEntry(path.join(pkgRoot, 'src', 'client', 'chunk-containers.ts'), containersChunkOutfile, chunkBanner.replace('client.ports.js', containersChunkName));

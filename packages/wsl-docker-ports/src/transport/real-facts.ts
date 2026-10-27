@@ -26,8 +26,8 @@
 import type { ElevationPolicy } from '../elevate/types.ts';
 import { readConfigValue } from '../config-read.ts';
 import type { ConfigValueSource } from '../config-read.ts';
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
-import type { LocalAddressEntry } from 'dsh-wsl-docker-core';
+import type { PortproxyRule } from '../read/netsh.ts';
+import type { LocalAddressEntry } from '../read/local-addresses.ts';
 import type { PlanFacts } from './plan.ts';
 
 const POLICIES: readonly ElevationPolicy[] = ['none', 'ask', 'passby'];

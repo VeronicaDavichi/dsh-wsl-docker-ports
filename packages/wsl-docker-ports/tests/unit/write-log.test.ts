@@ -17,7 +17,7 @@ import { test } from 'node:test';
 
 // @ts-expect-error TS7016：001 的 `strip-comments.mjs` 是 dev 脚本、无类型声明；这里只借它的**口径**
 import { stripComments as stripCommentsUntyped } from '../../../wsl-shared/scripts/strip-comments.mjs';
-import { parsePortproxyTable, type PortproxyRule } from 'dsh-wsl-docker-core';
+import { parsePortproxyTable, type PortproxyRule } from '../../src/read/netsh.ts';
 import { compareOthers, createWriteLogEntry, hasFourFields } from '../../src/write/log.ts';
 import { fixtureText } from '../helpers/fake-executor.ts';
 import { rule, ruleToEth0 } from '../helpers/factories.ts';

@@ -7,8 +7,8 @@
 
 import type { WslDistro, WslDistroState } from 'dsh-wsl-shared';
 
-import { parseDockerPorts, type DockerContainer } from 'dsh-wsl-docker-core';
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
+import { parseDockerPorts, type DockerContainer } from '../../src/read/docker.ts';
+import type { PortproxyRule } from '../../src/read/netsh.ts';
 
 export const ETH0 = '172.20.201.152';
 

@@ -14,9 +14,9 @@ import path from 'node:path';
 import { diff } from '../../src/diff/engine.ts';
 import type { ManagedPorts } from '../../src/diff/managed-ports.ts';
 import type { DiffResult, ExternalRule, PortClassification, PortState, Scope, UnsupportedMapping } from '../../src/diff/types.ts';
-import { parsePortproxyTable } from 'dsh-wsl-docker-core';
-import type { DockerContainer } from 'dsh-wsl-docker-core';
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
+import { parsePortproxyTable } from '../../src/read/netsh.ts';
+import type { DockerContainer } from '../../src/read/docker.ts';
+import type { PortproxyRule } from '../../src/read/netsh.ts';
 import type { NatGateView, PortsSnapshot } from '../../src/client/types.ts';
 
 export const ETH0 = '172.20.201.152';

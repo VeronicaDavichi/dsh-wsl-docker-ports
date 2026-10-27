@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { Config, PORTS_CONFIG_FIELDS, createPortsSchema } from '../../src/config.ts';
-import type { SchemaFactory } from 'dsh-wsl-docker-core';
+import type { SchemaFactory } from '../../src/config.ts';
 import { HOST_FUNCTIONS, loadHostGate, hostSettingsCandidates } from '../helpers/host-gate.ts';
 
 const loaded = loadHostGate();

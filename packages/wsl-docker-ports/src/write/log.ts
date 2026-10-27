@@ -15,7 +15,7 @@
  * 与「跑了但退出码是 0」必须能区分。
  */
 
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
+import type { PortproxyRule } from '../read/netsh.ts';
 import type { WriteAction } from './types.ts';
 
 export interface WriteLogEntry {

@@ -21,9 +21,9 @@ import { listDistros } from 'dsh-wsl-shared';
 
 import { diff } from '../../src/diff/engine.ts';
 import { parseManagedPorts } from '../../src/diff/managed-ports-parse.ts';
-import { probeDockerPs } from 'dsh-wsl-docker-core';
-import { probeListeners } from 'dsh-wsl-docker-core';
-import { probePortproxyRules } from 'dsh-wsl-docker-core';
+import { probeDockerPs } from '../../src/read/docker-probe.ts';
+import { probeListeners } from '../../src/read/listeners-probe.ts';
+import { probePortproxyRules } from '../../src/read/netsh-probe.ts';
 import { registerPortsRoute } from '../../src/route.ts';
 import { createSnapshotBuilder } from '../../src/snapshot.ts';
 import { PORTS_HTTP_PREFIX, PORTS_SNAPSHOT_PATH, buildSnapshotQuery, parseSnapshotQuery } from '../../src/wire.ts';

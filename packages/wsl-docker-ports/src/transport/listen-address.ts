@@ -33,7 +33,7 @@
  * 与修复前一致），**不该**让用户的 `remove` / `fix` 因为一次枚举失败而 503。
  */
 
-import type { LocalAddressEntry } from 'dsh-wsl-docker-core';
+import type { LocalAddressEntry } from '../read/local-addresses.ts';
 import type { AllowedListenFacts } from '../diff/listen-allowed.ts';
 import type { WritePlanInput } from '../write/types.ts';
 

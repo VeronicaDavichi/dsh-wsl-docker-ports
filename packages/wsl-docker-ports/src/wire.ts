@@ -23,9 +23,9 @@
 
 import type { WslDistro, WslDistroState } from 'dsh-wsl-shared';
 import type { DiffFailure, DiffResult, Scope } from './diff/types.ts';
-import type { DockerContainer } from 'dsh-wsl-docker-core';
-import type { ListenerEntry } from 'dsh-wsl-docker-core';
-import type { LocalAddressEntry } from 'dsh-wsl-docker-core';
+import type { DockerContainer } from './read/docker.ts';
+import type { ListenerEntry } from './read/listeners.ts';
+import type { LocalAddressEntry } from './read/local-addresses.ts';
 
 /**
  * 具名 HTTP 路由的**独占前缀**（不蹭 002 的 `/dsh-managed-terminal/`）。

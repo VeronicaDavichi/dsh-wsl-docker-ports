@@ -1,8 +1,0 @@
-# 016：**只插自己那一行**（id 必须等于包名 —— 宿主按 `name` 匹配模块）。
-#
-# 容器侧**零提权**：`wsl -d <distro> -- docker …` 直接在发行版里执行，不经 gsudo / UAC，
-# 故这里没有任何提权相关配置。不写 `disabled:`（启停由用户在清单里决定）、
-# **不预置 `config:`**（默认值由 `Config` 声明，装完不再替用户写第二遍）。
-- insert:
-    - id: dsh-wsl-docker-containers
-      name: dsh-wsl-docker-containers

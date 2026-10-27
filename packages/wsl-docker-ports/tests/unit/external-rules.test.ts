@@ -13,7 +13,7 @@ import { test } from 'node:test';
 
 import { collectExternalRules, diff } from '../../src/diff/engine.ts';
 import { singlePort } from '../../src/diff/managed-ports.ts';
-import { parsePortproxyTable } from 'dsh-wsl-docker-core';
+import { parsePortproxyTable } from '../../src/read/netsh.ts';
 import { assertNoFunctions } from '../helpers/assertions.ts';
 import { fixtureText } from '../helpers/fake-executor.ts';
 import { ETH0 } from '../helpers/factories.ts';

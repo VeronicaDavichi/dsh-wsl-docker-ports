@@ -27,7 +27,7 @@ import assert from 'node:assert/strict';
 
 import type { ManagedPorts } from '../../src/diff/managed-ports.ts';
 import type { ElevationDeps } from '../../src/elevate/types.ts';
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
+import type { PortproxyRule } from '../../src/read/netsh.ts';
 import type { HttpResponseLike, HttpRequestLike, RoutePluginContextLike, WebServerRoute, WebServerSurfaceLike } from '../../src/route.ts';
 import { createApplyChannel } from '../../src/transport/apply.ts';
 import type { ApplyInput, ApplyReport } from '../../src/transport/apply.ts';

@@ -12,8 +12,8 @@
 
 import type { Executor } from 'dsh-wsl-shared';
 
-import { probePortproxyRules } from 'dsh-wsl-docker-core';
-import type { PortproxyRule } from 'dsh-wsl-docker-core';
+import { probePortproxyRules } from '../read/netsh-probe.ts';
+import type { PortproxyRule } from '../read/netsh.ts';
 
 export interface SnapshotSuccess {
   readonly ok: true;

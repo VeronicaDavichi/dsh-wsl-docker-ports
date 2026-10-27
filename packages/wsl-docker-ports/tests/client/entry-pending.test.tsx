@@ -27,7 +27,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as entry from '../../src/client/index.ts';
 import type { ClientContextLike, ClientTimers } from '../../src/client/host.ts';
 import type { PortsSnapshot } from '../../src/client/types.ts';
-import { PAGE_ID, TAB_SLOT, TAB_TITLE_SLOT } from '../../src/client/rows.ts';
+import { CONTAINERS_PAGE_ID, PAGE_ID, TAB_SLOT, TAB_TITLE_SLOT } from '../../src/client/rows.ts';
 import { snapshot } from '../unit/client-fixtures.ts';
 
 function source(): { load: () => Promise<PortsSnapshot> } {
@@ -179,8 +179,8 @@ describe('缺陷 C（2026-10-09 真机）：右栏服务**晚到**时也必须�
       f.pending.find((item) => item.names.includes('sidebarRightTabs'))?.callback(f.ctx);
 
       // 🔴 015 P4 形状变更：两个页（转发 + 容器）
-      expect(f.tabRegistrations.map((item) => (item as Record<string, unknown>)['id'])).toEqual([PAGE_ID]);
-      expect(f.slotRegistrations.map((registration) => registration.options['name']).filter((name) => name !== 'plugins.row.config')).toEqual([TAB_SLOT, TAB_TITLE_SLOT]);
+      expect(f.tabRegistrations.map((item) => (item as Record<string, unknown>)['id'])).toEqual([PAGE_ID, CONTAINERS_PAGE_ID]);
+      expect(f.slotRegistrations.map((registration) => registration.options['name']).filter((name) => name !== 'plugins.row.config')).toEqual([TAB_SLOT, TAB_TITLE_SLOT, TAB_SLOT, TAB_TITLE_SLOT]);
       expect((f.tabRegistrations[0] as Record<string, unknown>)['kind']).toBe('wslDockerPorts');
       // 告警被撤销（否则窗口到点还会冒一条已经过时的 warn）
       expect(clock.pendingCount()).toBe(0);
@@ -232,7 +232,7 @@ describe('缺陷 C（2026-10-09 真机）：右栏服务**晚到**时也必须�
       f.pending.find((item) => item.names.includes('sidebarRightTabs'))?.callback(f.ctx);
 
       // 🔴 015 P4 形状变更：两个页（转发 + 容器）
-      expect(f.tabRegistrations.map((item) => (item as Record<string, unknown>)['id'])).toEqual([PAGE_ID]);
+      expect(f.tabRegistrations.map((item) => (item as Record<string, unknown>)['id'])).toEqual([PAGE_ID, CONTAINERS_PAGE_ID]);
       expect(info.mock.calls.length).toBe(1);
       expect(String(info.mock.calls[0]?.[0])).toContain('已解除');
       console.log(`  · 对照：warn ${String(warn.mock.calls.length)} 条后有注册成功 ⇒ info ${String(info.mock.calls.length)} 条；原文 = ${String(info.mock.calls[0]?.[0])}`);
