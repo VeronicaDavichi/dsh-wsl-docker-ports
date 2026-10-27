@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-10-27
 priority: medium
 tags:
@@ -9,10 +9,13 @@ tags:
 - ui
 - config
 created_at: 2026-10-27T03:09:57.611889800Z
-updated_at: 2026-10-27T03:10:08.907372800Z
+updated_at: 2026-10-27T03:12:59.460282500Z
+completed_at: 2026-10-27T03:12:59.460282500Z
 transitions:
 - status: in-progress
   at: 2026-10-27T03:10:08.907372800Z
+- status: complete
+  at: 2026-10-27T03:12:59.460282500Z
 ---
 # 017 · 组合包级配置页（提权策略 / 刷新频次 / 目标发行版搬进插件内页）
 
