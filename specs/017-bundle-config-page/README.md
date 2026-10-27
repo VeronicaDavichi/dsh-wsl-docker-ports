@@ -459,3 +459,8 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
 - **下拉一个窗口**：原文包在 `.wdp-cfg-raw-panel`（1px 边框 + `radius-md` + `bg-layer-2` +
   `padding 10/12` + `max-height 260px` 可滚）里，`config-raw-output-panel` 是它的 testid。
 - 缓存语义不变：展开读一次，收起/再展开**零新增读**（`reads` 仍为 1）。
+- 🔴 **订正（六订·十一补）**：主人紧接着说「我是让你把它变成按钮！！！」—— 先前用了 `wdp-textbtn`
+  （文字链外观）⇒ 改成真按钮：`className="wdp-btn wdp-cfg-raw-btn"`，状态 ≈ **122 × 30 px**、
+  `border 1px`、`radius 8px`、`bg rgb(53,54,56)`（layer-3）；CONFIG_CSS 里自带一份
+  `.wdp-cfg-raw-btn`（边框/圆角/底色/`:hover`/`[disabled]`/`:focus-visible`），不依赖主包样式是否已装。
+  判据：`config-raw-page.test.tsx` R1 断言 `tagName === 'BUTTON'` 且 `className` 含 `wdp-btn`。

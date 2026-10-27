@@ -86,7 +86,7 @@ export function RawOutputSection(props: RawOutputSectionProps): ReactElement {
           {open ? (
             <button
               type="button"
-              className="wdp-textbtn"
+              className="wdp-btn wdp-cfg-raw-btn"
               data-testid="config-raw-output-collapse"
               title="收回这个窗口（已读到的原文留在内存里，再展开不重复读）"
               onClick={() => {
@@ -98,7 +98,7 @@ export function RawOutputSection(props: RawOutputSectionProps): ReactElement {
           ) : (
             <button
               type="button"
-              className="wdp-textbtn"
+              className="wdp-btn wdp-cfg-raw-btn"
               data-testid="config-raw-output"
               disabled={busy || load === undefined}
               title={load === undefined ? '原始输出未接线：主包壳没注入读取器' : '按需读一次 docker ps，看它在这次读里的原文'}
