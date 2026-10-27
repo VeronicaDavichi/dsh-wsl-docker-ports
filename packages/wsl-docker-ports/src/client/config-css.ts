@@ -1,0 +1,89 @@
+/**
+ * 017：配置页的样式（**只在 chunk 里**注入，不占主包棘轮）。
+ *
+ * 主包 `styles.ts` 的 `PAGE_CSS` 是右栏页那套常驻样式；配置页自己的版式有 40 多行，
+ * 塞进主包会把 `lib/client.js` 顶过棘轮地板（实测 +4 754 B）⇒ 搬到 chunk，
+ * 挂载时注入、卸载时移除，和 `styles.ts` 同一手法（`data-plugin` 查重 + disposer）。
+ *
+ * 版式**逐条抄宿主的插件设置表单**（`@deepseek-ai/dsh-client-ui-primitives` 的
+ * `lib/settings-form/fields.module.css` 与 `SettingsForm.module.css`；2026-10-27 读实物核对）：
+ *
+ *   field  = flex 纵向 gap 6px / padding 12px 0，相邻 field 之间 0.5px `border-l2` 分隔线
+ *   label  = 13px / 500 / `label-primary`
+ *   input  = 高 34 / padding 0 12 / 0.5px `border-l4` / `radius-md` / `bg-layer-3` / 13px
+ *   hint   = 12px / `label-tertiary`
+ *   footer = flex gap 8 / padding-top 16，左边状态字右边保存钮
+ *   save   = `label-primary` 底 / `bg-layer-3` 字 / `radius-md` / 5px 14px / disabled 透明度 .4
+ *
+ * ⚠️ 旧版这里写的是 `--dsw-alias-border-primary` / `--dsw-alias-bg-accent` 之类的**不存在的名字**
+ * （宿主主题里的真实 token 是 border-l1..l4 / bg-layer-1..3 / label-primary|secondary|tertiary /
+ * state-*-primary / radius-xs|sm|md|lg|xl|panel），于是全部回落到 `currentColor` / `transparent`
+ * —— 这就是「丑」的根因：没有层次、没有圆角、没有分隔。现在一律用**真名**，颜色只从主题取
+ * （零 hex，NFR-7 不变）。
+ */
+
+export const STYLE_ID = 'dsh-wsl-docker-ports/config';
+export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描述与组件行之间」）──────────────────────────
+ * 版式**逐条抄宿主的插件设置表单**（「@deepseek-ai/dsh-client-ui-primitives」 的
+ * 「lib/settings-form/fields.module.css」 与 「SettingsForm.module.css」；2026-10-27 读实物核对）：
+ *
+ *   field  = flex 纵向 gap 6px / padding 12px 0，相邻 field 之间 0.5px border-l2 分隔线
+ *   label  = 13px / 500 / label-primary
+ *   input  = 高 34 / padding 0 12 / 0.5px border-l4 / radius-md / bg-layer-3 / 13px
+ *   hint   = 12px / label-tertiary
+ *   footer = flex gap 8 / padding-top 16，左边状态字右边保存钮
+ *   save   = label-primary 底 / bg-layer-3 字 / radius-md / 5px 14px / disabled 透明度 .4
+ *
+ * ⚠️ 旧版这里写的是 --dsw-alias-border-primary / --dsw-alias-bg-accent 之类的**不存在的名字**
+ * （宿主主题 dsh-client-ui-theme 里的真实 token 是 border-l1..l4 / bg-layer-1..3 /
+ * label-primary|secondary|tertiary / state-*-primary / radius-xs|sm|md|lg|xl|panel），
+ * 于是全部回落到 currentColor / transparent —— 这就是「丑」的根因：没有层次、没有圆角、
+ * 没有分隔。现在一律用**真名**，颜色只从主题取（零 hex，NFR-7 不变）。
+ */
+.wdp-cfg { display: flex; flex-direction: column; color: var(--dsw-alias-label-primary, inherit); font-size: 13px; line-height: 1.5; }
+.wdp-cfg-field { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; }
+.wdp-cfg-field + .wdp-cfg-field { border-top: 0.5px solid var(--dsw-alias-border-l2, transparent); }
+.wdp-cfg-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.wdp-cfg-label { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
+.wdp-cfg-tag { flex: none; font-size: 11px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); }
+.wdp-cfg-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); overflow-wrap: anywhere; }
+.wdp-cfg-hint-error { color: var(--dsw-alias-state-error-primary, inherit); }
+.wdp-input { box-sizing: border-box; width: 100%; height: 34px; padding: 0 32px 0 12px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-md, 8px); background-color: var(--dsw-alias-bg-layer-3, transparent); font: inherit; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--dsw-alias-label-tertiary, currentColor) 50%), linear-gradient(135deg, var(--dsw-alias-label-tertiary, currentColor) 50%, transparent 50%); background-position: calc(100% - 17px) 15px, calc(100% - 12px) 15px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+.wdp-input:hover:not(:disabled) { border-color: var(--dsw-alias-border-l2, currentColor); }
+.wdp-input:focus-visible { outline: none; border-color: var(--dsw-alias-state-business-primary, currentColor); }
+.wdp-input:disabled { color: var(--dsw-alias-label-tertiary, inherit); cursor: default; }
+.wdp-cfg-scopes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
+.wdp-cfg-scopes > li { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; line-height: 1.5; }
+.wdp-cfg-scopes > li + li { border-top: 0.5px solid var(--dsw-alias-border-l2, transparent); }
+.wdp-cfg-scope-port { flex: none; width: 64px; color: var(--dsw-alias-label-primary, inherit); font-variant-numeric: tabular-nums; }
+.wdp-cfg-scope-value { color: var(--dsw-alias-label-secondary, inherit); }
+.wdp-cfg-inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wdp-cfg-callout { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 0; padding: 12px; border: 0.5px solid var(--dsw-alias-border-l2, transparent); border-radius: var(--dsw-radius-md, 8px); background: var(--dsw-alias-bg-layer-2, transparent); }
+.wdp-cfg-callout-text { margin: 0; font-size: 12px; line-height: 1.6; color: var(--dsw-alias-label-secondary, inherit); overflow-wrap: anywhere; }
+.wdp-cfg-callout-actions { display: flex; align-items: center; gap: 8px; }
+.wdp-cfg-footer { display: flex; align-items: center; gap: 8px; padding-top: 16px; border-top: 0.5px solid var(--dsw-alias-border-l2, transparent); }
+.wdp-cfg-footer-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wdp-cfg-status { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); }
+.wdp-save { appearance: none; flex: none; border: 1px solid transparent; border-radius: var(--dsw-radius-md, 8px); padding: 5px 14px; font: inherit; font-size: 13px; line-height: 1.5; cursor: pointer; background: var(--dsw-alias-label-primary, currentColor); color: var(--dsw-alias-bg-layer-3, transparent); }
+.wdp-save[disabled] { opacity: 0.4; cursor: default; }
+.wdp-save:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, currentColor)); outline-offset: 1px; }
+.wdp-textbtn { appearance: none; border: none; background: none; padding: 0; font: inherit; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-secondary, inherit); cursor: pointer; }
+.wdp-textbtn:hover:not([disabled]) { color: var(--dsw-alias-label-primary, inherit); }
+.wdp-textbtn[disabled] { cursor: default; opacity: 0.5; }`;
+
+/** 挂载时注入、返回移除器；同一 id 的旧节点先摘掉（重复挂载不产生第二份） */
+export function installConfigStyles(): () => void {
+  if (typeof document === 'undefined') return () => undefined;
+  const selector = `style[data-plugin="${STYLE_ID}"]`;
+  document.querySelector(selector)?.remove();
+  const style = document.createElement('style');
+  style.dataset['plugin'] = STYLE_ID;
+  style.textContent = CONFIG_CSS;
+  document.head.append(style);
+  let removed = false;
+  return () => {
+    if (removed) return;
+    removed = true;
+    style.remove();
+  };
+}

@@ -33,6 +33,8 @@
 
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 
+import { installConfigStyles } from './config-css.ts';
+import { ConfirmCallout, ConfigSelect, ScopeField, type ScopeRow } from './config-fields.tsx';
 import { REFRESH_INTERVAL_OPTIONS } from './refresh.ts';
 import type { SettingsConfigView, SettingsPipe } from './settings-pipe.ts';
 
@@ -162,6 +164,9 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
     void load();
   }, [load]);
 
+  // 配置页自己的那套 CSS 在 chunk 里（主包棘轮零余量）：挂载注入、卸载移除
+  useEffect(() => installConfigStyles(), []);
+
   useEffect(() => {
     let cancelled = false;
     void fetchDistros().then((names) => {
@@ -224,173 +229,130 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
     void commit();
   };
 
-  const scopeRows = view === null ? [] : Object.entries(view.scopes);
+  const scopeRows: ScopeRow[] =
+    view === null ? [] : Object.entries(view.scopes).map(([port, scope]) => ({ port, scope: String(scope) }));
   const distroOptions = draft.distro !== '' && !distros.includes(draft.distro) ? [draft.distro, ...distros] : distros;
+  const disabled = busy || settings === undefined;
 
+  /**
+   * 版式 = 宿主插件设置表单的原样（`settings-form/fields.module.css`）：一列 field，
+   * 每个 field = 标签行 + 控件 + 说明，相邻 field 之间一条 0.5px 分隔线，
+   * 底部一条 footer（状态字在左、保存钮在右）。**不自绘标题**：卡片页上方本来就有
+   * 「包名 + 描述」，这里再放一个 h3 只会和宿主标题打架（上一版就是这么丑的）。
+   */
   return (
     <section className="wdp-cfg" data-testid={CONFIG_PAGE_TESTID.root} aria-busy={busy}>
-      <h3>WSL Docker 工具箱 · 配置</h3>
-      <p className="wdp-secondary">
-        本页是这张卡片唯一的配置入口。改动点「保存设置」才落盘（live 生效，不重挂载）；组件页头上不再有这些控件。
-      </p>
       {error === null ? null : (
-        <p className="wdp-error" data-testid={CONFIG_PAGE_TESTID.readonly}>
+        <p className="wdp-cfg-hint wdp-cfg-hint-error" data-testid={CONFIG_PAGE_TESTID.readonly}>
           {error}
         </p>
       )}
 
-      <section className="wdp-cfg-section">
-        <h4>目标发行版</h4>
-        <p className="wdp-secondary">两个组件共用同一个目标发行版。留空 = 自动发现（优先默认发行版）。</p>
-        <label className="wdp-cfg-field" htmlFor={CONFIG_PAGE_TESTID.distro}>
-          <span>发行版</span>
-          <select
-            id={CONFIG_PAGE_TESTID.distro}
-            className="wdp-btn"
-            data-testid={CONFIG_PAGE_TESTID.distro}
-            disabled={busy || settings === undefined}
-            value={draft.distro}
-            onChange={(event) => {
-              setDraft((current) => ({ ...current, distro: event.target.value }));
-              setNote(null);
-            }}
-          >
-            <option value="">自动发现</option>
-            {distroOptions.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-          <span className="wdp-muted">
-            {distros.length === 0 ? '清单读取失败或没有已安装的发行版（不影响手头的值）' : `已安装 ${String(distros.length)} 个发行版`}
-          </span>
-        </label>
-      </section>
+      <ConfigSelect
+        id={CONFIG_PAGE_TESTID.distro}
+        testId={CONFIG_PAGE_TESTID.distro}
+        label="目标发行版"
+        tag="两个组件共用"
+        hint={
+          distros.length === 0
+            ? '清单读取失败或没有已安装的发行版（不影响手头的值）'
+            : `已安装 ${String(distros.length)} 个发行版；留空 = 自动发现`
+        }
+        value={draft.distro}
+        options={[{ value: '', label: '自动发现（优先默认发行版）' }, ...distroOptions.map((name) => ({ value: name, label: name }))]}
+        disabled={disabled}
+        onChange={(next) => {
+          setDraft((current) => ({ ...current, distro: next }));
+          setNote(null);
+        }}
+      />
 
-      <section className="wdp-cfg-section">
-        <h4>刷新频次</h4>
-        <p className="wdp-secondary">两个组件各有一档自动刷新间隔（关闭 = 只手动刷新）。</p>
-        <label className="wdp-cfg-field" htmlFor={CONFIG_PAGE_TESTID.refreshPorts}>
-          <span>端口转发页</span>
-          <select
-            id={CONFIG_PAGE_TESTID.refreshPorts}
-            className="wdp-btn"
-            data-testid={CONFIG_PAGE_TESTID.refreshPorts}
-            disabled={busy || settings === undefined}
-            value={String(draft.portsRefresh)}
-            onChange={(event) => {
-              setDraft((current) => ({ ...current, portsRefresh: Number(event.target.value) }));
-              setNote(null);
-            }}
-          >
-            {REFRESH_INTERVAL_OPTIONS.map((option) => (
-              <option key={option.value} value={String(option.value)}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="wdp-cfg-field" htmlFor={CONFIG_PAGE_TESTID.refreshContainers}>
-          <span>容器页</span>
-          <select
-            id={CONFIG_PAGE_TESTID.refreshContainers}
-            className="wdp-btn"
-            data-testid={CONFIG_PAGE_TESTID.refreshContainers}
-            disabled={busy || settings === undefined}
-            value={String(draft.containersRefresh)}
-            onChange={(event) => {
-              setDraft((current) => ({ ...current, containersRefresh: Number(event.target.value) }));
-              setNote(null);
-            }}
-          >
-            {REFRESH_INTERVAL_OPTIONS.map((option) => (
-              <option key={option.value} value={String(option.value)}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
+      <ConfigSelect
+        id={CONFIG_PAGE_TESTID.refreshPorts}
+        testId={CONFIG_PAGE_TESTID.refreshPorts}
+        label="端口转发页刷新频次"
+        hint="关闭 = 只手动刷新；页头上的旧下拉已删除，这里是唯一入口。"
+        value={String(draft.portsRefresh)}
+        options={REFRESH_INTERVAL_OPTIONS.map((option) => ({ value: String(option.value), label: option.label }))}
+        disabled={disabled}
+        onChange={(next) => {
+          setDraft((current) => ({ ...current, portsRefresh: Number(next) }));
+          setNote(null);
+        }}
+      />
 
-      <section className="wdp-cfg-section">
-        <h4>提权策略</h4>
-        <p className="wdp-secondary">该档位决定后续写动作的提权行为（改它会弹一次确认）。</p>
-        <label className="wdp-cfg-field" htmlFor={CONFIG_PAGE_TESTID.policy}>
-          <span>档位</span>
-          <select
-            id={CONFIG_PAGE_TESTID.policy}
-            className="wdp-btn"
-            data-testid={CONFIG_PAGE_TESTID.policy}
-            disabled={busy || settings === undefined}
-            value={draft.policy}
-            onChange={(event) => {
-              setDraft((current) => ({ ...current, policy: event.target.value as Policy }));
-              setConfirming(false);
-              setNote(null);
-            }}
-          >
-            {POLICY_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
+      <ConfigSelect
+        id={CONFIG_PAGE_TESTID.refreshContainers}
+        testId={CONFIG_PAGE_TESTID.refreshContainers}
+        label="容器页刷新频次"
+        hint="与端口转发页各存一份，互不影响。"
+        value={String(draft.containersRefresh)}
+        options={REFRESH_INTERVAL_OPTIONS.map((option) => ({ value: String(option.value), label: option.label }))}
+        disabled={disabled}
+        onChange={(next) => {
+          setDraft((current) => ({ ...current, containersRefresh: Number(next) }));
+          setNote(null);
+        }}
+      />
 
-      <div className="wdp-cfg-save">
-        <button
-          type="button"
-          className="wdp-btn wdp-btn-primary"
-          data-testid={CONFIG_PAGE_TESTID.save}
-          disabled={busy || settings === undefined || !dirty || confirming}
-          onClick={requestSave}
-        >
-          保存设置
-        </button>
-        <span className="wdp-muted" role="status" data-testid={CONFIG_PAGE_TESTID.status}>
-          {dirty ? '有未保存的改动' : '设置已保存'}
-        </span>
-      </div>
+      <ConfigSelect
+        id={CONFIG_PAGE_TESTID.policy}
+        testId={CONFIG_PAGE_TESTID.policy}
+        label="提权策略"
+        tag="改档需再确认"
+        hint="该档位决定后续写动作的提权行为；只改以后的行为，不动任何现有规则。"
+        value={draft.policy}
+        options={POLICY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+        disabled={disabled}
+        onChange={(next) => {
+          setDraft((current) => ({ ...current, policy: next as Policy }));
+          setConfirming(false);
+          setNote(null);
+        }}
+      />
 
       {confirming ? (
-        <div className="wdp-card" data-testid="config-confirm-panel">
-          <p className="wdp-secondary">确认把提权档改成「{draft.policy}」？这只影响后续写动作的行为，不改任何现有规则。</p>
-          <button type="button" className="wdp-btn" data-testid={CONFIG_PAGE_TESTID.confirm} disabled={busy} onClick={() => void commit()}>
-            确认保存
-          </button>
-          <button type="button" className="wdp-btn" data-testid={CONFIG_PAGE_TESTID.cancel} onClick={() => setConfirming(false)}>
-            取消
-          </button>
-        </div>
+        <ConfirmCallout
+          panelTestId="config-confirm-panel"
+          confirmTestId={CONFIG_PAGE_TESTID.confirm}
+          cancelTestId={CONFIG_PAGE_TESTID.cancel}
+          text={`确认把提权档改成「${draft.policy}」？这只影响后续写动作的行为，不改任何现有规则。`}
+          busy={busy}
+          onConfirm={() => void commit()}
+          onCancel={() => {
+            setConfirming(false);
+          }}
+        />
       ) : null}
-      {note === null ? null : (
-        <p className="wdp-secondary" data-testid={CONFIG_PAGE_TESTID.note}>
-          {note}
-        </p>
-      )}
 
-      <section className="wdp-cfg-section">
-        <h4>端口作用域（只读）</h4>
-        <p className="wdp-secondary" data-testid={CONFIG_PAGE_TESTID.scope}>
-          逐端口切换在右栏页的端口表里；本页只展示当前值，避免同一字段两个写入口。
-        </p>
-        {scopeRows.length === 0 ? (
-          <p className="wdp-muted">还没有逐端口设置（全部按 loopback 处理）</p>
-        ) : (
-          <ul className="wdp-list">
-            {scopeRows.map(([port, scope]) => (
-              <li key={port}>
-                {port} → {String(scope)}
-              </li>
-            ))}
-          </ul>
-        )}
-        <button type="button" className="wdp-btn" data-testid={CONFIG_PAGE_TESTID.refresh} disabled={busy} onClick={() => void load()}>
-          重新读取
+      <ScopeField
+        rows={scopeRows}
+        hint="逐端口切换在右栏页的端口表里；本页只展示当前值，避免同一字段两个写入口。"
+        emptyText="还没有逐端口设置（全部按 loopback 处理）"
+        busy={busy}
+        scopeTestId={CONFIG_PAGE_TESTID.scope}
+        refreshTestId={CONFIG_PAGE_TESTID.refresh}
+        onRefresh={() => void load()}
+      />
+
+      <div className="wdp-cfg-footer">
+        <div className="wdp-cfg-footer-text">
+          <p className="wdp-cfg-status" role="status" data-testid={CONFIG_PAGE_TESTID.status}>
+            {busy ? '正在处理…' : dirty ? '有未保存的改动' : '设置已保存'}
+          </p>
+          {note === null ? null : (
+            <p
+              className={`wdp-cfg-hint${note.includes('失败') || note.includes('异常') ? ' wdp-cfg-hint-error' : ''}`}
+              data-testid={CONFIG_PAGE_TESTID.note}
+            >
+              {note}
+            </p>
+          )}
+        </div>
+        <button type="button" className="wdp-save" data-testid={CONFIG_PAGE_TESTID.save} disabled={disabled || !dirty || confirming} onClick={requestSave}>
+          保存设置
         </button>
-      </section>
+      </div>
     </section>
   );
 }
