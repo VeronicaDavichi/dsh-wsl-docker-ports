@@ -23,13 +23,12 @@ import type { Scope } from '../diff/types.ts';
 import { usePageScrollFix } from './pane-scroll.ts';
 import type { ClientRuntime, ForwardAction } from './host.ts';
 import { summarizeWriteReport } from './page.ts';
-import { DistroBlock, DockerFailureBlock, ExternalRulesBlock, PortsBlock, UnsupportedBlock } from './pane-tables.tsx';
+import { DistroAlarmBlock, DockerFailureBlock, ExternalRulesBlock, PortsBlock, UnsupportedBlock } from './pane-tables.tsx';
 import { PaneHeader } from './pane-header.tsx';
 import { ElevationBlock, ManagedPortsSummary, NextPhaseBlock, RawOutputBlock, WriteTokenBlock } from './pane-settings.tsx';
 import { TESTID } from './rows.ts';
 import type { LastWriteView, NatGatePanelView, PortRowView } from './types.ts';
 import { useAutoRefresh } from './use-auto-refresh.ts';
-import { WriteChannelBlock } from './write-panel.tsx';
 import { clearWriteToken, issueWriteToken } from './write-token.ts';
 
 export interface PortsPaneProps {
@@ -275,10 +274,10 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
           （那是 `@deepseek-ai/dsh-plugin-manager` 自己的列表）⇒ 提权档写入口**必须**留在右栏页，
           而且**放在最上面**：主人连着两次「找不到」，埋在端口声明下面等于没做。 */}
       <ElevationBlock elevation={view.elevation} onChange={(policy) => void writeSettings(async () => runtime.settings?.writeElevationPolicy(policy))} />
-      <DistroBlock
-        distro={view.distro}
-        onChange={(name) => void writeSettings(async () => runtime.settings?.writeDistro(name))}
-      />
+      {/* 017 三订（主人 2026-10-27）：「侧边栏里面的目标发行版可以去掉了」⇒ 下拉搬去配置页。
+          这里只留**漂移 / 解析失败**的告警（REQ-6 的安全网要留着：规则指向失效地址是安全事故，
+          平时为空 ⇒ 正常情况下这块根本不渲染，不占版面）。 */}
+      <DistroAlarmBlock distro={view.distro} />
       {/* D1（2026-10-23 真机）：容器表 / 启停重启 / 日志抽屉已移入容器页（`client.containers.js`）。
           转发页只保留端口转发；这里仅保留 docker **读数失败**的诊断行（不是容器表、不是动作入口）。 */}
       {view.docker.ok === false ? <DockerFailureBlock docker={view.docker} /> : null}
@@ -324,7 +323,7 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
           setTokenNote('已取消清除：零写入（凭据仍留在原处）。');
         }}
       />
-      <WriteChannelBlock write={runtime.write} enabled={view.nat.open} disabledReason={view.nat.reason} />
+
       <NextPhaseBlock exec={view.exec} />
       <RawOutputBlock docker={view.docker} />
       <LastWriteBlock lastWrite={view.lastWrite} />

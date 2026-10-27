@@ -198,6 +198,18 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
   // ③ 配置管道先建：路由来源每次刷新要用它读声明（**读**，不是写）
   const settings = createSettingsPipe(() => softGet<RemoteSettingsLike>(ctx, 'remote.settings'));
 
+  // ⑤ 写通道（T3.1）：凭据仓库先建（缺省真 sessionStorage；取不到 ⇒ 内存降级 —— 绝不落盘）。
+  //    ⚠️ 017 三订起**提前到位**：配置页要拿到同一份 `write`（写通道预演搬去了配置页），
+  //    而座位在 ③′ 就建好了 ⇒ 构造顺序必须排在座位之前。构造期仍然**零请求**。
+  const tokenStore = options.tokenStore ?? createWriteTokenStore(options.sessionStorage ?? defaultSessionStorage());
+  const write: WriteWiring =
+    options.write ??
+    createWriteWiring({
+      settings,
+      tokenStore,
+      ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+    });
+
   // ③′ 010 T7.3 → 017：**bundle 级**配置页（宿主 `plugins.bundle.config`，画在卡片页的
   //    「描述与组件行之间」）。组件本体在 chunk 里（主包棘轮零余量），这里只注册一个**取块座位**；
   //    `settings` 直接闭包进去 ⇒ 页面写走同一条 live 管道（不另造一条）。
@@ -208,7 +220,7 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
       title: 'WSL Docker 工具箱 · 配置',
       load: loadPortsChunk,
       exportName: 'ConfigPage',
-      paneProps: { ...ownerProps, settings },
+      paneProps: { ...ownerProps, settings, write },
     });
   const configSlot = registerConfigSlot(ctx as unknown as ConfigSlotContext, configSeat as unknown as (props: never) => unknown);
   if (!configSlot.registered) {
@@ -243,15 +255,6 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
     };
   }
 
-  // ⑤ 写通道（T3.1）：凭据仓库先建（缺省真 sessionStorage；取不到 ⇒ 内存降级 —— 绝不落盘）
-  const tokenStore = options.tokenStore ?? createWriteTokenStore(options.sessionStorage ?? defaultSessionStorage());
-  const write: WriteWiring =
-    options.write ??
-    createWriteWiring({
-      settings,
-      tokenStore,
-      ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
-    });
 
   const runtime: ClientRuntime = {
     source,

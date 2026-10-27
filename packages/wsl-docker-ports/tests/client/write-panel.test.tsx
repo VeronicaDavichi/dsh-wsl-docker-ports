@@ -78,7 +78,7 @@ describe('T3.1 未点确认 ⇒ 零请求', () => {
     console.log('  · 扫了 1 条非法端口：fetch 0 次、原因含「零请求」');
   });
 
-  it('本会话没有凭据 ⇒ 零请求 + 指路到配置页', async () => {
+  it('本会话没有凭据 ⇒ 零请求 + 指路到右栏页的凭据块', async () => {
     const rig = createFetchRig([{ status: 200, payload: planPayload() }]);
     renderBlock(rig, { token: '' });
     await preview('3306');
@@ -289,7 +289,7 @@ describe('T3.1 票据失效 / 计划不符 ⇒ 重新 plan + 重新确认（不�
     });
     const notice = screen.getByTestId(WRITE_TESTID.notice).textContent ?? '';
     expect(notice).toContain('凭据');
-    expect(notice).toContain('配置页');
+    expect(notice).toContain('右栏页');
     expect(screen.queryByTestId(WRITE_TESTID.dialog)).toBeNull();
     expect(rig.calls).toHaveLength(2);
     expect(rig.unexpected()).toBe(0);

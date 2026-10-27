@@ -162,3 +162,59 @@ jsdom 那 4 条用例（`pane-write.test.tsx`）；主人 desktop 里页签本�
 - 不做 whale-pet 那种 **600ms 防抖自动保存**（提权档是安全开关，显式保存 + 二次确认才符合 REQ-12.4）。
 - 不改 `refreshIntervalSec` 的存储位置（仍是各命名空间一个值，符合「两个值」）。
 - 不合并两个组件包（015/016 的拆包结论不动）。
+
+## 三订（2026-10-27 第四轮：写通道预演搬进配置页 + 侧栏去掉目标发行版）
+
+**主人原话**：「侧边栏里面的目标发行版可以去掉了      写通道预演也放到配置页里面去」。
+两问两答（开工前一次问完）：
+① 搬多少 → **只搬「写通道预演」整块**（预演 → 确认 → 执行 → 回执），**凭据块留在右栏页**（它管 token，不属预演）；
+② NAT 硬前提 → **不做置灰**：配置页只写一句前提，点了预演由服务端如实回原因。
+
+### 落点
+
+| 面 | 之前 | 现在 |
+| --- | --- | --- |
+| 写通道预演（`WriteChannelBlock`） | 右栏页最下面 | **配置页**「写通道预演」区（标签行 + NAT 前提 + 凭据指路 + 整块），与配置字段同页；**共用页面的空转零请求**（渲染期不预演 = 零写通道请求） |
+| 写通道凭据（`WriteTokenBlock`） | 右栏页 | **仍在右栏页**（主人拍板只搬预演）；配置页给一句指路 |
+| 目标发行版（`DistroBlock` 下拉） | 右栏页 | **删掉**；下拉只在配置页（上一轮已搬） |
+| 发行版告警（漂移 / 解析失败 / stateNote） | 混在 `DistroBlock` 里 | **`DistroAlarmBlock`**：正常态**整块不渲染**；有漂移/错误/stateNote 时才出现（REQ-6 安全网不跟着搬走） |
+
+### 为什么不给写通道做置灰（这轮唯一的降级，主人已拍板）
+
+右栏页能置灰是因为快照里有 `view.nat`。配置页只有 `settings` 管道，要判 NAT 就得**额外读一次快照**
+（`docker ps`，冷启实测 2–5 秒）—— 为一行提示让整页慢这么多不划算。
+⇒ 不改判据、不静默：前提写在明处，NAT 不满足时 `/write/plan` 会带着原因失败，页面原样显示。
+🔴 **009 的 T3.1（「不可能成功的操作不提供」）在配置页降级为「提供但如实报错」**，右栏页那套判据
+（`write-confirm` / `write-panel` / `pane.test` T5.2）**一条没删**：它们测的是组件本身与右栏页的
+`data-write-control` 闸门，仍然逐条通过。
+
+### 顺带修的两处「话不对版」
+
+- `CREDENTIAL_MISSING_HINT` / `CREDENTIAL_REJECTED_HINT` 原来说「请到**本插件配置页**点『生成并保存写通道凭据』」——
+  凭据块留在右栏页了，照原话说用户会去配置页结果找不到 ⇒ 改成「到『WSL Docker 端口』右栏页的『写通道凭据』块」。
+  对应两条断言从 `toContain('配置页')` 改为 `toContain('右栏页')`（判据还是「指路要指向一个真能点的地方」）。
+- 配置页新加一句 `config-write-token-pointer`：明确「凭据不在这儿 + 去哪生成 + 没有凭据会本地拦下（零请求）」。
+
+### 用例
+
+| 文件 | 变化 |
+| --- | --- |
+| `tests/client/config-page.test.tsx` | **+C9**（写通道在配置页：整块在、前提含 NAT、预演**不置灰**、渲染期零写通道请求 —— 用「fetch 一被调用就抛」的真 `WriteWiring` 证）、**+C10**（宿主没给 `write` ⇒ 置灰 + 原因含 `remote.settings`）；C9 另断言凭据指路含「右栏页」 |
+| `tests/client/pane-write.test.tsx` | **+2**：右栏页 `write-channel` / `distro-panel` / `sel-distro` / `distro-alarm` 全为 null（正常态）+ 反向对照「真有漂移时 `distro-alarm` 必须出现」 |
+| `tests/client/distro-state-note.test.tsx` | 被测组件从 `DistroBlock` 换成 `DistroAlarmBlock`（两条断言逐字保留），**+③** 三样全空 ⇒ 整块不渲染 |
+| `tests/client/write-channel.test.tsx` / `write-panel.test.tsx` | 仅「指路文案」断言 `配置页` → `右栏页`（意图不变，跟着真实位置走） |
+
+### 真机（同 profile 43391，截图 `evidence-config-write-channel.png`）
+
+配置页实测：`{"hasSection":true,"tokenPointer":"凭据（token）不在这儿：到「WSL Docker 端口」右栏页的「写通道凭据」块生成","previewDisabled":false,"wired":"1"}`
+⇒ 写通道整块在、预演可点、`data-wired=1`（真接到 `remote.settings` 那条管道）。
+点预演（本会话没凭据）得到**本地拦下、零请求**的可读提示：「本会话没有写通道凭据（本地拦下，零请求）：请到
+『WSL Docker 端口』右栏页的『写通道凭据』块点『生成并保存写通道凭据』…」
+
+### 门
+
+ports `node --test` **442/442**、vitest **19 files / 170 tests**（165 → 170）、三 tsconfig 0、
+`check-borders` **233 文件** R1–R6 绿、`check-exports` 25/25、`assert-client-split` 20/20、
+`verify-client-loader` 40/40、`check-size` 最大 399 行、`p2-main-bundle-gate` 0；
+主包 **51,883 B**（地板 56,350，余 4,467 B）、chunk 161,379 B。
+拆文件：`config-write.tsx`（52 行，把写通道区连同前提/指路拆出来，`config-page.tsx` 388 行守 400 SHALL）。

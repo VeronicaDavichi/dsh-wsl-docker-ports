@@ -112,3 +112,44 @@ describe('E/P4 样式注入（必须发生在 factory 闭包内）', () => {
     console.log(`  · 注入扫了 ${String(styles.length)} 个 <style>（CSS ${String(styles[0]?.textContent.length ?? 0)} 字符，hex 命中 0 处），disposer 移除后 ${String(document.querySelectorAll(selector).length)} 个`);
   });
 });
+
+describe('017 三订：写通道预演 / 目标发行版都已搬出右栏页', () => {
+  it('右栏页没有写通道块、也没有发行版下拉（单入口在插件卡片页的配置区）', async () => {
+    const test = harness(snapshot({ managedPortsDecl: ['3306'] }));
+    render(<PortsPane runtime={test.runtime} />);
+    await screen.findByTestId('tbl-ports');
+
+    expect(screen.queryByTestId('write-block')).toBeNull();
+    expect(screen.queryByTestId('distro-panel')).toBeNull();
+    expect(screen.queryByTestId('sel-distro')).toBeNull();
+    // 正常态（无漂移、无解析错误）连告警块都不渲染 —— 版面干净
+    expect(screen.queryByTestId('distro-alarm')).toBeNull();
+    expect(test.recorded.updates).toHaveLength(0);
+    console.log('  · 右栏页扫了 4 个已搬走的 testid（全为 null），配置写 0 次');
+  });
+
+  it('反向对照：真有漂移时告警块**必须**出现（安全网没跟着一起搬走）', async () => {
+    const test = harness(
+      snapshot({
+        managedPortsDecl: ['3306'],
+        // 漂移文案由 staleConfig + message 派生（uildDistroPanel），这里喂真快照字段
+        distro: {
+          distros: [{ name: 'Ubuntu2204', state: 'Running', isDefault: true, version: 2 }],
+          name: 'Ubuntu2204',
+          state: 'Running',
+          source: 'wslDefault',
+          staleConfig: true,
+          message: '规则里的 eth0 是 172.20.201.152，现状是 172.20.203.7（漂移）',
+          stateNote: null,
+        },
+      }),
+    );
+    render(<PortsPane runtime={test.runtime} />);
+    await screen.findByTestId('tbl-ports');
+
+    const alarm = await screen.findByTestId('distro-alarm');
+    expect(alarm.textContent).toContain('172.20.203.7');
+    expect(screen.getByTestId('distro-stale').textContent).toContain('漂移');
+    console.log(`  · 漂移告警：${(screen.getByTestId('distro-stale').textContent ?? '').slice(0, 40)}…`);
+  });
+});

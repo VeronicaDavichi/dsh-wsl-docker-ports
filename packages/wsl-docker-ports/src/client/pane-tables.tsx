@@ -22,46 +22,46 @@ import type { DistroPanelView, DockerView, ExternalRulesView, ForwardActionView,
 import { TESTID } from './rows.ts';
 import { ListenAddressCell } from './pane-listen.tsx';
 
-export function DistroBlock(props: { readonly distro: DistroPanelView; readonly onChange: (name: string) => void }): ReactElement {
-  const { distro, onChange } = props;
+/**
+ * 017 三订（主人 2026-10-27）：「侧边栏里面的目标发行版可以去掉了」⇒ 发行版下拉已搬进
+ * bundle 卡片页的配置区（那里和刷新频次 / 提权档 / 端口声明共用一个「保存设置」）。
+ *
+ * 这里**只保留告警**，而且只在真有话说时才渲染：
+ * - `staleMessage`：portproxy 规则指向的 eth0 地址与现状不一致（**漂移** —— REQ-6 的安全网，
+ *   规则会静默失效，必须喊出来）；
+ * - `error`：发行版解析失败（读不出 `wsl -l -v` 之类）。
+ *
+ * 状态说明（`stateNote`，如「未启动」）属日常提示，跟着下拉一起搬走了 —— 留在侧栏等于把
+ * 被删掉的块又长回来一半。
+ */
+export function DistroAlarmBlock(props: { readonly distro: DistroPanelView }): ReactElement | null {
+  const { distro } = props;
+  const stale = distro.staleMessage;
+  const broken = distro.error;
+  const note = distro.stateNote;
+  if (stale === null && broken === null && note === null) return null;
   return (
-    <section className="wdp-card" data-testid="distro-panel">
-      <h3>目标发行版</h3>
-      <p className="wdp-secondary">
-        {distro.name ?? '未解析'}（来源：{distro.sourceLabel}
-        {distro.state === null ? '' : `，状态：${distro.state}`}）
-      </p>
-      {distro.stateNote !== null ? (
+    <section className="wdp-card" data-testid="distro-alarm">
+      <h3>发行版告警</h3>
+      {note === null ? null : (
         <p className="wdp-secondary" data-testid="distro-state-note">
-          {distro.stateNote}
+          {note}
         </p>
-      ) : null}
-      {distro.error !== null ? <p className="wdp-error">{distro.error}</p> : null}
-      {distro.staleMessage !== null ? (
+      )}
+      {stale === null ? null : (
         <p className="wdp-error" data-testid="distro-stale">
-          {distro.staleMessage}
+          {stale}
         </p>
-      ) : null}
-      {distro.options.length > 0 ? (
-        <select
-          className="wdp-btn"
-          data-testid={TESTID.distro}
-          data-settings-control="1"
-          value={distro.name ?? ''}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          {distro.options.map((option) => (
-            <option key={option.name} value={option.name}>
-              {option.name}（{option.state}
-              {option.isDefault ? '，默认' : ''}）
-            </option>
-          ))}
-        </select>
-      ) : null}
+      )}
+      {broken === null ? null : (
+        <p className="wdp-error" data-testid="distro-error">
+          {broken}
+        </p>
+      )}
+      <p className="wdp-muted">目标发行版在插件卡片页的配置区里改（本页只报警）。</p>
     </section>
   );
 }
-
 export function DockerFailureBlock({ docker }: { readonly docker: Extract<DockerView, { ok: false }> }): ReactElement {
   return (
     <section className="wdp-card" data-testid="docker-failure">

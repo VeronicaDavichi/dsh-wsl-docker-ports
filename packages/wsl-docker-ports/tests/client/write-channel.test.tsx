@@ -86,7 +86,7 @@ describe('T3.1 失败分类：401 指路不重试 / 票据失效要求重新确�
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
       expect(outcome.failure.kind).toBe('credential');
-      expect(outcome.failure.hint).toContain('配置页');
+      expect(outcome.failure.hint).toContain('右栏页');
       expect(failureText(outcome.failure)).toContain('凭据');
     }
     expect(channel.requestCount()).toBe(1);

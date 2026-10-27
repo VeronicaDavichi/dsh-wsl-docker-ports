@@ -16,6 +16,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { CONFIG_PAGE_TESTID, ConfigPage, CONTAINERS_SETTINGS_NAMESPACE, DISTROS_PATH } from '../../src/client/config-page.tsx';
 import type { SettingsConfigView, SettingsPipe, SettingsWriteResult } from '../../src/client/settings-pipe.ts';
+import { createWriteChannel, type WriteWiring } from '../../src/client/write-channel.ts';
+import { createWriteTokenStore, type StorageLike } from '../../src/client/write-token.ts';
+import { WRITE_TESTID } from '../../src/client/write-confirm.tsx';
 
 interface Write {
   readonly ns: string;
@@ -80,8 +83,44 @@ afterEach(() => {
   cleanup();
 });
 
-async function mount(writes: Write[], overrides: { readonly failNs?: string } = {}): Promise<void> {
-  render(<ConfigPage settings={fakePipe(writes, overrides)} />);
+/** 内存 sessionStorage（绝不落盘），仅供配置页用例造一份真 `WriteTokenStore` */
+function memoryStorage(): StorageLike {
+  const box = new Map<string, string>();
+  return {
+    getItem: (key) => box.get(key) ?? null,
+    setItem: (key, value) => {
+      box.set(key, value);
+    },
+    removeItem: (key) => {
+      box.delete(key);
+    },
+  };
+}
+
+/**
+ * 一份**真** `WriteWiring`，但 `fetch` 一被调用就抛 —— 这样「配置页渲染期零请求」是实测，
+ * 不是「没写请求代码」的推断。
+ */
+function fakeWrite(options: { readonly token?: string } = {}): { readonly write: WriteWiring; readonly requests: () => number } {
+  let calls = 0;
+  const tokenStore = createWriteTokenStore(memoryStorage());
+  if (options.token !== undefined) tokenStore.save(options.token);
+  const channel = createWriteChannel({
+    token: () => tokenStore.read(),
+    fetchImpl: async () => {
+      calls += 1;
+      throw new Error('配置页渲染期不该发写通道请求');
+    },
+  });
+  const write: WriteWiring = {
+    channel,
+    tokenStore,
+    declaration: async () => ({ ok: true, ports: [{ start: 3306, end: 3306 }] }),
+  };
+  return { write, requests: () => calls };
+}
+async function mount(writes: Write[], overrides: { readonly failNs?: string; readonly write?: WriteWiring } = {}): Promise<void> {
+  render(<ConfigPage settings={fakePipe(writes, overrides)} write={overrides.write} />);
   await act(async () => {
     await Promise.resolve();
   });
@@ -234,5 +273,32 @@ describe('017 bundle 级配置页', () => {
     });
     console.log(`  · C8 端口声明被拒：提示「保存失败」、成功写入 ${String(writes.length)} 次`);
   });
-});
 
+  it('C9 写通道预演在配置页：整块在、NAT 前提句在、渲染期零写通道请求（不置灰）', async () => {
+    const probe = fakeWrite({ token: 'tk-c9' });
+    await mount([], { write: probe.write });
+
+    const section = await screen.findByTestId('config-write-channel');
+    expect(section.textContent).toContain('写通道预演');
+    expect(screen.getByTestId('config-write-premise').textContent).toContain('NAT');
+    // 凭据块**仍在右栏页** ⇒ 配置页必须指路，不然用户在两页之间找不到 token
+    expect(screen.getByTestId('config-write-token-pointer').textContent).toContain('右栏页');
+    // 主人同日拍板：**不置灰**（配置页拿不到快照，不为一行提示多读一次 docker ps）
+    const preview = screen.getByTestId(WRITE_TESTID.preview) as HTMLButtonElement;
+    expect(preview.disabled).toBe(false);
+    // 渲染期零请求（fetchImpl 一被调用就抛 ⇒ 这里没抛就是 0 次）
+    expect(probe.requests()).toBe(0);
+    console.log('  · C9 写通道预演：块在、前提句含 NAT、预演可用、渲染期请求 0 次');
+  });
+
+  it('C10 宿主没给写通道 ⇒ 预演置灰并写明原因（不静默）', async () => {
+    await mount([]);
+    const block = await screen.findByTestId(WRITE_TESTID.block);
+    expect(block.getAttribute('data-wired')).toBe('0');
+    const preview = screen.getByTestId(WRITE_TESTID.preview) as HTMLButtonElement;
+    expect(preview.disabled).toBe(true);
+    // 原因挂在按钮 title 上（既有的 008 口径：置灰必须有话说，不静默）
+    expect(preview.title).toContain('remote.settings');
+    console.log(`  · C10 未接线：data-wired=0、预演置灰、原因「${preview.title.slice(0, 34)}…」`);
+  });
+});

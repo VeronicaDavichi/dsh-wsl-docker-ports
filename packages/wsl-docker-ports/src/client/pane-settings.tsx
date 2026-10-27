@@ -211,7 +211,7 @@ export function WriteTokenBlock(props: {
       </p>
       {sessionPresent && configured !== false ? null : (
         <p className="wdp-error" data-testid={WRITE_TOKEN_TESTID.consequence}>
-          后果：写入口会 401（凭据缺失 ⇒ `plan` / `apply` / `audit` 一律 unauthorized，零执行零写入）⇒ 请先在本配置页「生成并保存写通道凭据」（`writeToken` 是 volatile 字段、宿主每请求现读 ⇒ **即时生效**，不需要重载插件行）。
+          后果：写入口会 401（凭据缺失 ⇒ `plan` / `apply` / `audit` 一律 unauthorized，零执行零写入）⇒ 请先在本页「生成并保存写通道凭据」（`writeToken` 是 volatile 字段、宿主每请求现读 ⇒ **即时生效**，不需要重载插件行）。
         </p>
       )}
       <button

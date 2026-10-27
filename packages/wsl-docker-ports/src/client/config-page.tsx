@@ -35,6 +35,7 @@ import { useCallback, useEffect, useState, type ReactElement } from 'react';
 
 import { installConfigStyles } from './config-css.ts';
 import { ManagedPortsField } from './config-managed-ports.tsx';
+import { WriteChannelSection } from './config-write.tsx';
 import {
   checkedPresetsOf,
   distroOf,
@@ -51,6 +52,7 @@ import {
 import { ConfirmCallout, ConfigSelect, ScopeField, type ScopeRow } from './config-fields.tsx';
 import { PORT_PRESETS } from '../diff/port-presets.ts';
 import { REFRESH_INTERVAL_OPTIONS } from './refresh.ts';
+import type { WriteWiring } from './write-channel.ts';
 import type { SettingsConfigView, SettingsPipe } from './settings-pipe.ts';
 
 /** 提权档（与 `../wire.ts` 的 `ELEVATION_POLICIES` 同值；此处另写一份标签，避免把主包模块拖进 chunk） */
@@ -92,6 +94,11 @@ export const CONFIG_PAGE_TESTID = {
 export interface ConfigPageProps {
   /** 宿主配置页座位**一定**有它（由主包壳注入）；缺失 = 只读 + 写明原因，不抛 */
   readonly settings?: SettingsPipe | undefined;
+  /**
+   * 写通道整包（`undefined` = 未接线 ⇒ 预演控件置灰 + 写明原因）。
+   * 017 三订（主人 2026-10-27）：「写通道预演也放到配置页里面去」⇒ 块从右栏页搬到这里。
+   */
+  readonly write?: WriteWiring | undefined;
 }
 
 /** 发行版清单：失败不抛（页面照常可编辑手头的值，只是下拉里少几项） */
@@ -110,7 +117,7 @@ async function fetchDistros(): Promise<readonly string[]> {
 }
 
 export function ConfigPage(props: ConfigPageProps): ReactElement {
-  const { settings } = props;
+  const { settings, write } = props;
   const [view, setView] = useState<SettingsConfigView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
@@ -346,6 +353,8 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
           setNote(null);
         }}
       />
+
+      <WriteChannelSection write={write} />
 
       <ScopeField        rows={scopeRows}
         hint="逐端口切换在右栏页的端口表里；本页只展示当前值，避免同一字段两个写入口。"
