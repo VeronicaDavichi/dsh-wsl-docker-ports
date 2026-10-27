@@ -336,3 +336,23 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
 - 静态渲染台架（**一次性、跑完即删**）：真组件 `PortsPane` + 真 `PAGE_CSS` + **真机取回的 19 个 `--dsw-alias-*` token 值**
   渲染成 HTML 再用 Chrome 截图 → [evidence-sidebar-restyle.png](./evidence-sidebar-restyle.png)；
 - 配置页回归（同一次构建）：`SELECT.wdp-input` 34px/12px 圆角/`bg-layer-3` + ▼ 在；`TEXTAREA` 76px 未变；`wdp-save` 32px。
+
+### 右栏页去滚轮 + 原始输出搬家 + 配置页「分组 / 卡片」版式（同日第六轮）
+
+主人这一轮四条原话，逐条落地：
+
+| # | 原话 | 落地 |
+| --- | --- | --- |
+| 1 | 「所有的纵向滚轮都不应该存在，因为我是长条结构，不够的就应该自动向下扩展」 | `pane-scroll.ts` 从「把本页根变成滚动容器」改成**自然高度**（`height:auto` / `overflow-y:visible`），滚动交回宿主壳（往上找第一层非 `visible` 的祖先设成可滚）；配置页 textarea 改成**随内容长高**（`overflow:hidden` + `resize:none`，实测 3 行 76px → 12 行 248px） |
+| 2 | 「这句话不用重复那么多遍，在描述的地方给他一个标记例如 ⚠，然后把 ⚠ 插在每条的解释，这样也不用那么多的分割线了」 | `rows.ts` 的说明句带 ⚠ 只在描述里出现**一次**，19 行外部规则每行只留一个 `⚠`（`title` 悬停看整句）；`.wdp-row` 去掉 `border-top` 分割线（行高 28px） |
+| 3 | 「下一期的内容隐藏掉」 | `pane.tsx` 不再挂 `NextPhaseBlock`（组件留在 `pane-settings.tsx`，服务接入时挂回）；判据改成「两种服务可用性都不渲染 `btn-cs-exec`、全文无「下一期」」 |
+| 4 | 「原始输出请放到配置页的转发的子组件下面的地方」+「它的组件配置页面，在子组件的下面，而不是在子组件的外面」（照 [@luweiyabo/dsh-whale-pet](https://github.com/luweiyabo/dsh-whale-pet) 的组件配置页截图） | 右栏页删掉 `RawOutputBlock`；配置页把写通道改成**分组 + 卡片**：`wdp-cfg-group`「写通道」里横排两张 `wdp-cfg-card`——「写通道预演」与「原始输出」，**兄弟卡片、原始输出在后面**；展开时该卡片 `flex-basis:100%` 独占一行（9 KB JSON 不挤 379px 窄栏）。数据**按需**：点开才经主包壳注入的 `loadRawOutput` 跑一次 `docker ps`（读成功给解析后的 JSON，读失败给服务端原文），加载期零读、反复展开不重复读 |
+
+**体积**：主包 56,046 B（棘轮地板 56,350 B，**余 304 B**）；chunk 168,772 B。新增样式全在 `CONFIG_CSS`（chunk 侧），主包只增了 `index.ts` 的取数闭包 —— 为压回 400 行 SHALL 顺手合并了 3 处注释、删掉两条死规则（`.wdp-field`、`.wdp-cfg-input-plain`）。
+
+**判据**：`write-style-gate.test.tsx` ⑩ 加「限定作用域的补充允许、裸选择器重定义判红」；`config-page.test.tsx` C14 改成「同一分组内、`wdp-cfg-card` 兄弟卡片、`compareDocumentPosition` 在预演之后、加载期 0 读、点开读 1 次、反复展开仍 1 次」；`pane.test.tsx` 外部规则加「整句只出现 1 次 + 19 行都带 ⚠」、下一期改成「不渲染」。
+
+**验证**：
+- 右栏页（acceptance profile 打不开页签 ⇒ 一次性静态渲染台架：真组件 + 真 `PAGE_CSS` + 真机 token 值）：`verticalScrollContainers = []`、`下一期` 不存在、19 行各带 1 个 ⚠、分割线 0 → [evidence-external-rules-marker.png](./evidence-external-rules-marker.png)；
+- 配置页（真机）：分组 + 两张卡片 → [evidence-config-write-cards.png](./evidence-config-write-cards.png)；点开后卡片宽 379 → **768**（= 分组内容宽），pre 收起/展开只读 1 次；
+- textarea 自动长高：DOM 实测 `before 76 → after 248`（12 行），`overflow-y: hidden`。

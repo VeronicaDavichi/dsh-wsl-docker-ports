@@ -111,7 +111,7 @@ export interface UnsupportedRowView {
 export interface ExternalRulesView {
   readonly title: string;
   readonly note: string;
-  readonly rows: readonly { readonly display: string; readonly reason: string }[];
+  readonly rows: readonly { readonly display: string }[];
 }
 
 /** 「进容器 exec」注入点（REQ-10.1/10.3/10.4）：**恒禁用**，只解释为什么 */

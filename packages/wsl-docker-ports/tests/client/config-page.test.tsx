@@ -119,8 +119,8 @@ function fakeWrite(options: { readonly token?: string } = {}): { readonly write:
   };
   return { write, requests: () => calls };
 }
-async function mount(writes: Write[], overrides: { readonly failNs?: string; readonly write?: WriteWiring; readonly managedPorts?: readonly string[] } = {}): Promise<void> {
-  render(<ConfigPage settings={fakePipe(writes, overrides)} write={overrides.write} />);
+async function mount(writes: Write[], overrides: { readonly failNs?: string; readonly write?: WriteWiring; readonly managedPorts?: readonly string[]; readonly loadRawOutput?: () => Promise<string | null> } = {}): Promise<void> {
+  render(<ConfigPage settings={fakePipe(writes, overrides)} write={overrides.write} loadRawOutput={overrides.loadRawOutput} />);
   await act(async () => {
     await Promise.resolve();
   });
@@ -307,6 +307,48 @@ describe('017 bundle 级配置页', () => {
     console.log(`  · C10 未接线：data-wired=0、预演置灰、原因「${preview.title.slice(0, 34)}…」`);
   });
 });
+  it('C14 原始输出是「写通道预演」**下面那张兄弟卡片**，且点开才读（加载期零读）', async () => {
+    let reads = 0;
+    const writes: Write[] = [];
+    await mount(writes, {
+      loadRawOutput: async () => {
+        reads += 1;
+        return 'CONTAINER ID   IMAGE\nabc123   nginx:latest';
+      },
+    });
+
+    // ① 位置：同一个**分组**之内、且在「写通道预演」卡片**之后**（照 whale-pet 的组件配置页排版；
+    //    主人 2026-10-27：「在子组件的下面，而不是在子组件的外面」）
+    const group = screen.getByTestId('config-write-channel');
+    const button = screen.getByTestId('config-raw-output');
+    const preview = screen.getByTestId('config-write-preview');
+    const rawCard = screen.getByTestId('config-raw-output-card');
+    expect(group.className).toBe('wdp-cfg-group');
+    expect(preview.className).toBe('wdp-cfg-card');
+    expect(rawCard.className).toBe('wdp-cfg-card');
+    expect(group.contains(button)).toBe(true);
+    expect(rawCard.contains(button)).toBe(true);
+    // 兄弟卡片且排在预演之后：compareDocumentPosition 的 FOLLOWING 位（4）
+    expect(preview.compareDocumentPosition(rawCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    // ② 惰性：加载完一次都没读，点开才读**一次**
+    expect(reads).toBe(0);
+    fireEvent.click(button);
+    await waitFor(() => {
+      expect(screen.getByTestId('config-raw-output-body').textContent ?? '').toContain('nginx:latest');
+    });
+    expect(reads).toBe(1);
+
+    // ③ 收起再展开不重复读（原文已在手里）
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(reads).toBe(1);
+    console.log(`  · C14 原始输出在子组件内；加载期读 ${String(0)} 次、点开读 1 次、反复展开仍 1 次`);
+  });
+
 
 describe('017 端口声明输入形态（主人两次拍板：半角逗号照认，但控件回到 textarea）', () => {
   it('C11 逗号写法照样能保存（半角逗号是主用法）', async () => {

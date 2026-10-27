@@ -196,20 +196,26 @@ describe('T5.5 / T5.7 只读区', () => {
     expect(rows).toHaveLength(19);
     expect(interactive).toHaveLength(0);
     expect(region?.textContent).toContain('外部规则');
+    // 主人 2026-10-27：那句「listenPort 不在 managedPorts 内」只在描述里说**一次**（带 ⚠），
+    // 行内只留一个 ⚠ 标记 ⇒ 19 行里同一句不许重复出现
+    const text = region?.textContent ?? '';
+    expect(text.split('listenPort 不在 managedPorts 内').length - 1).toBe(1);
+    expect(text).toContain('⚠');
     console.log(`  · 只读区扫了 ${String(rows.length)} 行 / ${String(interactive.length)} 个可交互控件（要求 0）`);
   });
 
-  it('exec 注入点恒禁用：002 缺失不报错，服务可用也只解释不放开', async () => {
+  it('下一期已隐藏（主人 2026-10-27）：注入点不再渲染，也不报错', async () => {
     for (const available of [false, true]) {
       const test = harness(snapshot({ execAvailable: available }));
       const { container } = render(<PortsPane runtime={test.runtime} />);
       await screen.findByTestId('tbl-ports');
-      const button = screen.getByTestId('btn-cs-exec') as HTMLButtonElement;
-      expect(button.disabled).toBe(true);
+      // 2026-10-27 主人：「下一期的内容隐藏掉」⇒ 右栏页不再有 exec 注入点，两种服务可用性都不渲染
+      expect(screen.queryByTestId('btn-cs-exec')).toBeNull();
+      expect(container.textContent ?? '').not.toContain('下一期');
       expect(container.querySelectorAll('[data-testid="action-error"]')).toHaveLength(0);
       cleanup();
     }
-    console.log('  · 扫了 2 种服务可用性（false/true），两种都禁用且 0 条错误');
+    console.log('  · 扫了 2 种服务可用性（false/true），两种都不渲染「下一期」且 0 条错误');
   });
 });
 

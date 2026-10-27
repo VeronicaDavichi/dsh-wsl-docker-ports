@@ -25,7 +25,7 @@ import type { ClientRuntime, ForwardAction } from './host.ts';
 import { summarizeWriteReport } from './page.ts';
 import { DistroAlarmBlock, DockerFailureBlock, ExternalRulesBlock, PortsBlock, UnsupportedBlock } from './pane-tables.tsx';
 import { PaneHeader } from './pane-header.tsx';
-import { ElevationBlock, ManagedPortsSummary, NextPhaseBlock, RawOutputBlock, WriteTokenBlock } from './pane-settings.tsx';
+import { ElevationBlock, ManagedPortsSummary, WriteTokenBlock } from './pane-settings.tsx';
 import { TESTID } from './rows.ts';
 import type { LastWriteView, NatGatePanelView, PortRowView } from './types.ts';
 import { useAutoRefresh } from './use-auto-refresh.ts';
@@ -324,8 +324,8 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
         }}
       />
 
-      <NextPhaseBlock exec={view.exec} />
-      <RawOutputBlock docker={view.docker} />
+      {/* 主人 2026-10-27：「下一期的内容隐藏掉」⇒ exec 注入点不再挂在本页（组件保留在 pane-settings.tsx，
+          服务接入时再挂回去）；「原始输出」搬去配置页的「写通道预演」子组件**下面**（同一子组件内，不是外面）。 */}
       <LastWriteBlock lastWrite={view.lastWrite} />
     </div>
   );

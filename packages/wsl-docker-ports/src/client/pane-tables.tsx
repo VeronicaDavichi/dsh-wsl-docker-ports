@@ -216,7 +216,10 @@ export function ExternalRulesBlock({ external }: { readonly external: ExternalRu
         {external.rows.map((rule) => (
           <li key={rule.display} className="wdp-row">
             <code>{rule.display}</code>
-            <span className="wdp-muted">{rule.reason}</span>
+            {/* 主人 2026-10-27：原因只写在描述里 ⇒ 行内只留一个 ⚠（悬停看整句），行短了也就不需要分割线 */}
+            <span className="wdp-muted" title={external.note}>
+              ⚠
+            </span>
           </li>
         ))}
       </ul>

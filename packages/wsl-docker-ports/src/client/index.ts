@@ -199,8 +199,7 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
   const settings = createSettingsPipe(() => softGet<RemoteSettingsLike>(ctx, 'remote.settings'));
 
   // ⑤ 写通道（T3.1）：凭据仓库先建（缺省真 sessionStorage；取不到 ⇒ 内存降级 —— 绝不落盘）。
-  //    ⚠️ 017 三订起**提前到位**：配置页要拿到同一份 `write`（写通道预演搬去了配置页），
-  //    而座位在 ③′ 就建好了 ⇒ 构造顺序必须排在座位之前。构造期仍然**零请求**。
+  //    ⚠️ 017 起**提前到位**（配置页要同一份 `write`）⇒ 构造顺序必须排在座位之前；构造期**零请求**。
   const tokenStore = options.tokenStore ?? createWriteTokenStore(options.sessionStorage ?? defaultSessionStorage());
   const write: WriteWiring =
     options.write ??
@@ -214,13 +213,20 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
   //    「描述与组件行之间」）。组件本体在 chunk 里（主包棘轮零余量），这里只注册一个**取块座位**；
   //    `settings` 直接闭包进去 ⇒ 页面写走同一条 live 管道（不另造一条）。
   //    关自动表单 + 槽位注册失败都只降级、不抛（配置页是可选的编辑入口，不该拖垮整包加载）。
+  // 017 五订：原始输出按需读一次快照（`runtime` 在 ④ 才建好 ⇒ 先声明，座位里传读时才解析的闭包）
+  let readRawOutput: (() => Promise<string | null>) | undefined;
   const configSeat = (ownerProps: Record<string, unknown>): ReactElement =>
     createElement(ChunkBoot, {
       spec: PANE_CHUNK,
       title: 'WSL Docker 工具箱 · 配置',
       load: loadPortsChunk,
       exportName: 'ConfigPage',
-      paneProps: { ...ownerProps, settings, write },
+      paneProps: {
+        ...ownerProps,
+        settings,
+        write,
+        loadRawOutput: async (): Promise<string | null> => (readRawOutput === undefined ? null : readRawOutput()),
+      },
     });
   const configSlot = registerConfigSlot(ctx as unknown as ConfigSlotContext, configSeat as unknown as (props: never) => unknown);
   if (!configSlot.registered) {
@@ -255,7 +261,6 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
     };
   }
 
-
   const runtime: ClientRuntime = {
     source,
     // 惰性软取：`remote.settings` 可能晚于本插件就绪（contract §D13），故传 getter 而不是取一次的值
@@ -265,6 +270,12 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
     // ⑧ 008 T3.1 写通道：路由客户端 + 凭据仓库（sessionStorage）+ 所有权声明读取器。
     //    **构造期零请求**：channel 只在用户点「预演」时才发第一个请求。
     write,
+  };
+
+  // 017 五订：点开才读（加载期零读）。失败 ⇒ 服务端原文；成功 ⇒ 解析后原样给出
+  readRawOutput = async (): Promise<string | null> => {
+    const { docker } = await runtime.source.load();
+    return !docker.ok && docker.raw !== null ? docker.raw : JSON.stringify(docker, null, 2);
   };
 
   const disposers: (() => void)[] = [];

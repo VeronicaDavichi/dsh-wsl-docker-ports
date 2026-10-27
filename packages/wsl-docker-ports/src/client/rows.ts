@@ -230,8 +230,9 @@ export function buildExternalRulesView(external: readonly ExternalRule[]): Exter
   if (external.length === 0) return null;
   return {
     title: `外部规则（只读，${String(external.length)} 条）`,
-    note: '这些规则不在本插件的 managedPorts 声明集合内，因此不进五态、不计入任何计数、没有任何动作。要接管某个端口，请在下方显式声明它。',
-    rows: external.map((rule) => ({ display: rule.display, reason: 'listenPort 不在 managedPorts 内（声明式所有权）' })),
+    // 主人 2026-10-27：这句别在每一行重复 ⇒ 只在描述处说**一次**（带 ⚠），行内只留一个 ⚠ 标记
+    note: '⚠ listenPort 不在 managedPorts 内（声明式所有权）：这些规则不进五态、不计入任何计数、没有任何动作；要接管某个端口，请在下方显式声明它。',
+    rows: external.map((rule) => ({ display: rule.display })),
   };
 }
 

@@ -55,8 +55,7 @@ export const PAGE_CSS = `
 .wdp-gate { border-left: 2px solid var(--dsw-alias-state-warn-primary, currentColor); padding-left: 10px; }
 .wdp-card { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 0.5px solid var(--dsw-alias-border-l2, currentColor); border-radius: var(--dsw-radius-md, 8px); background: var(--dsw-alias-bg-layer-2, transparent); }
 .wdp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.wdp-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 0; border-top: 0.5px solid var(--dsw-alias-border-l2, transparent); }
-.wdp-row:first-child { border-top: none; }
+.wdp-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 4px 0; }
 .wdp-table { width: 100%; min-width: 460px; border-collapse: collapse; font-size: 12px; }
 .wdp-table th { text-align: left; padding: 4px 6px; font-size: 11px; font-weight: 500; color: var(--dsw-alias-label-secondary, inherit); border-bottom: 0.5px solid var(--dsw-alias-border-l4, transparent); white-space: nowrap; }
 .wdp-table td { text-align: left; padding: 4px 6px; vertical-align: middle; border-bottom: 0.5px solid var(--dsw-alias-border-l2, transparent); }
@@ -76,8 +75,7 @@ export const PAGE_CSS = `
 .wdp-input:focus-visible { outline: none; border-color: var(--dsw-alias-state-business-primary, currentColor); }
 .wdp-input:disabled { color: var(--dsw-alias-label-tertiary, inherit); cursor: default; }
 select.wdp-input { padding-right: 32px; background-image: linear-gradient(45deg, transparent 50%, var(--dsw-alias-label-tertiary, currentColor) 50%), linear-gradient(135deg, var(--dsw-alias-label-tertiary, currentColor) 50%, transparent 50%); background-position: calc(100% - 17px) 15px, calc(100% - 12px) 15px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
-.wdp-input.wdp-cfg-input-plain { padding: 0 12px; background-image: none; }
-.wdp-input.wdp-textarea { height: auto; min-height: 74px; padding: 8px 12px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.6; background-image: none; }
+.wdp-input.wdp-textarea { height: auto; min-height: 74px; padding: 8px 12px; resize: none; overflow: hidden; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.6; background-image: none; }
 .wdp-btn { height: 28px; padding: 0 10px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-sm, 6px); background: var(--dsw-alias-bg-layer-3, transparent); font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
 .wdp-btn[disabled] { opacity: 0.4; cursor: default; }
 .wdp-btn-primary { border-color: transparent; background: var(--dsw-alias-label-primary, currentColor); color: var(--dsw-alias-bg-layer-3, transparent); }
@@ -88,7 +86,6 @@ select.wdp-input { padding-right: 32px; background-image: linear-gradient(45deg,
 .wdp-textbtn:hover:not([disabled]) { color: var(--dsw-alias-label-primary, inherit); }
 .wdp-textbtn[disabled] { cursor: default; opacity: 0.5; }
 .wdp-btn:focus-visible, .wdp-save:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, currentColor)); outline-offset: 1px; }
-.wdp-field { display: flex; flex-direction: column; gap: 4px; }
 .wdp-inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .wdp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 12px; font-size: 12px; }
 .wdp-listen { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }

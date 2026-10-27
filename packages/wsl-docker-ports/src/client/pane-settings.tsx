@@ -15,7 +15,7 @@ import { useState, type ReactElement } from 'react';
 
 import { TESTID } from './rows.ts';
 import type { ElevationPolicyValue } from './settings-pipe.ts';
-import type { ExecControlView, DockerView, PortsPageView } from './types.ts';
+import type { ExecControlView, PortsPageView } from './types.ts';
 
 /**
  * 提权告知块的 `data-testid`（005 T2b.3）。**刻意不进 `rows.ts` 的 `TESTID`** ——
@@ -298,19 +298,4 @@ export function NextPhaseBlock({ exec }: { readonly exec: ExecControlView }): Re
   );
 }
 
-/** 原始输出（REQ-3.5）：**只**展示脱敏后的读侧原文，不提供任何解析/执行入口 */
-export function RawOutputBlock({ docker }: { readonly docker: DockerView }): ReactElement {
-  const [open, setOpen] = useState(false);
-  return (
-    <section className="wdp-sec">
-      <button type="button" className="wdp-btn" data-testid={TESTID.rawOutput} onClick={() => setOpen((value) => !value)}>
-        {open ? '收起原始输出' : '查看原始输出'}
-      </button>
-      {open && !docker.ok && docker.raw !== null ? (
-        <pre className="wdp-pre" data-testid="raw-output-body">
-          {docker.raw}
-        </pre>
-      ) : null}
-    </section>
-  );
-}
+

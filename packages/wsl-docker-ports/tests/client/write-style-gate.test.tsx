@@ -73,7 +73,10 @@ describe('⑩ 右栏页语法与配置页同源（共享控件 / 段落 vs 面�
   it('控件只在 PAGE_CSS 定义；右栏页用 .wdp-sec 不用 .wdp-card；分隔线全是 0.5px', () => {
     for (const selector of ['.wdp-input', '.wdp-save', '.wdp-textbtn']) {
       expect(PAGE_CSS.includes(`${selector} `) || PAGE_CSS.includes(`${selector},`), `${selector} 不在 PAGE_CSS`).toBe(true);
-      expect(CONFIG_CSS.includes(`${selector} {`), `${selector} 在 CONFIG_CSS 里又写了一份（会漂移）`).toBe(false);
+      // 只允许「限定作用域」的补充（如 `.wdp-cfg-card .wdp-textbtn` 左对齐），
+      // 不许再写一份**裸选择器**的基础规则（两处基础规则必然漂移）
+      const bare = new RegExp(`(^|\\n)${selector.replaceAll('.', '\\.')}[,\\s]*\\{`, 'u');
+      expect(bare.test(CONFIG_CSS), `${selector} 在 CONFIG_CSS 里又写了一份裸规则（会漂移）`).toBe(false);
     }
 
     const paneFiles = ['pane.tsx', 'pane-tables.tsx', 'pane-settings.tsx'];

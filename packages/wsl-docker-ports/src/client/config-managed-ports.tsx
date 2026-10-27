@@ -15,7 +15,7 @@
  * - 非法项**原样留在输入里**并就地报原因（REQ-16.1），不静默丢弃。
  */
 
-import type { ReactElement } from 'react';
+import { useEffect, useRef, type ReactElement } from 'react';
 
 export interface ManagedPortPresetView {
   readonly name: string;
@@ -44,6 +44,15 @@ export interface ManagedPortsFieldProps {
  */
 export function ManagedPortsField(props: ManagedPortsFieldProps): ReactElement {
   const { text, presets, issues, disabled, onChangeText, onTogglePreset } = props;
+  // 主人 2026-10-27：「所有的纵向滚轮都不应该存在」⇒ textarea **随内容长高**，不给自己长出滚动条
+  const areaRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const area = areaRef.current;
+    if (area === null) return;
+    area.style.height = 'auto';
+    // +2 是上下边框（0.5px×2 取整），不加就会被裁掉最后一行
+    area.style.height = `${String(area.scrollHeight + 2)}px`;
+  }, [text]);
   return (
     <div className="wdp-cfg-field">
       <div className="wdp-cfg-head">
@@ -61,6 +70,7 @@ export function ManagedPortsField(props: ManagedPortsFieldProps): ReactElement {
         两种写法等价。textarea 天然保留换行 ⇒ 不需要再拦 onPaste。
       */}
       <textarea
+        ref={areaRef}
         id="config-managed-ports"
         className="wdp-input wdp-textarea"
         data-testid="config-managed-ports"

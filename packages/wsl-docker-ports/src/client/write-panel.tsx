@@ -204,7 +204,7 @@ export function WriteChannelBlock(props: WriteChannelBlockProps): ReactElement {
         <label className={asField ? 'wdp-cfg-row' : undefined}>
           {asField ? <span className="wdp-cfg-label">端口</span> : '端口'}
           <input
-            className={asField ? 'wdp-input wdp-cfg-input-plain' : 'wdp-btn'}
+            className={asField ? 'wdp-input' : 'wdp-btn'}
             data-testid={WRITE_TESTID.ports}
             data-write-control="1"
             disabled={!usable || busy}
