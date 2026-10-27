@@ -1,15 +1,24 @@
 /**
- * 010 `T7.3`：把自绘配置页挂进宿主的**插件行配置槽**（`plugins.row.config`）。
+ * 010 `T7.3` → **017 改为 bundle 级**：把自绘配置页挂进宿主的**组合包配置槽**
+ * （`plugins.bundle.config`）。
+ *
+ * ## 为什么从 `plugins.row.config` 换过来（2026-10-27 主人拍板）
+ *
+ * 行级槽（`plugins.row.config`）画在**某一行自己的详情页**里；组合包配置槽
+ * （`plugins.bundle.config`，键 = **组合包包名**）画在**卡片页**——「描述与组件行之间」，
+ * 也就是主人说的「插件进来但没有点进子组件的地方」。逐字依据（宿主 0.2.0-rc.2 随包文档）：
+ * 「`plugins.bundle.config` keyed by the bundle's package name … shown on the bundle's page
+ * between its description and its rows」。
  *
  * ## 两件事，顺序固定
  *
  * 1. `settings.configure({ auto: false }, ctx.fiber)` —— 关掉宿主自动生成的表单，
  *    否则同一份配置会出现两张表单（一张能写、一张也能写 ⇒ 修订冲突）。
- * 2. `slots.inject('plugins.row.config', () => slots.register({ name, key }, 组件))` ——
- *    注册键 `key` = 本包 patch **条目 id**（= 包名 `dsh-wsl-docker-ports`），`name` = 槽位名。
+ * 2. `slots.inject('plugins.bundle.config', () => slots.register({ name, key }, 组件))` ——
+ *    注册键 `key` = 组合包的**包名**（`dsh-wsl-docker-ports`）。
  *
- * 逐字依据：002 `src/client/config-slot.ts` 的 `configureAutoForm` + `registerConfigSlot`
- * （2026-10-08 源码实证的 `REQ-10.1` 用法）；本文件是**同一手法的窄实现**，只保留本包用得到的部分。
+ * 逐字依据：bridge-next 2.0.2 的 `registerPluginSettings`（`plugins.bundle.config` +
+ * `key: PACKAGE`；2026-10-27 读源码核对）。
  *
  * ## 失败一律降级、不抛
  *
@@ -18,15 +27,15 @@
  *
  * ## 为什么在主包里
  *
- * `plugins.row.config` 是**客户端** slot 服务，注册必须发生在客户端 `apply()` 期间；chunk 只在
- * 用户打开右栏页时才被取回来 ⇒ 在主包里注册一个**只负责取块的薄座位**（组件本体仍在 chunk 里）。
+ * `plugins.bundle.config` 是**客户端** slot 服务，注册必须发生在客户端 `apply()` 期间；chunk 只在
+ * 用户打开配置页时才被取回来 ⇒ 在主包里注册一个**只负责取块的薄座位**（组件本体仍在 chunk 里）。
  */
 
-/** 宿主配置槽的服务名（官方 `plugins.row.config` 一栏；002 已按源码核对） */
-export const CONFIG_SLOT_NAME = 'plugins.row.config';
+/** 宿主配置槽的服务名（官方 `plugins.bundle.config` 一栏；0.2.0-rc.2 随包文档核对） */
+export const CONFIG_SLOT_NAME = 'plugins.bundle.config';
 
-/** 注册键 = 本包 patch 条目 id = 包名（逐字一致；不一致会让配置行指不到我们的页） */
-export const CONFIG_ROW_KEY = 'wsl-ports';
+/** 注册键 = 组合包包名（bundle 级槽按包名寻址；写错 = 卡片上没有这一页） */
+export const CONFIG_ROW_KEY = 'dsh-wsl-docker-ports';
 
 export const AUTO_FORM_EFFECT_LABEL = `${CONFIG_SLOT_NAME}: auto-form off`;
 

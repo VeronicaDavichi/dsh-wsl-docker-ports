@@ -24,7 +24,7 @@ import { usePageScrollFix } from './pane-scroll.ts';
 import type { ClientRuntime, ForwardAction } from './host.ts';
 import { summarizeWriteReport } from './page.ts';
 import { DistroBlock, DockerFailureBlock, ExternalRulesBlock, PortsBlock, UnsupportedBlock } from './pane-tables.tsx';
-import { PaneHeader, RefreshIntervalSelect } from './pane-header.tsx';
+import { PaneHeader } from './pane-header.tsx';
 import { ElevationBlock, ManagedPortsBlock, NextPhaseBlock, RawOutputBlock, WriteTokenBlock } from './pane-settings.tsx';
 import { mergeManagedPortsDecl, TESTID } from './rows.ts';
 import type { LastWriteView, NatGatePanelView, PortRowView } from './types.ts';
@@ -97,7 +97,9 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
   const { runtime, autoLoad = true } = props;
   const [actionError, setActionError] = useState<string | null>(null);
   // 014：拉取 / 自动轮询 / 频次状态机（含挂载读频次、选择写频次、卸载清定时器）
-  const { view, loadError, busy, refresh, refreshIntervalSec, changeRefreshInterval } = useAutoRefresh(runtime, autoLoad, setActionError);
+  // 017：页头上的频次下拉已删（搬到 bundle 级配置页）；`useAutoRefresh` 内部仍按配置值
+  //      自动刷新，页面本身不再需要这个数值。
+  const { view, loadError, busy, refresh } = useAutoRefresh(runtime, autoLoad, setActionError);
   const [draft, setDraft] = useState('');
   const [checkedPresets, setCheckedPresets] = useState<readonly string[]>([]);
   const [scopeDraft, setScopeDraft] = useState<Readonly<Record<string, Scope>>>({});
@@ -223,7 +225,6 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
           <button type="button" className="wdp-btn" data-testid={TESTID.refresh} disabled={busy} onClick={() => void refresh(false, lastWrite)}>
             刷新
           </button>
-          <RefreshIntervalSelect value={refreshIntervalSec} onChange={(sec) => void changeRefreshInterval(sec)} />
         </div>
         {loadError !== null ? <p className="wdp-error">读取失败：{loadError}</p> : null}
       </div>
@@ -269,8 +270,6 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
         busy={busy}
         onRefresh={() => void refresh(false, lastWrite)}
         onLaunch={() => void refresh(true, lastWrite)}
-        refreshIntervalSec={refreshIntervalSec}
-        onInterval={(sec) => void changeRefreshInterval(sec)}
       />
       {loadError !== null ? (
         <p className="wdp-error" data-testid="load-error">

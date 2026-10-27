@@ -198,14 +198,16 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
   // ③ 配置管道先建：路由来源每次刷新要用它读声明（**读**，不是写）
   const settings = createSettingsPipe(() => softGet<RemoteSettingsLike>(ctx, 'remote.settings'));
 
-  // ③′ 010 T7.3：插件配置页（宿主「插件」行的配置槽）。组件本体在 chunk 里（主包棘轮零余量），
-  //    这里只注册一个**取块座位**；`settings` 直接闭包进去 ⇒ 页面写走同一条 live 管道（不另造一条）。
+  // ③′ 010 T7.3 → 017：**bundle 级**配置页（宿主 `plugins.bundle.config`，画在卡片页的
+  //    「描述与组件行之间」）。组件本体在 chunk 里（主包棘轮零余量），这里只注册一个**取块座位**；
+  //    `settings` 直接闭包进去 ⇒ 页面写走同一条 live 管道（不另造一条）。
   //    关自动表单 + 槽位注册失败都只降级、不抛（配置页是可选的编辑入口，不该拖垮整包加载）。
   const configSeat = (ownerProps: Record<string, unknown>): ReactElement =>
     createElement(ChunkBoot, {
       spec: PANE_CHUNK,
-      title: 'WSL Docker 端口转发 · 配置',
+      title: 'WSL Docker 工具箱 · 配置',
       load: loadPortsChunk,
+      exportName: 'ConfigPage',
       paneProps: { ...ownerProps, settings },
     });
   const configSlot = registerConfigSlot(ctx as unknown as ConfigSlotContext, configSeat as unknown as (props: never) => unknown);

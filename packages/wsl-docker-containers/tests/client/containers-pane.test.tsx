@@ -122,7 +122,9 @@ describe('容器页取数：缺省必须回落全局 fetch', () => {
     expect(container.querySelectorAll('tbody tr')[0]?.textContent).toContain('8000->80/tcp');
     // 「没有可用的 fetch」那条错误**不许出现**（旧代码就是它 + 0 请求）
     expect(container.textContent ?? '').not.toContain('没有可用的 fetch');
-    expect(container.textContent ?? '').toContain('目标发行版：Ubuntu2204');
+    // 017：页头的「目标发行版：…」文字已删（发行版改在组合包级配置页里选）
+    expect(container.textContent ?? '').not.toContain('目标发行版：');
+    expect(screen.queryByTestId('txt-containers-distro')).toBeNull();
     console.log(`  · 无注入 fetchImpl：请求 ${String(calls.length)} 次，容器行 ${String(container.querySelectorAll('tbody tr').length)} 行`);
   });
 
@@ -173,11 +175,11 @@ async function advance(ms: number): Promise<void> {
   });
 }
 
-function intervalSelect(): HTMLSelectElement {
-  return screen.getByTestId(CID.refreshInterval) as HTMLSelectElement;
-}
-
-describe('D2 容器页刷新间隔（独立命名空间 / 默认关闭 / 变化才重绘）', () => {
+/**
+ * 017：页头上的刷新下拉**已删除**（搬到组合包级配置页 `plugins.bundle.config`，键 = 组合包包名）。
+ * 页面只剩「刷新」按钮；自动刷新仍按配置里的值工作。判据改为「页头零控件 + 零配置写」。
+ */
+describe('D2 容器页刷新间隔（017 后：页头无控件，只按配置值轮询）', () => {
   let probeCalls = 0;
 
   beforeEach(() => {
@@ -195,17 +197,14 @@ describe('D2 容器页刷新间隔（独立命名空间 / 默认关闭 / 变化�
     vi.useRealTimers();
   });
 
-  it('D2-1 默认「关闭」：五档选项齐全、120 秒零轮询、零配置写（旧代码：无此下拉框）', async () => {
+  it('D2-1 默认「关闭」：页头零刷新控件（两个 testid 都不在）、120 秒零轮询、零配置写', async () => {
     const writes: SettingsWrite[] = [];
     const runtime: ContainersRuntime = { ...productionRuntime(), settings: () => recordingSettings(0, writes) };
     render(<ContainersPane runtime={runtime} /> as ReactElement);
     await flush();
     await flush();
 
-    const select = intervalSelect();
-    expect(select.value).toBe('0');
-    expect(Array.from(select.options).map((option) => option.textContent)).toEqual(['关闭', '15 秒', '30 秒', '60 秒', '5 分钟']);
-    // 不得与转发侧控件同名（同名会让「独立」变成一句空话）
+    expect(screen.queryByTestId('sel-containers-refresh-interval')).toBeNull();
     expect(screen.queryByTestId('sel-refresh-interval')).toBeNull();
     expect(probeCalls).toBe(1);
 
@@ -215,14 +214,14 @@ describe('D2 容器页刷新间隔（独立命名空间 / 默认关闭 / 变化�
     console.log(`  · D2-1 扫了 120s：轮询 ${String(probeCalls - 1)} 次、配置写 ${String(writes.length)} 次`);
   });
 
-  it('D2-2 配置「15 秒」：到点轮询，选择器回填 15（旧代码：无此下拉框）', async () => {
+  it('D2-2 配置「15 秒」：到点轮询（页头不再回填控件）', async () => {
     const writes: SettingsWrite[] = [];
     const runtime: ContainersRuntime = { ...productionRuntime(), settings: () => recordingSettings(15, writes) };
     render(<ContainersPane runtime={runtime} /> as ReactElement);
     await flush();
     await flush();
 
-    expect(intervalSelect().value).toBe('15');
+    expect(screen.queryByTestId('sel-containers-refresh-interval')).toBeNull();
     expect(probeCalls).toBe(1);
 
     await advance(15_000);
@@ -232,7 +231,7 @@ describe('D2 容器页刷新间隔（独立命名空间 / 默认关闭 / 变化�
     console.log(`  · D2-2 扫了 30s：15s 档轮询到 ${String(probeCalls - 1)} 次`);
   });
 
-  it('D2-3 数据未变（只有 generatedAt 变）⇒ 零重绘；数据真变 ⇒ 重绘（旧代码：每次 setSnapshot）', async () => {
+  it('D2-3 数据未变（只有 generatedAt 变）⇒ 零重绘；数据真变 ⇒ 重绘', async () => {
     let version = 0;
     globalThis.fetch = (async () => {
       version += 1;
@@ -259,7 +258,6 @@ describe('D2 容器页刷新间隔（独立命名空间 / 默认关闭 / 变化�
     );
     await flush();
     await flush();
-    expect(intervalSelect().value).toBe('15');
 
     const loads = probeCalls;
     renders = 0;
@@ -279,7 +277,6 @@ describe('D2 容器页刷新间隔（独立命名空间 / 默认关闭 / 变化�
     const view = render(<ContainersPane runtime={runtime} /> as ReactElement);
     await flush();
     await flush();
-    expect(intervalSelect().value).toBe('15');
 
     await advance(15_000);
     expect(probeCalls).toBe(2);
@@ -291,23 +288,19 @@ describe('D2 容器页刷新间隔（独立命名空间 / 默认关闭 / 变化�
     console.log(`  · D2-4 卸载后 60s 新增轮询 ${String(probeCalls - afterUnmount)} 次`);
   });
 
-  it('D2-5 改档：立即生效 + 写回容器行自己的 refreshIntervalSec（不碰转发侧）', async () => {
+  it('D2-5 页头没有可写入口：点不到任何刷新档 ⇒ 零配置写（真正的写入口在配置页）', async () => {
     const writes: SettingsWrite[] = [];
     const runtime: ContainersRuntime = { ...productionRuntime(), settings: () => recordingSettings(0, writes) };
     render(<ContainersPane runtime={runtime} /> as ReactElement);
     await flush();
     await flush();
-    expect(intervalSelect().value).toBe('0');
 
-    fireEvent.change(intervalSelect(), { target: { value: '60' } });
+    fireEvent.click(screen.getByTestId(CID.refresh));
     await flush();
     await flush();
 
-    expect(intervalSelect().value).toBe('60');
-    expect(writes).toEqual([{ sec: 60 }]);
-
-    await advance(60_000);
+    expect(writes).toHaveLength(0);
     expect(probeCalls).toBe(2);
-    console.log(`  · D2-5 写回 ${JSON.stringify(writes)}，60s 后轮询 1 次`);
+    console.log(`  · D2-5 点「刷新」后：配置写 ${String(writes.length)} 次、请求 ${String(probeCalls)} 次`);
   });
 });

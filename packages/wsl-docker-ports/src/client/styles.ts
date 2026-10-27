@@ -45,6 +45,14 @@ export const PAGE_CSS = `
 .wdp-inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .wdp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px 10px; }
 .wdp-error { color: var(--dsw-alias-state-danger, inherit); }
+/* 017：bundle 级配置页（卡片页「描述与组件行之间」）—— panel → section(h4) → field，底部一条保存行 */
+.wdp-cfg { display: flex; flex-direction: column; gap: 12px; padding: 4px 2px; }
+.wdp-cfg > h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.wdp-cfg-section { border: 1px solid var(--dsw-alias-border-secondary, currentColor); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.wdp-cfg-section > h4 { margin: 0; font-size: 13px; font-weight: 600; }
+.wdp-cfg-field { display: grid; grid-template-columns: minmax(96px, max-content) 1fr; gap: 4px 10px; align-items: center; }
+.wdp-cfg-field > span:last-child { grid-column: 2; }
+.wdp-cfg-save { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-top: 1px solid var(--dsw-alias-border-secondary, currentColor); padding-top: 8px; }
 `;
 
 /** `document.querySelector` / `createElement` 的最小面（测试用假 doc 注入，生产走真 document） */

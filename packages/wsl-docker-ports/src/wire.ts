@@ -52,6 +52,17 @@ export const PORTS_SNAPSHOT_PATH = `${PORTS_HTTP_PREFIX}${PORTS_SNAPSHOT_SEGMENT
 /** 唯一接受的方法 */
 export const PORTS_SNAPSHOT_METHOD = 'GET';
 
+/**
+ * 017：**只读发行版清单**端点（bundle 级配置页的「目标发行版」下拉用）。
+ *
+ * 为什么不复用 `/snapshot`：快照要跑 netsh / docker / eth0（唤醒后首次 `docker ps`
+ * 会被硬超时砍掉，实测 11–12s）⇒ 配置页只为拿一串发行版名字不值得付那次冷启动。
+ * 这条端点只跑 `wsl.exe -l -v`（热 ~200ms），**零 docker、零 netsh、零提权**。
+ */
+const PORTS_DISTROS_SEGMENT = '/distros';
+export const PORTS_DISTROS_PATH = `${PORTS_HTTP_PREFIX}${PORTS_DISTROS_SEGMENT}`;
+export const PORTS_DISTROS_METHOD = 'GET';
+
 /** 查询参数名（**字面量**，集成方写进 contract §P9 时以此为准） */
 export const QUERY_MANAGED_PORTS = 'managedPorts';
 export const QUERY_SCOPE = 'scope';

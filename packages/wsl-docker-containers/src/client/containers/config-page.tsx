@@ -1,22 +1,23 @@
 /**
- * **容器行自己的配置页**（015 `P4`）—— 挂在 `plugins.row.config` 槽、键 = **容器行 id**。
+ * **容器行自己的配置页**（015 `P4`；017 收窄）—— 挂在 `plugins.row.config` 槽、键 =
+ * `<包名>#<行 id>`（`dsh-wsl-docker-containers#wsl-containers`）。
  *
- * ## 为什么必须按角色隐藏字段（owner 决策 ①）
+ * ## 017：distro / refreshIntervalSec 已搬走
  *
- * 两行共用**同一份** `Config`（7 字段），但每行只「拥有」其中一部分：
+ * 这两个字段现在只由**组合包级配置页**（`plugins.bundle.config`，在卡片页「描述与组件行
+ * 之间」）写。本页保留的唯一字段是**容器行独占的** `writeToken`（与转发侧各自独立，属于
+ * 行级卫生）。判定依据：同一字段两个写入口 = 两份可能分叉的值 ⇒ 017 只留一个入口。
  *
- * | 字段 | 转发行拥有 | 容器行拥有 |
- * | --- | :-: | :-: |
- * | `managedPorts` / `scopes` / `listenAddresses` / `elevationPolicy` | ✅ | ❌ |
- * | `distro` / `refreshIntervalSec` / `writeToken` | ✅ | ✅ |
+ * ## 为什么键是 `<包名>#<行 id>`
  *
- * 容器行的配置页**只画自己那三个**：画别人的字段 = 让人以为改这里能影响转发侧
- * （实际写的是**本行命名空间**，转发侧根本读不到 ⇒ 纯误会）。
+ * 宿主 0.2.0-rc.2 随包文档：「`plugins.row.config`（keyed by `<package name>#<row id>`）for
+ * one row's configuration, which gives that row a **Configure** control opening the row's page」。
+ * 只写行 id（015 当初的写法）宿主找不到这一行 ⇒ 页永远不出现（017 一并修正）。
  *
  * ## 数据来源
  *
- * 主包用**同一个** `createSettingsPipe` 造了第二个实例（命名空间 = 容器页 id），
- * 经 `ContainersRuntime.settings()` 传进来 ⇒ 协议只有一份实现，字段读取/写入/校验不复制。
+ * 主包用**同一个** `createSettingsPipe` 造了第二个实例（命名空间 = 容器行 id），
+ * 经 `ContainersRuntime.settings()` 传进来 ⇒ 协议只有一份实现。
  */
 
 import { createElement, useCallback, useEffect, useState } from 'react';
@@ -25,9 +26,6 @@ import type { ReactElement } from 'react';
 import type { ContainersRuntime } from './runtime.ts';
 
 export const CONFIG_CID = {
-  distro: 'inp-containers-config-distro',
-  distroSave: 'btn-containers-config-distro-save',
-  refresh: 'sel-containers-config-refresh',
   token: 'inp-containers-config-token',
   tokenSave: 'btn-containers-config-token-save',
   tokenState: 'txt-containers-config-token-state',
@@ -35,12 +33,8 @@ export const CONFIG_CID = {
   unavailable: 'txt-containers-config-unavailable',
 } as const;
 
-const REFRESH_CHOICES: readonly number[] = [0, 15, 30, 60, 300];
-
 export function ContainersConfigPage(props: { readonly runtime?: ContainersRuntime }): ReactElement {
   const runtime = props.runtime;
-  const [distro, setDistro] = useState('');
-  const [refresh, setRefresh] = useState(30);
   const [token, setToken] = useState('');
   const [tokenConfigured, setTokenConfigured] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -59,10 +53,6 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
       .readConfig()
       .then((view) => {
         if (!alive) return;
-        setDistro(view.distro ?? '');
-        const raw = (view as { refreshIntervalSec?: unknown }).refreshIntervalSec;
-        const sec = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : 30;
-        setRefresh(REFRESH_CHOICES.includes(sec) ? sec : 30);
         setTokenConfigured(view.writeTokenConfigured === true);
       })
       .catch(() => {
@@ -72,24 +62,6 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
       alive = false;
     };
   }, [runtime]);
-
-  const saveDistro = useCallback(async (): Promise<void> => {
-    const pipe = runtime?.settings();
-    if (pipe === undefined) return;
-    const result = await pipe.writeDistro(distro.trim());
-    setMessage(result.message);
-  }, [runtime, distro]);
-
-  const saveRefresh = useCallback(
-    async (sec: number): Promise<void> => {
-      setRefresh(sec);
-      const pipe = runtime?.settings();
-      if (pipe === undefined) return;
-      const result = await pipe.writeRefreshInterval(sec);
-      setMessage(result.message);
-    },
-    [runtime],
-  );
 
   const saveToken = useCallback(async (): Promise<void> => {
     const pipe = runtime?.settings();
@@ -113,24 +85,7 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
     createElement(
       'p',
       { className: 'wdp-muted' },
-      '这里只显示**容器行拥有**的字段：distro / refreshIntervalSec / writeToken。转发侧字段（managedPorts、scopes、listenAddresses、elevationPolicy）在转发行的配置页里改。',
-    ),
-    createElement(
-      'label',
-      { className: 'wdp-field' },
-      '目标发行版（留空 = 自动发现）',
-      createElement('input', { type: 'text', 'data-testid': CONFIG_CID.distro, value: distro, onChange: (event: { target: { value: string } }) => setDistro(event.target.value) }),
-    ),
-    createElement('button', { type: 'button', 'data-testid': CONFIG_CID.distroSave, onClick: () => void saveDistro() }, '保存发行版'),
-    createElement(
-      'label',
-      { className: 'wdp-field' },
-      '自动刷新（秒）',
-      createElement(
-        'select',
-        { 'data-testid': CONFIG_CID.refresh, value: String(refresh), onChange: (event: { target: { value: string } }) => void saveRefresh(Number(event.target.value)) },
-        REFRESH_CHOICES.map((sec) => createElement('option', { key: sec, value: String(sec) }, sec === 0 ? '关闭' : `${String(sec)}s`)),
-      ),
+      '只显示**容器行独占**的字段。目标发行版与刷新频次已搬到卡片页的「配置」（组合包级配置页）；转发侧字段（managedPorts、scopes、listenAddresses、elevationPolicy）在转发行的配置页里改。',
     ),
     createElement(
       'label',

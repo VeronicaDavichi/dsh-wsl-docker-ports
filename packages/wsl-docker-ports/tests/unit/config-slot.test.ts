@@ -58,7 +58,7 @@ function fakeCtx(overrides: Partial<ConfigSlotContext> = {}): { ctx: ConfigSlotC
   return { ctx, configureCalls, effects };
 }
 
-test('U3 · 注册键 = plugins.row.config + 本包 patch 条目 id；关闭自动表单时**带 fiber**', () => {
+test('U3 · 注册键 = plugins.bundle.config + 组合包名；关闭自动表单时**带 fiber**', () => {
   const { ctx, configureCalls } = fakeCtx();
   const { slots, calls } = fakeSlots();
   (ctx as { slots?: unknown }).slots = slots;
@@ -67,12 +67,12 @@ test('U3 · 注册键 = plugins.row.config + 本包 patch 条目 id；关闭自�
   const result = registerConfigSlot(ctx, component as unknown as (props: never) => unknown);
 
   assert.equal(result.registered, true);
-  assert.equal(result.slotName, 'plugins.row.config');
-  assert.equal(result.key, 'wsl-ports');
-  assert.equal(CONFIG_SLOT_NAME, 'plugins.row.config');
-  assert.equal(CONFIG_ROW_KEY, 'wsl-ports');
-  assert.deepEqual(calls.injects, ['plugins.row.config']);
-  assert.deepEqual(calls.registers, [{ name: 'plugins.row.config', key: 'wsl-ports' }]);
+  assert.equal(result.slotName, 'plugins.bundle.config');
+  assert.equal(result.key, 'dsh-wsl-docker-ports');
+  assert.equal(CONFIG_SLOT_NAME, 'plugins.bundle.config');
+  assert.equal(CONFIG_ROW_KEY, 'dsh-wsl-docker-ports');
+  assert.deepEqual(calls.injects, ['plugins.bundle.config']);
+  assert.deepEqual(calls.registers, [{ name: 'plugins.bundle.config', key: 'dsh-wsl-docker-ports' }]);
   assert.equal(configureCalls.length >= 1, true, 'configure({auto:false}) 必须真调（否则同一份配置出现两张表单）');
   assert.deepEqual(configureCalls.at(-1), { auto: false, fiber: { fake: 'fiber' } });
   assert.equal(result.autoForm.kind, 'configured');

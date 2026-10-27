@@ -2,14 +2,13 @@
 /**
  * 014 自动刷新：**DOM + 假定时器**验收（A1–A5）
  *
- * A1 缺省关闭（零轮询）/ A2 选 15 秒 ⇒ 立即写配置 + 到点轮询 + 重挂载回填 /
- * A3 数据未变（只有 `refreshedAt` 变）⇒ **零重绘** / A4 卸载清定时器 / A5 轮询失败不清内容且继续重试。
- *
- * 🔴 A3 的「零重绘」用 React `Profiler` 的 `onRender` 计数证 —— 不是「看起来没变」。
- * 🔴 全部在假定时器下跑：不接受真实 `setInterval`（否则用例要等 15 秒，且无法证明清理）。
+ * 🔴 017（2026-10-27 主人拍板）：页头上的**频次下拉已删除** —— 它搬到组合包级配置页
+ * （`plugins.bundle.config`，卡片页「描述与组件行之间」）。本文件因此改成「页头零控件 +
+ * 自动刷新仍按配置值工作」的判据：A1/A2 断言控件不在、A2 用配置种子（`initialInterval`）
+ * 代替「点选下拉」。轮询/重绘/清理三组判据（A3–A5）逻辑不变。
  */
 
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,53 +38,48 @@ async function advance(ms: number): Promise<void> {
   });
 }
 
-function select(): HTMLSelectElement {
-  return screen.getByTestId('sel-refresh-interval') as HTMLSelectElement;
-}
-
-describe('014 自动刷新频次', () => {
-  it('A1 缺省「关闭」：不选档时 120 秒内零轮询、零配置写', async () => {
+describe('014/017 自动刷新频次（页头无控件）', () => {
+  it('A1 缺省「关闭」：页头没有频次下拉，120 秒内零轮询、零配置写', async () => {
     const test = harness(snapshot());
     render(<PortsPane runtime={test.runtime} />);
     await flush();
     await flush();
 
-    expect(select().value).toBe('0');
-    expect(Array.from(select().options).map((option) => option.textContent)).toEqual(['关闭', '15 秒', '30 秒', '60 秒', '5 分钟']);
+    // 017：频次下拉已从这里删除（搬到 bundle 级配置页）⇒ 页头不得再出现它
+    expect(screen.queryByTestId('sel-refresh-interval')).toBeNull();
 
     const loads = test.recorded.loads.length;
     await advance(120_000);
     expect(test.recorded.loads.length).toBe(loads);
     expect(test.recorded.updates).toHaveLength(0);
-    console.log(`  · A1 扫了 120s：轮询 ${String(test.recorded.loads.length - loads)} 次、配置写 ${String(test.recorded.updates.length)} 次（缺省关闭）`);
+    console.log(`  · A1 扫了 120s：轮询 ${String(test.recorded.loads.length - loads)} 次、配置写 ${String(test.recorded.updates.length)} 次（缺省关闭，页头零控件）`);
   });
 
-  it('A2 选「15 秒」：立即写配置、到点轮询一次、刷新页面后回填', async () => {
-    const test = harness(snapshot());
+  it('A2 配置「15 秒」：到点轮询一次；页头不改配置、重挂载仍按配置值跑', async () => {
+    const test = harness(snapshot(), { initialInterval: 15 });
     const first = render(<PortsPane runtime={test.runtime} />);
     await flush();
     await flush();
 
+    expect(screen.queryByTestId('sel-refresh-interval')).toBeNull();
     const before = test.recorded.loads.length;
-    fireEvent.change(select(), { target: { value: '15' } });
-    await flush();
-    await flush();
-
-    expect(select().value).toBe('15');
-    expect(test.recorded.updates).toHaveLength(1);
-    expect(test.recorded.updates[0]?.patch).toEqual({ refreshIntervalSec: 15 });
-    expect(test.recorded.elevation).toHaveLength(0);
 
     await advance(15_000);
     expect(test.recorded.loads.length).toBe(before + 1);
+    // 017：页头不再写配置（写入口只剩配置页）
+    expect(test.recorded.updates).toHaveLength(0);
+    expect(test.recorded.elevation).toHaveLength(0);
 
-    // 重挂载 = 刷新页面：读回服务端已落盘的 15，选择器不得丢档
+    // 重挂载 = 刷新页面：仍从配置读 15，按同一频次继续跑
     first.unmount();
-    render(<PortsPane runtime={test.runtime} />);
+    const second = render(<PortsPane runtime={test.runtime} />);
     await flush();
     await flush();
-    expect(select().value).toBe('15');
-    console.log(`  · A2 扫了 1 次写 ${JSON.stringify(test.recorded.updates[0]?.patch)}、15s 后轮询 1 次、重挂载回填 15`);
+    const afterRemount = test.recorded.loads.length;
+    await advance(15_000);
+    expect(test.recorded.loads.length).toBe(afterRemount + 1);
+    second.unmount();
+    console.log(`  · A2 15s 档轮询 1 次、配置写 ${String(test.recorded.updates.length)} 次、重挂载后继续按 15s 跑`);
   });
 
   it('A3 数据未变（只有 refreshedAt 变）⇒ 定时器到点但零重绘', async () => {
@@ -103,7 +97,6 @@ describe('014 自动刷新频次', () => {
     );
     await flush();
     await flush();
-    expect(select().value).toBe('15');
 
     const loads = test.recorded.loads.length;
     renders = 0;
@@ -127,7 +120,6 @@ describe('014 自动刷新频次', () => {
     const view = render(<PortsPane runtime={test.runtime} />);
     await flush();
     await flush();
-    expect(select().value).toBe('15');
 
     const before = test.recorded.loads.length;
     await advance(15_000);
@@ -145,7 +137,6 @@ describe('014 自动刷新频次', () => {
     render(<PortsPane runtime={test.runtime} />);
     await flush();
     await flush();
-    expect(select().value).toBe('15');
 
     expect(screen.queryByTestId('load-error')).toBeNull();
     await advance(15_000);

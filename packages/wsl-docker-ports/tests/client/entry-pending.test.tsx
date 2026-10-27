@@ -180,7 +180,8 @@ describe('缺陷 C（2026-10-09 真机）：右栏服务**晚到**时也必须�
 
       // 🔴 015 P4 形状变更：两个页（转发 + 容器）
       expect(f.tabRegistrations.map((item) => (item as Record<string, unknown>)['id'])).toEqual([PAGE_ID]);
-      expect(f.slotRegistrations.map((registration) => registration.options['name']).filter((name) => name !== 'plugins.row.config')).toEqual([TAB_SLOT, TAB_TITLE_SLOT]);
+      // 017：配置槽从行级换成**组合包级**（`plugins.bundle.config`）⇒ 过滤名要跟着换
+      expect(f.slotRegistrations.map((registration) => registration.options['name']).filter((name) => name !== 'plugins.bundle.config')).toEqual([TAB_SLOT, TAB_TITLE_SLOT]);
       expect((f.tabRegistrations[0] as Record<string, unknown>)['kind']).toBe('wslDockerPorts');
       // 告警被撤销（否则窗口到点还会冒一条已经过时的 warn）
       expect(clock.pendingCount()).toBe(0);

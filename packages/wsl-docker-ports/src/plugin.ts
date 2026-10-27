@@ -209,7 +209,13 @@ export function applyWslDockerPorts(
   const builder: SnapshotBuilder = deps.snapshotBuilder ?? createSnapshotBuilder(snapshotDeps);
 
   // ② 路由：**注册发生在宿主可用时机**（`ctx.inject(['webServer'])`），此处不再同步 `ctx.get` 定生死
-  const route: PortsRouteRegistration = registerPortsRoute(ctx, builder);
+  const route: PortsRouteRegistration = registerPortsRoute(ctx, builder, undefined, {
+    // 017：配置页的发行版下拉。只跑 wsl.exe -l -v（**不跑 docker/netsh**），失败原样透出。
+    listDistros: async () => {
+      const listed = await listDistros(executor);
+      return listed.ok ? { ok: true, distros: listed.distros } : { ok: false, message: listed.message };
+    },
+  });
   // ③ 写通道（008 T1.7 + T2.9）：接线在 wire-plugin.ts，此处只留一行（⇒ 不挤爆 400 行 SHALL）。🔴 透传的是 `config-read.ts` 的**活体读取函数**（不是值本身）：两个消费点都在 apply 之后才用（策略判决每次计划、凭据每次请求）⇒ 现读才吃得到 live 写入（缺省 ⇒ fail-safe：事实面 'unknown' ⇒ 不写；凭据未配置 ⇒ 401）
   const writeChannel = attachWriteChannel(ctx, deps.writeFacts ?? createPluginFacts({
     executor,

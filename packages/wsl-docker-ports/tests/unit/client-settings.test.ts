@@ -318,7 +318,7 @@ test('T5.7 零提权调用：写配置的一轮里提权计数器保持 0（且�
   console.log(`  · 扫了 2 次配置写入 / ${String(elevationCalls.length)} 次提权调用（updateCount=${String(runtime.settings.updateCount())}）`);
 });
 
-test('T5.7 管道面收窄：settings 管道只暴露 10 个方法，没有任何「执行/提权」入口', () => {
+test('T5.7 管道面收窄：settings 管道只暴露 12 个方法，没有任何「执行/提权」入口', () => {
   const pipe = createSettingsPipe(() => undefined);
   const keys = Object.keys(pipe).sort();
   // 008 T3.1 追加第 6 个：`writeWriteToken` —— 它是**配置写入**（与服务端 config 的 writeToken 同一个字段），
@@ -328,7 +328,10 @@ test('T5.7 管道面收窄：settings 管道只暴露 10 个方法，没有任�
   // 012 A 计划追加第 9 个：`writeListenAddress` —— 同样是**配置写入**（listenAddresses[端口]），
   // 只收地址字符串，不碰任何执行器；它换来的计划仍由服务端重新算并从候选清单复核。
   // 014 追加第 10 个：`writeRefreshInterval` —— 只写一个数字（0/15/30/60/300），不启动定时器。
-  assert.deepEqual(keys, ['clearWriteToken', 'readConfig', 'updateCount', 'writeDistro', 'writeElevationPolicy', 'writeListenAddress', 'writeManagedPorts', 'writeRefreshInterval', 'writeScope', 'writeWriteToken']);
+  // 017 追加第 11/12 个：`readNamespace` + `writeNamespace` —— 同一个 `remote.settings` 的
+  // describe/update，只是 ns 由调用方给（bundle 级配置页要写容器行的两个字段）。
+  // 它们仍然只是**配置读写**：没有执行、没有提权、没有第二条通道。
+  assert.deepEqual(keys, ['clearWriteToken', 'readConfig', 'readNamespace', 'updateCount', 'writeDistro', 'writeElevationPolicy', 'writeListenAddress', 'writeManagedPorts', 'writeNamespace', 'writeRefreshInterval', 'writeScope', 'writeWriteToken']);
   const forbidden = ['run', 'invoke', 'exec', 'elevate', 'spawn'];
   assert.deepEqual(forbidden.filter((key) => key in pipe), [], '配置管道不得带执行入口');
   console.log(`  · 扫了 ${String(keys.length)} 个方法名：${JSON.stringify(keys)}；执行入口 0 个`);

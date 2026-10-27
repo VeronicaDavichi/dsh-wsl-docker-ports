@@ -161,6 +161,16 @@ export interface SettingsPipe {
    * **不启动定时器**（轮询在 chunk 侧，主包不新增任何 `setInterval`）。
    */
   writeRefreshInterval(sec: number): Promise<SettingsWriteResult>;
+  /**
+   * 017：读**另一个命名空间**的当前值（bundle 级配置页要读容器行的 `distro` /
+   * `refreshIntervalSec`）。读失败/服务缺失一律 `null`（页面降级，不抛）。
+   */
+  readNamespace(target: string): Promise<Record<string, unknown> | null>;
+  /**
+   * 017：写**另一个命名空间**（同上）。走的仍是同一个 `update(ns, patch, revision)`，
+   * 只是 ns 由调用方给 —— 卡片级配置页改的是两个组件行各存一份的字段。
+   */
+  writeNamespace(target: string, patch: Record<string, unknown>): Promise<SettingsWriteResult>;
   /** `update` 的真实调用次数（测试断言；「零提权调用」由提权侧计数器给出）。**清除走 `mutate`，不计入** —— 两个口径不混 */
   updateCount(): number;
 }
@@ -263,7 +273,7 @@ function readScopes(value: unknown): Record<string, ScopeValue> {
 export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undefined, namespace: string = SETTINGS_NAMESPACE): SettingsPipe {
   let updateCount = 0;
 
-  async function write(patch: SettingsPatch): Promise<SettingsWriteResult> {
+  async function write(patch: SettingsPatch, target: string = namespace): Promise<SettingsWriteResult> {
     const service = getSettings();
     if (service === undefined) {
       return { ok: false, message: '宿主未提供 remote.settings：配置写回不可用（只读展示不受影响）', patch, revisionPassed: false };
@@ -274,12 +284,12 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
     } catch (error) {
       return { ok: false, message: `读取配置失败：${errorText(error)}`, patch, revisionPassed: false };
     }
-    const revision = revisionOf(described, namespace);
+    const revision = revisionOf(described, target);
     updateCount += 1;
     try {
       // 🔴 实参个数**恰好 3**（缺陷 2）：`revision === undefined` 时也必须显式占位，
       // 宿主按 `values.length` 校验（少一个直接抛，连请求都发不出去）。
-      const result = await service.update(namespace, patch, revision);
+      const result = await service.update(target, patch, revision);
       if (result.ok) return { ok: true, message: '配置已写入（live 路径，不重挂载）', patch, revisionPassed: revision !== undefined };
       return { ok: false, message: `配置写入失败：${String(result.error ?? '未知原因')}`, patch, revisionPassed: revision !== undefined };
     } catch (error) {
@@ -317,6 +327,24 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
     writeListenAddress: (port, address) => write({ listenAddresses: { [String(port)]: address } }),
     writeWriteToken: (token) => write({ writeToken: token.trim() }),
     writeRefreshInterval: (sec) => write({ refreshIntervalSec: sec }),
+    /**
+     * 017：bundle 级配置页要**读并写另一个命名空间**（容器行 `wsl-containers` 的
+     * `distro` / `refreshIntervalSec`）。宿主 `describe()` 返回**全部**命名空间、
+     * `update(ns, patch, revision)` 也是按 ns 寻址（`dsh-api-settings-controller` 的
+     * `settings.update` 原型只有 `{ns, patch}` 两个字段），所以同一条管道就能跨行写 ——
+     * 不需要第二条「远端」通道，也不绕宿主自己写 YAML。
+     */
+    async readNamespace(target: string): Promise<Record<string, unknown> | null> {
+      const service = getSettings();
+      if (service === undefined) return null;
+      try {
+        const value = asRecord(namespaceEntry(await service.describe(), target)?.['value']);
+        return value ?? null;
+      } catch {
+        return null;
+      }
+    },
+    writeNamespace: (target, patch) => write(patch as SettingsPatch, target),
     async clearWriteToken(): Promise<SettingsClearResult> {
       const ops = UNSET_WRITE_TOKEN_OPS;
       const failed = (message: string, revisionPassed: boolean): SettingsClearResult => ({

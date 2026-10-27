@@ -22,11 +22,16 @@
  * 用户打开右栏页时才被取回来 ⇒ 在主包里注册一个**只负责取块的薄座位**（组件本体仍在 chunk 里）。
  */
 
-/** 宿主配置槽的服务名（官方 `plugins.row.config` 一栏；002 已按源码核对） */
+/** 宿主配置槽的服务名（官方 `plugins.row.config` 一栏；0.2.0-rc.2 随包文档核对） */
 export const CONFIG_SLOT_NAME = 'plugins.row.config';
 
-/** 注册键 = 本包 patch 条目 id = 包名（逐字一致；不一致会让配置行指不到我们的页） */
-export const CONFIG_ROW_KEY = 'wsl-containers';
+/**
+ * 注册键 = `<包名>#<行 id>`（017 订正；宿主文档逐字：「keyed by `<package name>#<row id>`」）。
+ *
+ * 015 当初只写行 id（`wsl-containers`）⇒ 宿主按「包名#行 id」查不到 ⇒ 这一行的
+ * **配置**控件不会出现。同一条订正也适用于转发行（键 `dsh-wsl-docker-ports#wsl-ports`）。
+ */
+export const CONFIG_ROW_KEY = 'dsh-wsl-docker-containers#wsl-containers';
 
 export const AUTO_FORM_EFFECT_LABEL = `${CONFIG_SLOT_NAME}: auto-form off`;
 

@@ -24,7 +24,7 @@ import { createElement, useCallback, useEffect, useMemo, useRef, useState } from
 import type { ReactElement } from 'react';
 
 import type { FetchLike } from '../host.ts';
-import { normalizeRefreshIntervalSec, REFRESH_INTERVAL_OPTIONS } from '../refresh.ts';
+import { normalizeRefreshIntervalSec } from '../refresh.ts';
 import type { ContainersRuntime } from './runtime.ts';
 import {
   fetchContainersLogs,
@@ -39,7 +39,7 @@ import {
 /** 自己的一套 testid（与转发页的 `TESTID` 各管各的，互不复用） */
 export const CID = {
   refresh: 'btn-containers-refresh',
-  refreshInterval: 'sel-containers-refresh-interval',
+  // 017：页头的刷新下拉已删除（搬到 bundle 级配置页）⇒ 不再有 `sel-containers-refresh-interval`
   table: 'tbl-containers-side',
   empty: 'txt-containers-empty',
   error: 'txt-containers-error',
@@ -159,27 +159,6 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
     return () => clearInterval(timer);
   }, [refreshSec, load]);
 
-  /** D2：改档 = 立即生效（state 驱动定时器）+ 写回**容器行**配置（不碰转发侧命名空间） */
-  const changeRefreshSec = useCallback(
-    async (sec: number): Promise<void> => {
-      const normalized = normalizeRefreshIntervalSec(sec);
-      setRefreshSec(normalized);
-      const pipe = runtime?.settings();
-      if (pipe === undefined) {
-        setConfigNote('设置服务不可用：本次仅本会话生效，未落盘');
-        return;
-      }
-      try {
-        const result = await pipe.writeRefreshInterval(normalized);
-        if (!alive.current) return;
-        setConfigNote(result.ok ? null : `刷新频次未落盘：${result.message}`);
-      } catch (cause) {
-        if (!alive.current) return;
-        setConfigNote(`刷新频次写回抛出异常：${cause instanceof Error ? cause.message : String(cause)}（未重试）`);
-      }
-    },
-    [runtime],
-  );
 
   const act = useCallback(
     async (id: string, action: ContainersAction): Promise<void> => {
@@ -224,19 +203,6 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
       'div',
       { className: 'wdp-row wdp-toolbar' },
       createElement('button', { type: 'button', 'data-testid': CID.refresh, onClick: () => void load(), disabled: busy !== null }, '刷新'),
-      // D2：容器页自己的五档刷新间隔（testid 与转发页 `sel-refresh-interval` 刻意不同名）
-      createElement(
-        'select',
-        {
-          'data-testid': CID.refreshInterval,
-          'data-settings-control': '1',
-          'aria-label': '容器页自动刷新频次',
-          value: String(refreshSec),
-          onChange: (event: { target: { value: string } }) => void changeRefreshSec(Number(event.target.value)),
-        },
-        REFRESH_INTERVAL_OPTIONS.map((option) => createElement('option', { key: option.value, value: String(option.value) }, option.label)),
-      ),
-      createElement('span', { className: 'wdp-muted', 'data-testid': 'txt-containers-distro' }, snapshot?.distro === null || snapshot?.distro === undefined ? '目标发行版：未解析' : `目标发行版：${snapshot.distro.name}`),
       createElement('span', { className: 'wdp-muted', 'data-testid': CID.tokenState }, tokenPresent ? '容器通道凭据：已保存（本会话）' : '容器通道凭据：未保存'),
     ),
     createElement(

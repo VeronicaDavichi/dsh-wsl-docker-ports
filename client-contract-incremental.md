@@ -310,3 +310,15 @@ export interface DshPackageManifest {
 - ⚠️ **真机不可信字段（勿当真值用）**：`elevationAvailable` 现为 `async () => false` 的**占位**（本机 gsudo 2.6.1 已装 ⇒ 真值应为 true）；`iphlpsvcRunning` 恒 `null`（未实现探测）；冷启动那份快照内部不自洽（`diff` 已取到 eth0，而 `distro.state` 仍 `"Stopped"`，竞态）。
 - ⚠️ **状态**：离线门禁已收口（T6.8 勾选，上列四码 / `Content-Length` / `no-store` 均出自源码直读）；**真机路由 200 尚未取得** —— 被上述两条真机缺陷挡住（A 时序 / B 尾斜杠），修复在制品。真机装载全程 `desktop` profile 零改动、`--dump-config` 前后 sha256 相同。
 
+
+### P9-附（2026-10-27，017）：本前缀新增 `GET /dsh-wsl-docker-ports/distros`
+
+> 原文 §P9 一字未改；本条只追加新端点口径。
+
+- **用途**：bundle 级配置页（`plugins.bundle.config`）的「目标发行版」下拉。
+- **为什么不用 `/snapshot`**：快照要跑 `netsh` / `docker` / `eth0`（唤醒后首次 `docker ps` 实测被 10s 硬超时砍掉）⇒ 只为拿一串发行版名字不值得付那次冷启动。本端点**只**跑 `wsl.exe -l -v`（热 ~200ms），**零 docker、零 netsh、零提权、零写**。
+- **方法与路径**：`GET /dsh-wsl-docker-ports/distros`（`PORTS_DISTROS_PATH`）。非 GET ⇒ **405**，且一次清单读取都不发生（先判路径再判方法，与快照同序）。
+- **响应**：`{ ok: true, distros: WslDistro[] }`（`WslDistro` 原样透出 `name` / `state` / `version` / `default`）。
+- **失败**：读清单失败 ⇒ **503** + 原样原因（`rules-unavailable`）；宿主未接线（`registerPortsRoute` 未传 `listDistros`）⇒ **503** + 「未接线」文案（不静默给空清单）。
+- **注册口径不变**：仍挂在 `ctx.inject(['webServer'])` 的惰性时机、仍占同一个独占前缀、仍由 `ctx.effect` 收编 disposer。
+- **零交叉**：这条端点属于**转发侧**。曾先在容器包加同款，被三包零交叉门（`packages/wsl-docker-core/scripts/check-borders.mjs` R4：`src/**` 不许出现对方路由前缀字面量）判红 ⇒ 已撤，容器侧不保留该端点。

@@ -239,8 +239,9 @@ describe('T5.1 注册形状（contract §C9/§C10）', () => {
     const paneSeats = fake.slotRegistrations.filter((registration) => registration.options['name'] !== CONFIG_SLOT_NAME);
     expect(paneSeats.map((registration) => registration.options['name'])).toEqual([TAB_SLOT, TAB_TITLE_SLOT]);
     expect(paneSeats.map((registration) => registration.options['key'])).toEqual([PAGE_ID, PAGE_ID]);
-    // 配置槽的 key = 该行的 patch 条目 id（不是 PAGE_ID）—— 混用会让宿主找不到配置行；015 起有**两个**配置槽
-    expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === CONFIG_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['wsl-ports']);
+    // 017：配置槽换成**组合包级**（plugins.bundle.config）⇒ key = **包名**（不是行 id）
+    expect(CONFIG_SLOT_NAME).toBe('plugins.bundle.config');
+    expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === CONFIG_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['dsh-wsl-docker-ports']);
     expect(fake.slotRegistrations.every((registration) => typeof registration.component === 'function')).toBe(true);
     // 016：样式 / 右栏注册 / 配置槽 —— 只剩本包一条 ⇒ 3 个 effect
     expect(fake.effects).toHaveLength(3);
