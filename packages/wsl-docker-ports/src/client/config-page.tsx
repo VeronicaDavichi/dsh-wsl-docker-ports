@@ -99,11 +99,6 @@ export interface ConfigPageProps {
    * 017 三订（主人 2026-10-27）：「写通道预演也放到配置页里面去」⇒ 块从右栏页搬到这里。
    */
   readonly write?: WriteWiring | undefined;
-  /**
-   * 原始输出读取器（017 五订）：放在「写通道预演」子组件**内部**（主人 2026-10-27），
-   * **只在用户点开时**调用一次；`undefined` = 未接线 ⇒ 按钮置灰并写明原因。
-   */
-  readonly loadRawOutput?: (() => Promise<string | null>) | undefined;
 }
 
 /** 发行版清单：失败不抛（页面照常可编辑手头的值，只是下拉里少几项） */
@@ -122,7 +117,7 @@ async function fetchDistros(): Promise<readonly string[]> {
 }
 
 export function ConfigPage(props: ConfigPageProps): ReactElement {
-  const { settings, write, loadRawOutput } = props;
+  const { settings, write } = props;
   const [view, setView] = useState<SettingsConfigView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
@@ -359,7 +354,7 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
         }}
       />
 
-      <WriteChannelSection write={write} loadRawOutput={loadRawOutput} />
+      <WriteChannelSection write={write} />
 
       <ScopeField        rows={scopeRows}
         hint="逐端口切换在右栏页的端口表里；本页只展示当前值，避免同一字段两个写入口。"

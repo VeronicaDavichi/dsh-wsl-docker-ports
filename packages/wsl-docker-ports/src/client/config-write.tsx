@@ -27,7 +27,9 @@
  * 点「查看原始输出」才经 `loadRawOutput`（主包壳注入）读一次，展开/收起不再重复读。
  */
 
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
+
+import { installConfigStyles } from './config-css.ts';
 
 import type { WriteWiring } from './write-channel.ts';
 import { WriteChannelBlock } from './write-panel.tsx';
@@ -35,11 +37,6 @@ import { WriteChannelBlock } from './write-panel.tsx';
 export interface WriteChannelSectionProps {
   /** 写通道整包；`undefined` = 未接线 ⇒ 预演控件置灰 + 写明原因 */
   readonly write: WriteWiring | undefined;
-  /**
-   * 原始输出读取器：**只在用户点开时**调用一次，返回 docker 那一段的原文；
-   * `undefined` = 未接线 ⇒ 按钮置灰并写明原因。返回 `null` = 读到了但没有可展示的原文。
-   */
-  readonly loadRawOutput?: (() => Promise<string | null>) | undefined;
 }
 
 /** 原始输出卡片（REQ-3.5）：**只**展示脱敏后的读侧原文，不提供任何解析/执行入口 */
@@ -102,8 +99,36 @@ function RawOutputCard(props: { readonly load: (() => Promise<string | null>) | 
   );
 }
 
+/**
+ * **行级配置页**（宿主 `plugins.row.config`，键 = 插件 id `wsl-ports`）：点「WSL Port Forwarding」
+ * 名字进去的那一页，只放只读的原始输出。
+ *
+ * 主人 2026-10-27 原话：「原始输出请放到配置页的转发的子组件下面的地方」
+ * 「位置在：点击 wsl port forwarding 子组件名字，之后打开的新页面里面」⇒ 这一页就是那个「新页面」。
+ * 页面写法仍照 [@luweiyabo/dsh-whale-pet](https://github.com/luweiyabo/dsh-whale-pet)：分组框里放卡片，
+ * 卡片标题 + 一句说明 + 控件。
+ */
+export interface RawOutputPageProps {
+  readonly loadRawOutput?: (() => Promise<string | null>) | undefined;
+}
+
+export function RawOutputPage(props: RawOutputPageProps): ReactElement {
+  // 版面与配置页同一套（`CONFIG_CSS` 只在挂载时注入；这一页也要注入，否则是裸 HTML）
+  useEffect(() => installConfigStyles(), []);
+  return (
+    <section className="wdp-cfg" data-testid="config-raw-page">
+      <section className="wdp-cfg-group">
+        <h4 className="wdp-cfg-group-title">只读事实层</h4>
+        <div className="wdp-cfg-cards">
+          <RawOutputCard load={props.loadRawOutput} />
+        </div>
+      </section>
+    </section>
+  );
+}
+
 export function WriteChannelSection(props: WriteChannelSectionProps): ReactElement {
-  const { write, loadRawOutput } = props;
+  const { write } = props;
   return (
     <section className="wdp-cfg-group" data-testid="config-write-channel">
       <h4 className="wdp-cfg-group-title">写通道</h4>
@@ -125,8 +150,6 @@ export function WriteChannelSection(props: WriteChannelSectionProps): ReactEleme
           </p>
           <WriteChannelBlock write={write} enabled={write !== undefined} disabledReason={null} variant="field" />
         </article>
-        {/* 卡片二：原始输出（子组件**下面**的兄弟卡片，主人 2026-10-27 的图二） */}
-        <RawOutputCard load={loadRawOutput} />
       </div>
     </section>
   );

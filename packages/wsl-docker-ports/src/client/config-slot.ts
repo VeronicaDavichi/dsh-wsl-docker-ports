@@ -34,6 +34,9 @@
 /** 宿主配置槽的服务名（官方 `plugins.bundle.config` 一栏；0.2.0-rc.2 随包文档核对） */
 export const CONFIG_SLOT_NAME = 'plugins.bundle.config';
 
+/** 行级配置槽：画在**某个子组件自己的详情页**里（点组件名字进去的那一页） */
+export const ROW_SLOT_NAME = 'plugins.row.config';
+
 /** 注册键 = 组合包包名（bundle 级槽按包名寻址；写错 = 卡片上没有这一页） */
 export const CONFIG_ROW_KEY = 'dsh-wsl-docker-ports';
 
@@ -130,23 +133,23 @@ export function configureAutoForm(ctx: ConfigSlotContext): ConfigureOutcome {
   return outcome ?? { kind: 'deferred', reason: "已登记 inject(['settings'])，服务到位后自动关闭自动表单（惰性注入的常态）" };
 }
 
-function degrade(reason: string, autoForm: ConfigureOutcome): ConfigSlotResult {
-  return { registered: false, reason, slotName: CONFIG_SLOT_NAME, key: CONFIG_ROW_KEY, autoForm, registrations: () => 0, dispose: () => undefined };
+function degrade(reason: string, autoForm: ConfigureOutcome, slot: string = CONFIG_SLOT_NAME): ConfigSlotResult {
+  return { registered: false, reason, slotName: slot, key: CONFIG_ROW_KEY, autoForm, registrations: () => 0, dispose: () => undefined };
 }
 
 /**
  * 注册配置页（`REQ-12.1` 的后半）。**幂等**：重复调用不会产生第二个页（宿主按 `key` 去重之前我们自己也挡一层）。
  */
-export function registerConfigSlot(ctx: ConfigSlotContext, component: ComponentLike, key: string = CONFIG_ROW_KEY): ConfigSlotResult {
+export function registerConfigSlot(ctx: ConfigSlotContext, component: ComponentLike, key: string = CONFIG_ROW_KEY, slot: string = CONFIG_SLOT_NAME): ConfigSlotResult {
   const autoForm = configureAutoForm(ctx);
 
   const candidate = (ctx as { readonly slots?: unknown }).slots;
   const slots = isSlots(candidate) ? candidate : typeof ctx.get === 'function' ? ctx.get('slots') : undefined;
   if (!isSlots(slots)) {
-    return degrade(`宿主未提供 slots.{inject,register}：${CONFIG_SLOT_NAME} 不注册（自绘配置页不可用，其余照常）`, autoForm);
+    return degrade(`宿主未提供 slots.{inject,register}：${slot} 不注册（自绘配置页不可用，其余照常）`, autoForm, slot);
   }
 
-  const options = { name: CONFIG_SLOT_NAME, key };
+  const options = { name: slot, key };
   let live = 0;
   let done = false;
   const collected: (() => void)[] = [];
@@ -156,7 +159,7 @@ export function registerConfigSlot(ctx: ConfigSlotContext, component: ComponentL
   };
 
   const install = (): (() => void) => {
-    const inner = slots.inject(CONFIG_SLOT_NAME, () => {
+    const inner = slots.inject(slot, () => {
       const disposer = slots.register(options, component);
       if (isFunction(disposer)) collected.push(disposer as () => void);
       return disposer;
@@ -176,11 +179,11 @@ export function registerConfigSlot(ctx: ConfigSlotContext, component: ComponentL
     dispose = install();
   } catch (error) {
     runAll();
-    return degrade(`槽位注册抛出异常：${errorOf(error)}（自绘配置页不可用，其余照常）`, autoForm);
+    return degrade(`槽位注册抛出异常：${errorOf(error)}（自绘配置页不可用，其余照常）`, autoForm, slot);
   }
 
   // 宿主不自动收编 `register()` 的 disposer ⇒ 交给 `ctx.effect`（与路由同一取向）
   if (typeof ctx.effect === 'function') ctx.effect(() => dispose, 'dsh-wsl-docker-ports: config slot');
 
-  return { registered: true, slotName: CONFIG_SLOT_NAME, key: CONFIG_ROW_KEY, autoForm, registrations: () => live, dispose };
+  return { registered: true, slotName: slot, key, autoForm, registrations: () => live, dispose };
 }

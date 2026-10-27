@@ -365,3 +365,20 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
 仍在同一个 `wdp-cfg-group`「写通道」框内。判据补进 `write-style-gate.test.tsx` ⑩：
 `.wdp-cfg-cards` 规则必须含 `flex-direction: column`、且**不许**再出现 `flex-wrap: wrap`。
 证据图已按竖排重拍：[evidence-config-write-cards.png](./evidence-config-write-cards.png)。
+
+#### 订正（同日，主人第四次、也是最终定位：「位置在：点击 wsl port forwarding 子组件名字，之后打开的新页面里面」）
+
+前面三版我都把「配置页」当成了**组合包卡片页**（`plugins.bundle.config`）—— 那不是主人说的那一页。
+主人指的是**行级配置页**：`plugins.row.config`，键 = 宿主 `rowConfigKey(bundle, rowId)` = **`包名#行 id`**
+（`dsh-wsl-docker-ports#wsl-ports`）。注册这个键之后，组合包页「包含的组件」里 `wsl-ports` 那一**行**才可点，
+点进去就是 `WSL Port Forwarding` 自己的页面（面包屑 ← WSL Port Forwarding + 标题 + 描述），
+`原始输出` 就在这一页、描述**下面**（分组「只读事实层」→ 卡片「原始输出」→「查看原始输出」）。
+
+- 组件：`RawOutputPage`（`config-write.tsx`，chunk 侧），经 `chunk-ports.ts` 导出，主包只放一个取块座位；
+  组合包页的「写通道」分组里**不再**放原始输出（避免两处重复）。
+- 判据：`tests/client/config-raw-page.test.tsx` R1–R4（页面在 / 点开才读一次 / 未接线置灰 / 读失败报原因）、
+  `entry.test.tsx` 断言两个配置槽的槽名与键（`plugins.bundle.config`+`dsh-wsl-docker-ports`、
+  `plugins.row.config`+`dsh-wsl-docker-ports#wsl-ports`）。
+- 真机：点 `wsl-ports` 行 → `config-raw-page` 在、`raw.top` 在描述下方、点按钮 3 秒读到 9,225 字符 JSON、
+  再点收起后不再读。证据图：[evidence-row-page-raw-output.png](./evidence-row-page-raw-output.png)。
+- 主包 56,279 B（地板 56,350，余 71 B）；chunk 168,860 B。
