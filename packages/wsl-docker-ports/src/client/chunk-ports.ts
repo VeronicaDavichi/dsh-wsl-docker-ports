@@ -24,9 +24,9 @@
 
 export { PortsPane } from './pane.tsx';
 /**
- * 010 `T7.3`：插件配置页（宿主「插件」行的配置槽）。
+ * 010 `T7.3` → 017 六订·六：**行级**配置页（点「WSL Port Forwarding」那一行进去的页面）。
  * 与右栏页同住这个 chunk —— 主包棘轮零余量，任何 UI 都只能长在 chunk 侧。
+ * 组合包卡片页不再挂配置页（主人原话：「内页有了的外页就不需要了」）。
  */
-export { ConfigPage } from './config-page.tsx';
 /** 017 六订·五：**行级**配置页（点「WSL Port Forwarding」那一行进去的页面）= 整页配置 + 原始输出 */
 export { RowConfigPage } from './config-row-page.tsx';

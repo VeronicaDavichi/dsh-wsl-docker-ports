@@ -1,18 +1,13 @@
 /**
- * 配置页里的**写通道**分组（017 三订「预演搬来配置页」→ 017 六订「照 whale-pet 的组件配置页排版」）。
+ * 行级配置页里的两块：**写通道预演**与**原始输出**（017 六订·六）。
  *
- * ## 版式（主人 2026-10-27 两次给图定死）
+ * ## 版式（主人 2026-10-27 第三次改口径，最终定死）
  *
- * 参考 [@luweiyabo/dsh-whale-pet](https://github.com/luweiyabo/dsh-whale-pet) 的组件配置页：
- * 点插件标题进去，看到的是一块**分组**（外框 + 分组标题），分组里横排若干**子组件卡片**，
- * 每张卡片自带标题 + 一句说明 + 控件。主人原话：「我让你学习这个把原始输出放这里」
- * 「在子组件的下面，而不是在子组件的外面」⇒ 「原始输出」是「写通道预演」**下面那张兄弟卡片**，
- * 同一个分组里，不是分组外的新段落、也不是预演卡片内部的一行。
- *
- * ## 为什么单独一个文件
- *
- * `config-page.tsx` 贴着 400 行 SHALL ⇒ 这一段连同它的前提句拆出来。拆的边界是**职责**：
- * 这段只负责「写通道分组 + 原始输出卡片」，不碰配置草稿（`config-model.ts` / `config-page.tsx`）。
+ * 「写通道预演 只读事实层 这两个的css保持和其他一致」—— 它们曾经是「分组框 + 卡片」
+ * （照 whale-pet 抄的那套），但页面上其余每一项都是同一个 **field** 语法：
+ * 标签行（可带右侧小字）→ 控件 → 一句说明。于是这两块也改成 field：
+ * `ConfigField`（`.wdp-cfg-field` / `.wdp-cfg-head` / `.wdp-cfg-label` / `.wdp-cfg-tag` / `.wdp-cfg-hint`），
+ * 与其他项靠 `.wdp-cfg-field + .wdp-cfg-field` 的分隔线接起来，视觉上连成一张表。
  *
  * ## 🔴 NAT 前提为什么不做置灰
  *
@@ -30,6 +25,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 
 import { installConfigStyles } from './config-css.ts';
+import { ConfigField } from './config-fields.tsx';
 
 import type { WriteWiring } from './write-channel.ts';
 import { WriteChannelBlock } from './write-panel.tsx';
@@ -39,13 +35,21 @@ export interface WriteChannelSectionProps {
   readonly write: WriteWiring | undefined;
 }
 
-/** 原始输出卡片（REQ-3.5）：**只**展示脱敏后的读侧原文，不提供任何解析/执行入口 */
-function RawOutputCard(props: { readonly load: (() => Promise<string | null>) | undefined }): ReactElement {
-  const { load } = props;
+export interface RawOutputSectionProps {
+  /** 原始输出读取器：**只在用户点开时**调用一次；`undefined` = 未接线 ⇒ 按钮置灰并写明原因 */
+  readonly loadRawOutput?: (() => Promise<string | null>) | undefined;
+}
+
+/** 原始输出（REQ-3.5）：**只**展示脱敏后的读侧原文，不提供任何解析/执行入口 */
+export function RawOutputSection(props: RawOutputSectionProps): ReactElement {
+  const { loadRawOutput: load } = props;
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState<string | null>(null);
   const [note, setNote] = useState('');
+
+  // 版面与配置页同一套（`CONFIG_CSS` 只在挂载时注入；这一块单独渲染时也要注入）
+  useEffect(() => installConfigStyles(), []);
 
   const toggle = async (): Promise<void> => {
     if (open) {
@@ -69,88 +73,58 @@ function RawOutputCard(props: { readonly load: (() => Promise<string | null>) | 
   };
 
   return (
-    <article className="wdp-cfg-card" data-testid="config-raw-output-card" data-open={open ? '1' : '0'}>
-      <div className="wdp-cfg-head">
-        <span className="wdp-cfg-card-title">原始输出</span>
-        <span className="wdp-cfg-tag">只在点开时读</span>
-      </div>
-      <p className="wdp-cfg-card-hint">
-        docker ps 这一次读的原文（已脱敏）。点开才读一次，配置页加载期零读，展开/收起不重复读。
-      </p>
-      <button
-        type="button"
-        className="wdp-textbtn"
-        data-testid="config-raw-output"
-        disabled={busy || load === undefined}
-        title={load === undefined ? '原始输出未接线：主包壳没注入读取器' : '按需读一次 docker ps，看它在这次读里的原文'}
-        onClick={() => {
-          void toggle();
-        }}
+    <div data-testid="config-raw-page">
+      <ConfigField
+        label="原始输出"
+        tag="只在点开时读"
+        hint="docker ps 这一次读的原文（已脱敏）。点开才读一次，加载期零读，展开/收起不重复读。"
       >
-        {open ? '收起原始输出' : '查看原始输出'}
-      </button>
-      {open && text !== null ? (
-        <pre className="wdp-pre" data-testid="config-raw-output-body">
-          {text}
-        </pre>
-      ) : null}
-      {note === '' ? null : <p className="wdp-cfg-hint">{note}</p>}
-    </article>
-  );
-}
-
-/**
- * **行级配置页**（宿主 `plugins.row.config`，键 = 插件 id `wsl-ports`）：点「WSL Port Forwarding」
- * 名字进去的那一页，只放只读的原始输出。
- *
- * 主人 2026-10-27 原话：「原始输出请放到配置页的转发的子组件下面的地方」
- * 「位置在：点击 wsl port forwarding 子组件名字，之后打开的新页面里面」⇒ 这一页就是那个「新页面」。
- * 页面写法仍照 [@luweiyabo/dsh-whale-pet](https://github.com/luweiyabo/dsh-whale-pet)：分组框里放卡片，
- * 卡片标题 + 一句说明 + 控件。
- */
-export interface RawOutputPageProps {
-  readonly loadRawOutput?: (() => Promise<string | null>) | undefined;
-}
-
-export function RawOutputPage(props: RawOutputPageProps): ReactElement {
-  // 版面与配置页同一套（`CONFIG_CSS` 只在挂载时注入；这一页也要注入，否则是裸 HTML）
-  useEffect(() => installConfigStyles(), []);
-  return (
-    <section className="wdp-cfg" data-testid="config-raw-page">
-      <section className="wdp-cfg-group">
-        <h4 className="wdp-cfg-group-title">只读事实层</h4>
-        <div className="wdp-cfg-cards">
-          <RawOutputCard load={props.loadRawOutput} />
+        <div className="wdp-cfg-field-body" data-testid="config-raw-output-card" data-open={open ? '1' : '0'}>
+          <button
+            type="button"
+            className="wdp-textbtn"
+            data-testid="config-raw-output"
+            disabled={busy || load === undefined}
+            title={load === undefined ? '原始输出未接线：主包壳没注入读取器' : '按需读一次 docker ps，看它在这次读里的原文'}
+            onClick={() => {
+              void toggle();
+            }}
+          >
+            {open ? '收起原始输出' : '查看原始输出'}
+          </button>
+          {open && text !== null ? (
+            <pre className="wdp-pre" data-testid="config-raw-output-body">
+              {text}
+            </pre>
+          ) : null}
+          {note === '' ? null : <p className="wdp-cfg-hint">{note}</p>}
         </div>
-      </section>
-    </section>
+      </ConfigField>
+    </div>
   );
 }
 
+/** 写通道预演：前提 + 凭据指向 + 预演控件（同一个 field，与页面上其他项同构） */
 export function WriteChannelSection(props: WriteChannelSectionProps): ReactElement {
   const { write } = props;
+  const premise = (
+    <>
+      <span data-testid="config-write-premise">
+        前提：WSL 必须是 NAT 网络模式（mirrored 下规则会指向失效地址）。预演只读计划、零写入；NAT 不满足时会当场报出原因，不静默。
+        <br />
+      </span>
+      <span data-testid="config-write-token-pointer">
+        凭据不在这儿：「WSL Docker 端口」右栏页的「写通道凭据」块生成；没有凭据时预演会在本地被拦下（零请求）。
+      </span>
+    </>
+  );
   return (
-    <section className="wdp-cfg-group" data-testid="config-write-channel">
-      <h4 className="wdp-cfg-group-title">写通道</h4>
-      <div className="wdp-cfg-cards">
-        {/* 卡片一：预演本体。两句话合成一段（分两段会空出一条像漏了一段的间距，主人 2026-10-27） */}
-        <article className="wdp-cfg-card" data-testid="config-write-preview">
-          <div className="wdp-cfg-head">
-            <span className="wdp-cfg-card-title">写通道预演</span>
-            <span className="wdp-cfg-tag">只在确认后执行</span>
-          </div>
-          <p className="wdp-cfg-card-hint">
-            <span data-testid="config-write-premise">
-              前提：WSL 必须是 NAT 网络模式（mirrored 下规则会指向失效地址）。预演只读计划、零写入；NAT 不满足时会当场报出原因，不静默。
-            </span>
-            <br />
-            <span data-testid="config-write-token-pointer">
-              凭据不在这儿：「WSL Docker 端口」右栏页的「写通道凭据」块生成；没有凭据时预演会在本地被拦下（零请求）。
-            </span>
-          </p>
+    <div data-testid="config-write-channel">
+      <ConfigField label="写通道预演" tag="只在确认后执行" hint={premise}>
+        <div data-testid="config-write-preview">
           <WriteChannelBlock write={write} enabled={write !== undefined} disabledReason={null} variant="field" />
-        </article>
-      </div>
-    </section>
+        </div>
+      </ConfigField>
+    </div>
   );
 }

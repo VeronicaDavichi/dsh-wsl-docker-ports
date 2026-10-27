@@ -72,7 +72,7 @@ import {
 } from './tab-def.ts';
 import { createRouteSource } from './route-source.ts';
 import { createSettingsPipe } from './settings-pipe.ts';
-import { CONFIG_ROW_KEY, CONFIG_SLOT_NAME, registerConfigSlot, ROW_SLOT_NAME } from './config-slot.ts';
+import { registerConfigSlot, ROW_SLOT_NAME } from './config-slot.ts';
 import type { ConfigSlotContext } from './config-slot.ts';
 import { installStylesWith } from './styles.ts';
 import { createWriteWiring } from './write-channel.ts';
@@ -209,27 +209,24 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
     });
 
-  // ③′ 010 T7.3 → 017：两个配置页座位（组件本体都在 chunk 里，主包只放**取块座位**）：
-  //    ① `plugins.bundle.config`（键 = 包名）⇒ 卡片页「描述与组件行之间」的整页配置；
-  //    ② `plugins.row.config`（键 = 插件 id）⇒ **点「WSL Port Forwarding」名字进去的那一页**，
-  //       只放只读原始输出（主人 2026-10-27：「位置在：点击子组件名字之后打开的新页面里面」）。
-  //    两个座位共用同一份 props（`settings` / `write` 同一条 live 管道），失败只降级不抛。
+  // ③′ 010 T7.3 → 017：**行级**配置页座位（组件本体在 chunk 里，主包只放一个**取块座位**）：
+  //    `plugins.row.config`，键 = `包名#行 id`（宿主 `rowConfigKey(bundle, rowId)`）
+  //    ⇒ 点「WSL Port Forwarding」那一行进去的页面；主人 2026-10-27：
+  //    「把 写通道 / 写通道预演 / 端口声明 / 刷新频次 / 提权策略 / 端口作用域 都放进去」+
+  //    「内页有了的外页就不需要了」⇒ 组合包卡片页不再挂配置页，这一页是唯一入口。
   let readRawOutput: (() => Promise<string | null>) | undefined;
   const rawOutput = async (): Promise<string | null> => (readRawOutput === undefined ? null : readRawOutput());
-  for (const [key, slot, exportName] of [
-    [CONFIG_ROW_KEY, CONFIG_SLOT_NAME, 'ConfigPage'],
-    ['dsh-wsl-docker-ports#wsl-ports', ROW_SLOT_NAME, 'RowConfigPage'], // 行级键 = 包名#行 id
-  ] as const) {
-    const seat = (ownerProps: Record<string, unknown>): ReactElement =>
-      createElement(ChunkBoot, {
-        spec: PANE_CHUNK,
-        title: 'WSL Docker 工具箱 · 配置',
-        load: loadPortsChunk,
-        exportName,
-        paneProps: { ...ownerProps, settings, write, loadRawOutput: rawOutput },
-      });
-    const outcome = registerConfigSlot(ctx as unknown as ConfigSlotContext, seat as unknown as (props: never) => unknown, key, slot);
-    if (!outcome.registered) console.warn(`${CLIENT_LOG_TAG} 配置页未注册（${slot}）：${outcome.reason ?? '原因未记录'}`);
+  const configSeat = (ownerProps: Record<string, unknown>): ReactElement =>
+    createElement(ChunkBoot, {
+      spec: PANE_CHUNK,
+      title: 'WSL Docker 工具箱 · 配置',
+      load: loadPortsChunk,
+      exportName: 'RowConfigPage',
+      paneProps: { ...ownerProps, settings, write, loadRawOutput: rawOutput },
+    });
+  const configSlot = registerConfigSlot(ctx as unknown as ConfigSlotContext, configSeat as unknown as (props: never) => unknown, 'dsh-wsl-docker-ports#wsl-ports', ROW_SLOT_NAME);
+  if (!configSlot.registered) {
+    console.warn(`${CLIENT_LOG_TAG} 配置页未注册（${ROW_SLOT_NAME}）：${configSlot.reason ?? '原因未记录'}`);
   }
 
   // ④ 取数面：显式注入 > 自建路由 > 降级

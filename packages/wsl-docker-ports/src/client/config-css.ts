@@ -41,6 +41,10 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
  * 没有分隔。现在一律用**真名**，颜色只从主题取（零 hex，NFR-7 不变）。
  */
 .wdp-cfg { display: flex; flex-direction: column; color: var(--dsw-alias-label-primary, inherit); font-size: 13px; line-height: 1.5; }
+/* 017 六订·六（主人 2026-10-27：「写通道预演 只读事实层 这两个的css保持和其他一致」）：
+   两块都改成与其他项同构的 field；控件竖向排、原文占满整行。 */
+.wdp-cfg-field-body { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.wdp-cfg-field-body .wdp-pre { align-self: stretch; max-width: 100%; }
 .wdp-cfg-field { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; }
 .wdp-cfg-field + .wdp-cfg-field { border-top: 0.5px solid var(--dsw-alias-border-l2, transparent); }
 .wdp-cfg-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -57,16 +61,6 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
 .wdp-cfg-scope-port { flex: none; width: 64px; color: var(--dsw-alias-label-primary, inherit); font-variant-numeric: tabular-nums; }
 .wdp-cfg-scope-value { color: var(--dsw-alias-label-secondary, inherit); }
 .wdp-cfg-inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-/* 017 六订（主人 2026-10-27，照 @luweiyabo/dsh-whale-pet 的组件配置页）：
-   一个**分组**（外框 + 标题）里放若干**子组件卡片**，卡片之间是兄弟关系、各自带标题与一句说明。
-   「原始输出」就是「写通道预演」下面的那张兄弟卡片 —— 在子组件**下面**，不是子组件**外面**。 */
-.wdp-cfg-group { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 0; padding: 12px; border: 0.5px solid var(--dsw-alias-border-l2, transparent); border-radius: var(--dsw-radius-lg, 12px); background: var(--dsw-alias-bg-layer-1, transparent); }
-.wdp-cfg-group-title { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
-.wdp-cfg-cards { display: flex; flex-direction: column; gap: 10px; }
-.wdp-cfg-card { flex: none; min-width: 0; width: 100%; display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 0.5px solid var(--dsw-alias-border-l2, transparent); border-radius: var(--dsw-radius-md, 8px); background: var(--dsw-alias-bg-layer-2, transparent); }
-.wdp-cfg-card .wdp-textbtn { align-self: flex-start; text-align: left; }
-.wdp-cfg-card .wdp-pre { max-width: 100%; }
-.wdp-cfg-card-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
 .wdp-cfg-callout { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 0; padding: 12px; border: 0.5px solid var(--dsw-alias-border-l2, transparent); border-radius: var(--dsw-radius-md, 8px); background: var(--dsw-alias-bg-layer-2, transparent); }
 .wdp-cfg-callout-text { margin: 0; font-size: 12px; line-height: 1.6; color: var(--dsw-alias-label-secondary, inherit); overflow-wrap: anywhere; }
 .wdp-cfg-callout-actions { display: flex; align-items: center; gap: 8px; }

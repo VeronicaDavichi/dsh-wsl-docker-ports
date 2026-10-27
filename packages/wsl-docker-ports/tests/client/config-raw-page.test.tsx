@@ -13,7 +13,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { RawOutputPage } from '../../src/client/config-write.tsx';
+import { RawOutputSection } from '../../src/client/config-write.tsx';
 
 afterEach(() => {
   cleanup();
@@ -22,24 +22,26 @@ afterEach(() => {
 const SAMPLE = 'CONTAINER ID   IMAGE\nabc123   nginx:latest';
 
 describe('017 行级配置页（点「WSL Port Forwarding」名字进去的那一页）', () => {
-  it('R1 页面在、分组框在、卡片在；进页面**零读**', async () => {
+  it('R1 块在、且是与其他项同构的 field；进页面**零读**', async () => {
     let reads = 0;
-    render(<RawOutputPage loadRawOutput={async () => {
+    render(<RawOutputSection loadRawOutput={async () => {
       reads += 1;
       return SAMPLE;
     }} />);
     expect(screen.getByTestId('config-raw-page')).toBeTruthy();
-    expect(screen.getByTestId('config-raw-output-card').className).toBe('wdp-cfg-card');
+    // 主人 2026-10-27：「写通道预演 只读事实层 这两个的css保持和其他一致」⇒ 不再是卡片，而是 field 里的控件组
+    expect(screen.getByTestId('config-raw-output-card').className).toBe('wdp-cfg-field-body');
+    expect(screen.getByText('原始输出').className).toBe('wdp-cfg-label');
     expect(screen.getByTestId('config-raw-output').textContent).toBe('查看原始输出');
     // 进页面不读：这条 2–5 秒的冷启只落在真点开的人身上
     expect(reads).toBe(0);
     expect(screen.queryByTestId('config-raw-output-body')).toBeNull();
-    console.log(`  · R1 行级页在、卡片在；进页读 ${String(reads)} 次`);
+    console.log(`  · R1 块在、语法 = field；进页读 ${String(reads)} 次`);
   });
 
   it('R2 点开才读**一次**并显示原文；收起再展开不重复读', async () => {
     let reads = 0;
-    render(<RawOutputPage loadRawOutput={async () => {
+    render(<RawOutputSection loadRawOutput={async () => {
       reads += 1;
       return SAMPLE;
     }} />);
@@ -61,7 +63,7 @@ describe('017 行级配置页（点「WSL Port Forwarding」名字进去的那�
   });
 
   it('R3 未接线（load 缺省）⇒ 按钮置灰并写明原因，不谎报成功', async () => {
-    render(<RawOutputPage />);
+    render(<RawOutputSection />);
     const button = screen.getByTestId('config-raw-output') as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     expect(button.title).toContain('未接线');
@@ -74,7 +76,7 @@ describe('017 行级配置页（点「WSL Port Forwarding」名字进去的那�
   });
 
   it('R4 读失败 ⇒ 就地报错原因，不装成「空输出」', async () => {
-    render(<RawOutputPage loadRawOutput={async () => {
+    render(<RawOutputSection loadRawOutput={async () => {
       throw new Error('docker 不可用');
     }} />);
     fireEvent.click(screen.getByTestId('config-raw-output'));

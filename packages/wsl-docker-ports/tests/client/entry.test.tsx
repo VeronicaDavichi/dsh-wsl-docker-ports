@@ -206,7 +206,7 @@ describe('② 真机复验缺陷：页类型缺 guide 入口 ⇒ 页存在但用
 });
 
 describe('T5.1 注册形状（contract §C9/§C10）', () => {
-  it('成功路径：注册页定义 + 两个 keyed seat + 两个配置槽，disposer 挂到 ctx.effect', () => {
+  it('成功路径：注册页定义 + 两个 keyed seat + 一个行级配置槽，disposer 挂到 ctx.effect', () => {
     const fake = fakeCtx();
     const loads = { count: 0 };
     const result = entry.apply(fake.ctx, { source: source(loads) });
@@ -221,7 +221,7 @@ describe('T5.1 注册形状（contract §C9/§C10）', () => {
 
     // 010 T7.3：先 `inject(['settings'])`（配置页关自动表单），再登记右栏懒注入
     // 016：本包只有一个配置槽 ⇒ `inject(['settings'])` 只来一次（第二次随容器行搬走）
-    expect(fake.injectNames).toEqual([['settings'], ['settings'], ['sidebarRightTabs', 'sidebarRight']]);
+    expect(fake.injectNames).toEqual([['settings'], ['sidebarRightTabs', 'sidebarRight']]);
     // 🔴 015 P4 形状变更：两个页定义（转发在前）
     expect(fake.tabRegistrations.map((item) => (item as Record<string, unknown>)['id'])).toEqual([PAGE_ID]);
     const definition = fake.tabRegistrations[0] as Record<string, unknown>;
@@ -235,13 +235,14 @@ describe('T5.1 注册形状（contract §C9/§C10）', () => {
     // 两个页内座位 + 010 T7.3 的配置槽（`plugins.row.config`）= 3 次注册
     // 🔴 015 P4 形状变更：2 页 × (2 seat) + 2 个配置槽 = 6 次注册
     // 016：本包只注册**自己**的配置槽 + 两个右栏 seat（容器侧的槽与 seat 随包搬走）
-    expect(fake.slotRegistrations).toHaveLength(4);
-    const paneSeats = fake.slotRegistrations.filter((registration) => registration.options['name'] !== CONFIG_SLOT_NAME && registration.options['name'] !== ROW_SLOT_NAME);
+    expect(fake.slotRegistrations).toHaveLength(3);
+    const paneSeats = fake.slotRegistrations.filter((registration) => registration.options['name'] !== ROW_SLOT_NAME);
     expect(paneSeats.map((registration) => registration.options['name'])).toEqual([TAB_SLOT, TAB_TITLE_SLOT]);
     expect(paneSeats.map((registration) => registration.options['key'])).toEqual([PAGE_ID, PAGE_ID]);
     // 017：配置槽换成**组合包级**（plugins.bundle.config）⇒ key = **包名**（不是行 id）
     expect(CONFIG_SLOT_NAME).toBe('plugins.bundle.config');
-    expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === CONFIG_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['dsh-wsl-docker-ports']);
+    // 017 六订·六（主人 2026-10-27：「内页有了的外页就不需要了」）⇒ 组合包级槽不再注册
+    expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === CONFIG_SLOT_NAME)).toHaveLength(0);
     // 017 六订·二：行级槽 key = 宿主 `rowConfigKey(bundle, rowId)` = `包名#行 id`
     expect(ROW_SLOT_NAME).toBe('plugins.row.config');
     expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === ROW_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['dsh-wsl-docker-ports#wsl-ports']);
@@ -250,7 +251,7 @@ describe('T5.1 注册形状（contract §C9/§C10）', () => {
     expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === ROW_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['dsh-wsl-docker-ports#wsl-ports']);
     expect(fake.slotRegistrations.every((registration) => typeof registration.component === 'function')).toBe(true);
     // 016：样式 / 右栏注册 / 配置槽 —— 只剩本包一条 ⇒ 3 个 effect
-    expect(fake.effects).toHaveLength(4);
+    expect(fake.effects).toHaveLength(3);
     console.log(`  · 扫了 ${String(fake.tabRegistrations.length)} 个页定义 / ${String(fake.slotRegistrations.length)} 个 seat / ${String(fake.effects.length)} 个 effect；priority=${JSON.stringify(definition['priority'])}`);
   });
 

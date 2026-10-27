@@ -399,3 +399,27 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
   `settings` 管道与 `write` 接线 ⇒ 同一份 live 状态的两个入口，保存后刷新即见。
 - 证据：[evidence-row-page-config-all.png](./evidence-row-page-config-all.png)、
   [evidence-row-page-write-and-raw.png](./evidence-row-page-write-and-raw.png)。
+
+#### 六订·六（同日，主人第六次拍板：「写通道预演 只读事实层 这两个的css保持和其他一致，以及内页有了的外页就不需要了」）
+
+两件事一起做：
+
+1. **版式统一到 `ConfigField`**：`写通道预演` 与 `原始输出` 不再是「分组框 + 卡片」
+   （`.wdp-cfg-group` / `.wdp-cfg-cards` / `.wdp-cfg-card*` 规则已从 `config-css.ts` 删除），
+   改成与页面上其他项**同构**的一个 field：标签行（可带右侧小字）→ 控件 → 一句说明，
+   相邻项之间走 `.wdp-cfg-field + .wdp-cfg-field` 的 0.5px 分隔线。
+   新增 `.wdp-cfg-field-body`（控件竖向排、原文占满整行）。
+2. **组合包卡片页不再挂配置页**（原话「内页有了的外页就不需要了」）：`index.ts` 只注册
+   **行级**槽（`plugins.row.config`，键 `dsh-wsl-docker-ports#wsl-ports`），`chunk-ports.ts`
+   不再导出 `ConfigPage`，只导出 `RowConfigPage`；`config-slot.ts` 的 `CONFIG_SLOT_NAME` 常量保留
+   （工具文档/测试仍引用），但不再有调用方。
+
+- 判据：`write-style-gate.test.tsx` ⑩ 改为「`CONFIG_CSS` 里不许再有 `.wdp-cfg-group` / `.wdp-cfg-card`，
+  且必须有 `.wdp-cfg-field-body`」；`config-raw-page.test.tsx` R1 断言 `config-raw-output-card`
+  的 class 是 `wdp-cfg-field-body`、标题 class 是 `wdp-cfg-label`；`entry.test.tsx` 断言
+  组合包级槽 `toHaveLength(0)`、总注册 3 个、effect 3 个。
+- 真机：行级页 `.wdp-cfg-field` 共 **8** 个 —— 目标发行版 / 端口转发页刷新频次 / 容器页刷新频次 /
+  提权策略 / 端口声明（managedPorts）/ 写通道预演 / 端口作用域 / 原始输出；`.wdp-cfg-group` 与
+  `.wdp-cfg-card` 命中 **0**；组合包卡片页 `config-row-page` 命中 **0**（不再有配置页）。
+- 体积：主包 **56,145 B**（地板 56,350，余 205 B —— 删掉组合包座位反而腾出 186 B）。
+- 证据：[evidence-row-page-unified-fields.png](./evidence-row-page-unified-fields.png)。
