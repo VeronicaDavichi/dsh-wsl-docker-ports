@@ -28,5 +28,5 @@ export { PortsPane } from './pane.tsx';
  * 与右栏页同住这个 chunk —— 主包棘轮零余量，任何 UI 都只能长在 chunk 侧。
  */
 export { ConfigPage } from './config-page.tsx';
-/** 017 六订·二：**行级**配置页（点「WSL Port Forwarding」名字进去的那一页）——只放原始输出 */
-export { RawOutputPage } from './config-write.tsx';
+/** 017 六订·五：**行级**配置页（点「WSL Port Forwarding」那一行进去的页面）= 整页配置 + 原始输出 */
+export { RowConfigPage } from './config-row-page.tsx';

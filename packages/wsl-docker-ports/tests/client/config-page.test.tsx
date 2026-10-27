@@ -15,6 +15,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { CONFIG_PAGE_TESTID, ConfigPage, CONTAINERS_SETTINGS_NAMESPACE, DISTROS_PATH } from '../../src/client/config-page.tsx';
+import { RowConfigPage } from '../../src/client/config-row-page.tsx';
 import type { SettingsConfigView, SettingsPipe, SettingsWriteResult } from '../../src/client/settings-pipe.ts';
 import { createWriteChannel, type WriteWiring } from '../../src/client/write-channel.ts';
 import { createWriteTokenStore, type StorageLike } from '../../src/client/write-token.ts';
@@ -353,5 +354,41 @@ describe('017 端口声明输入形态（主人两次拍板：半角逗号照认
       cleanup();
     }
     console.log(`  · C13 扫了 ${String(cases.length)} 种写法（换行 / 逗号 / 混写）⇒ 同一个数组`);
+  });
+});
+
+describe('017 六订·五：行级配置页（点「WSL Port Forwarding」那一行进去的页面）', () => {
+  it('C15 六件事与原始输出都在**同一页**里（主人 2026-10-27：「都放进去」）', async () => {
+    const writes: Write[] = [];
+    let reads = 0;
+    render(
+      <RowConfigPage
+        settings={fakePipe(writes, {})}
+        loadRawOutput={async () => {
+          reads += 1;
+          return 'CONTAINER ID   IMAGE';
+        }}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('config-row-page')).toBeTruthy();
+    });
+    // ① 整张配置页在（写通道预演 / 端口声明 / 刷新频次 / 提权策略 / 端口作用域 / 保存）
+    for (const id of ['config-page', 'config-write-channel', 'config-write-preview', 'config-managed-ports', 'config-policy', 'config-scope', 'config-refresh-ports', CONFIG_PAGE_TESTID.save]) {
+      expect(screen.getByTestId(id), `缺 ${String(id)}`).toBeTruthy();
+    }
+    // ② 原始输出也在同一页、且在配置页**之后**
+    const page = screen.getByTestId('config-row-page');
+    const configPage = screen.getByTestId('config-page');
+    const raw = screen.getByTestId('config-raw-page');
+    expect(page.contains(raw)).toBe(true);
+    expect(configPage.compareDocumentPosition(raw) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    // ③ 进页面零读（原始输出仍按需）
+    expect(reads).toBe(0);
+    console.log('  · C15 行级页：配置页 6 项 + 原始输出同页；进页读 ' + String(reads) + ' 次');
+    cleanup();
   });
 });

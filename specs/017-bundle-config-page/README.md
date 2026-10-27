@@ -382,3 +382,20 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
 - 真机：点 `wsl-ports` 行 → `config-raw-page` 在、`raw.top` 在描述下方、点按钮 3 秒读到 9,225 字符 JSON、
   再点收起后不再读。证据图：[evidence-row-page-raw-output.png](./evidence-row-page-raw-output.png)。
 - 主包 56,279 B（地板 56,350，余 71 B）；chunk 168,860 B。
+
+#### 六订·五（同日，主人第五次拍板：「把 写通道 / 写通道预演 / 端口声明（managedPorts）/ 端口转发页刷新频次 / 提权策略 / 端口作用域 都放进去」）
+
+「进去」= 上一轮定位的那一页：**点 `WSL Port Forwarding` 那一行进去的行级配置页**（`plugins.row.config`，
+键 `dsh-wsl-docker-ports#wsl-ports`）。做法：新增 `config-row-page.tsx` 的 `RowConfigPage` ——
+上半是**整张 `ConfigPage`**（六件事 + 保存按钮），下半是「只读事实层 / 原始输出」；chunk 入口
+改导出 `RowConfigPage`，主包座位表把行级槽的 `exportName` 从 `RawOutputPage` 换成 `RowConfigPage`
+（主包字节不变：56,279 B）。
+
+- 真机（行级页）实测：`config-page` / `config-write-channel` / `config-write-preview` /
+  `config-managed-ports` / `config-policy` / `config-scope` / `config-refresh-ports` / `config-raw-page`
+  **同一页**全在；分组标题只有「写通道」与「只读事实层」两个；进页原始输出读 **0** 次。
+- 判据：`config-page.test.tsx` **C15**（六处 testid 全在 + 原始输出在配置页**之后** + 进页零读）。
+- 组合包卡片页仍保留整页（今早主人拍板「插件进来但没有点进子组件的地方」），两页共用同一份
+  `settings` 管道与 `write` 接线 ⇒ 同一份 live 状态的两个入口，保存后刷新即见。
+- 证据：[evidence-row-page-config-all.png](./evidence-row-page-config-all.png)、
+  [evidence-row-page-write-and-raw.png](./evidence-row-page-write-and-raw.png)。

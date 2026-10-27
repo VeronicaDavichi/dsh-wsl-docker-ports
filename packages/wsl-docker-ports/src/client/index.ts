@@ -218,7 +218,7 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
   const rawOutput = async (): Promise<string | null> => (readRawOutput === undefined ? null : readRawOutput());
   for (const [key, slot, exportName] of [
     [CONFIG_ROW_KEY, CONFIG_SLOT_NAME, 'ConfigPage'],
-    ['dsh-wsl-docker-ports#wsl-ports', ROW_SLOT_NAME, 'RawOutputPage'], // 行级键 = 包名#行 id
+    ['dsh-wsl-docker-ports#wsl-ports', ROW_SLOT_NAME, 'RowConfigPage'], // 行级键 = 包名#行 id
   ] as const) {
     const seat = (ownerProps: Record<string, unknown>): ReactElement =>
       createElement(ChunkBoot, {
