@@ -53,8 +53,8 @@ import {
   type RoutePluginContextLike,
   type WebServerRoute,
   type WebServerSurfaceLike,
-} from './shared/http.ts';
-import { answerHealth, healthPath, type HealthPayload } from './shared/health.ts';
+} from 'dsh-wsl-docker-core';
+import { answerHealth, healthPath, type HealthPayload } from 'dsh-wsl-docker-core';
 
 export { isWebServerSurface, pathOf };
 export type { HttpRequestLike, HttpResponseLike, RoutePluginContextLike, WebServerRoute, WebServerSurfaceLike };

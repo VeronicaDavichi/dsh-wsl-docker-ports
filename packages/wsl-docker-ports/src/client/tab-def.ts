@@ -29,11 +29,6 @@ export const PAGE_ID = 'dsh-wsl-docker-ports';
 export const PAGE_KIND = 'wslDockerPorts';
 export const PAGE_TITLE = 'WSL Docker 端口';
 
-/** 容器侧页类型 id / kind / 标题（id 同时是配置命名空间，与行 id 逐字一致） */
-export const CONTAINERS_PAGE_ID = 'dsh-wsl-docker-containers';
-export const CONTAINERS_PAGE_KIND = 'wslDockerContainers';
-export const CONTAINERS_PAGE_TITLE = 'WSL Docker 容器';
-
 /** 两个 keyed seat（contract §C10）：`key = definition.id` */
 export const TAB_SLOT = 'sidebar.right.pane.tab';
 export const TAB_TITLE_SLOT = 'sidebar.right.pane.tab.title';
@@ -60,12 +55,6 @@ export const GUIDE_ENTRY_ID = 'ports';
 export const GUIDE_ENTRY_ORDER = 40;
 export const GUIDE_ENTRY_TITLE = '端口转发';
 export const GUIDE_ENTRY_DESCRIPTION = '查看容器的端口映射与 portproxy 规则，逐端口应用／移除转发（只读事实层，开页零副作用）';
-
-/** 容器页的 guide 入口（独立一个：用户在空态里要能**分别**进两个页） */
-export const CONTAINERS_GUIDE_ENTRY_ID = 'containers';
-export const CONTAINERS_GUIDE_ENTRY_ORDER = 50;
-export const CONTAINERS_GUIDE_TITLE = '容器';
-export const CONTAINERS_GUIDE_DESCRIPTION = '列出本发行版的容器并启动／停止／重启、查看日志（只读列表，动作需容器通道凭据）';
 
 /** 页定义的可变部分（两个页只在这一组字段上不同） */
 export interface PaneDefinitionSpec {
@@ -110,19 +99,6 @@ export function portsTabDefinition(): SidebarRightTabDefinitionLike {
     guideOrder: GUIDE_ENTRY_ORDER,
     guideTitle: GUIDE_ENTRY_TITLE,
     guideDescription: GUIDE_ENTRY_DESCRIPTION,
-  });
-}
-
-/** 容器侧页定义 */
-export function containersTabDefinition(): SidebarRightTabDefinitionLike {
-  return paneTabDefinition({
-    id: CONTAINERS_PAGE_ID,
-    kind: CONTAINERS_PAGE_KIND,
-    title: CONTAINERS_PAGE_TITLE,
-    guideId: CONTAINERS_GUIDE_ENTRY_ID,
-    guideOrder: CONTAINERS_GUIDE_ENTRY_ORDER,
-    guideTitle: CONTAINERS_GUIDE_TITLE,
-    guideDescription: CONTAINERS_GUIDE_DESCRIPTION,
   });
 }
 

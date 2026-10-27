@@ -26,7 +26,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { Config } from '../../src/config.ts';
-import type { SchemaFactory } from '../../src/config.ts';
+import type { SchemaFactory } from 'dsh-wsl-docker-core';
 import { SETTINGS_NAMESPACE, UNSET_WRITE_TOKEN_OPS, createSettingsPipe } from '../../src/client/settings-pipe.ts';
 import type { RemoteSettingsLike, SettingsPathOp, SettingsResponse } from '../../src/client/host.ts';
 import { HOST_FUNCTIONS, loadHostGate } from '../helpers/host-gate.ts';

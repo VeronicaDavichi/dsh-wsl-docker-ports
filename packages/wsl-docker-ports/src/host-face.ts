@@ -25,10 +25,10 @@ import type { DistroResolution, Eth0Outcome, Executor, WslDistro, WslSharedError
 import type { DiffInput, DiffOutcome } from './diff/types.ts';
 import type { ElevationAvailability } from './elevate/backend.ts';
 import type { BackendChoice } from './elevate/types.ts';
-import type { DockerPsOutcome } from './read/docker-probe.ts';
-import type { Eth0SourceOptions } from './read/eth0-source.ts';
-import type { LocalhostForwardingDeps, LocalhostForwardingOutcome } from './read/localhost-forwarding.ts';
-import type { NetshProbeOptions, PortproxyOutcome } from './read/netsh-probe.ts';
+import type { DockerPsOutcome } from 'dsh-wsl-docker-core';
+import type { Eth0SourceOptions } from 'dsh-wsl-docker-core';
+import type { LocalhostForwardingDeps, LocalhostForwardingOutcome } from 'dsh-wsl-docker-core';
+import type { NetshProbeOptions, PortproxyOutcome } from 'dsh-wsl-docker-core';
 import type { PortsRouteRegistration } from './route.ts';
 import type { SnapshotBuilder, SnapshotDeps } from './snapshot.ts';
 import type { PlanFacts } from './transport/plan.ts';

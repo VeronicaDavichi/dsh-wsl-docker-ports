@@ -16,8 +16,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { ManagedPorts } from '../../src/diff/managed-ports.ts';
-import type { PortproxyRule } from '../../src/read/netsh.ts';
-import type { LocalAddressEntry } from '../../src/read/local-addresses.ts';
+import type { PortproxyRule } from 'dsh-wsl-docker-core';
+import type { LocalAddressEntry } from 'dsh-wsl-docker-core';
 import { buildElevateScript, scriptArgs } from '../../src/elevate/script.ts';
 import { scriptAddressesOf } from '../../src/elevate/invoke.ts';
 import type { ScriptParams } from '../../src/elevate/types.ts';

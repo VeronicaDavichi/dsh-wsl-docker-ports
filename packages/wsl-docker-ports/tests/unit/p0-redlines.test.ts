@@ -25,13 +25,18 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { filesMatching, scanFor, srcSources, type Source } from '../helpers/src-scan.ts';
-import { DOCKER_PS_ARGV } from '../../src/read/docker-probe.ts';
-import { NETSH_ARGV } from '../../src/read/netsh-probe.ts';
+import { DOCKER_PS_ARGV } from 'dsh-wsl-docker-core';
+import { NETSH_ARGV } from 'dsh-wsl-docker-core';
 
 const SOURCES = srcSources();
 
-/** P0 只读路径（REQ-2.4 说的「P0 只读展示 + 转发可视化 + 漂移检测」） */
-const P0_PREFIXES = ['src/read/', 'src/diff/'] as const;
+/**
+ * P0 只读路径（REQ-2.4 说的「P0 只读展示 + 转发可视化 + 漂移检测」）。
+ *
+ * 🔴 **016 起只含 `src/diff/`**：只读探针（`read/**`）已迁到 `dsh-wsl-docker-core`，那份红线由
+ * core 自己的守卫覆盖；本包现在的 P0 面就是「拿探针结果做状态判定」的 diff 层。
+ */
+const P0_PREFIXES = ['src/diff/'] as const;
 
 const p0Sources: Source[] = SOURCES.filter((source) =>
   P0_PREFIXES.some((prefix) => source.path.startsWith(prefix)),
@@ -67,8 +72,8 @@ test('T6.6 ①-b：P0 只读路径里不存在任何 docker 写子命令（按�
 test('T6.6 ①-c：P0 的 docker 调用点收在白名单里（新增调用点 ⇒ 逼一次人工复核）', () => {
   assert.deepEqual(
     filesMatching(p0Sources, /DOCKER_[A-Z_]*ARGV/, (source) => source.code),
-    ['src/read/docker-probe.ts'],
-    'P0 的 docker 调用点是一份**白名单**：新增即红，请先确认它是只读子命令（ps / inspect）',
+    [],
+    '016：本包 P0 面**零** docker argv 字面量（探针连 argv 一起搬去 core）⇒ 白名单必须为空；出现即红',
   );
 });
 
@@ -99,8 +104,8 @@ test('T6.6 ③：不建包边 —— 依赖白名单恰好 `dsh-wsl-shared`，�
 
   assert.deepEqual(
     Object.keys(manifest.dependencies ?? {}).sort(),
-    ['dsh-wsl-shared'],
-    'REQ-10.2：唯一的包依赖是 001 的共享包；再加任何一条都必须先改 Spec（本断言是白名单，不是黑名单）',
+    ['dsh-wsl-docker-core', 'dsh-wsl-shared'],
+    'REQ-10.2（016 订正）：包依赖恰好两条 —— 001 的共享包 + 016 拆出的纯库 core；再加任何一条都必须先改 Spec',
   );
 
   for (const field of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const) {
@@ -129,9 +134,9 @@ test('T6.6 ④：不实现 exec —— 整个 src/ 无容器 exec 调用（REQ-1
 });
 
 test('守卫自身的元断言：P0 只读路径确实被扫到了（防止「扫 0 个文件 ⇒ 全绿」的假绿）', () => {
-  assert.ok(p0Sources.length >= 8, `P0 期望 >= 8 个源文件，实际 ${String(p0Sources.length)}`);
+  assert.ok(p0Sources.length >= 3, `P0 期望 >= 3 个源文件（src/diff/**），实际 ${String(p0Sources.length)}`);
   assert.ok(SOURCES.length > p0Sources.length, 'P0 是 src/ 的子集，不该等于全树');
-  for (const expected of ['src/read/docker-probe.ts', 'src/diff/engine.ts']) {
+  for (const expected of ['src/diff/engine.ts', 'src/diff/types.ts']) {
     assert.ok(
       p0Sources.some((source) => source.path === expected),
       `P0 守卫必须覆盖 ${expected}（没扫到 = 断言可能空转）`,

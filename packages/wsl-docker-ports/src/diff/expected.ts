@@ -17,7 +17,7 @@
  * REQ-9.2 要求「不许直接忽略该映射」。）
  */
 
-import type { DockerContainer } from '../read/docker.ts';
+import type { DockerContainer } from 'dsh-wsl-docker-core';
 import { intersectManagedRange, type ManagedPorts } from './managed-ports.ts';
 import type { ExpectedForward, Scope, UnsupportedMapping } from './types.ts';
 

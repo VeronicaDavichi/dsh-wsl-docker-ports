@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { ManagedPorts } from '../../src/diff/managed-ports.ts';
-import type { PortproxyRule } from '../../src/read/netsh.ts';
+import type { PortproxyRule } from 'dsh-wsl-docker-core';
 import { looksLikeWildcardAllow } from '../../src/write/firewall.ts';
 import type { WriteStep } from '../../src/write/types.ts';
 import { canonicalPlanText, createPlanChannel, normalizeTarget, planIdOf, PLAN_MAX_PORTS } from '../../src/transport/plan.ts';

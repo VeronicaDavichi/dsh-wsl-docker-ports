@@ -28,21 +28,21 @@
 import {
   createWriteAuthenticator as createSharedAuthenticator,
   type WriteAuthenticator,
-} from '../shared/credential.ts';
-import type { ConfigValueSource } from '../shared/config-read.ts';
+} from 'dsh-wsl-docker-core';
+import type { ConfigValueSource } from 'dsh-wsl-docker-core';
 
 export {
   WRITE_AUTHORIZATION_HEADER,
   WRITE_TOKEN_QUERY_PARAM,
   readWriteCredential,
-} from '../shared/credential.ts';
+} from 'dsh-wsl-docker-core';
 export type {
   CredentialRequestLike,
   WriteAuthFailure,
   WriteAuthResult,
   WriteAuthenticator,
   WriteHeaderBag,
-} from '../shared/credential.ts';
+} from 'dsh-wsl-docker-core';
 
 /**
  * 转发侧的配置提示（**不含凭据本体**；未配置时随 401 一起给用户看）。

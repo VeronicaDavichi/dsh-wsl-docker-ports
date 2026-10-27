@@ -26,18 +26,9 @@ import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 
-import {
-  Config,
-  CONFIG_DIAGNOSTICS,
-  HOST_SCHEMA_MODULE,
-  PORTS_CONFIG_FIELDS,
-  createPortsSchema,
-  hostModuleAnchors,
-  isSchemaFactory,
-  memberOf,
-  resolveSchemaFactory,
-} from '../../src/config.ts';
-import type { SchemaFactory, SchemaLike } from '../../src/config.ts';
+import { Config, CONFIG_DIAGNOSTICS, PORTS_CONFIG_FIELDS, createPortsSchema } from '../../src/config.ts';
+import { HOST_SCHEMA_MODULE, hostModuleAnchors, isSchemaFactory, memberOf, resolveSchemaFactory } from 'dsh-wsl-docker-core';
+import type { SchemaFactory, SchemaLike } from 'dsh-wsl-docker-core';
 import { createSettingsPipe, SETTINGS_NAMESPACE } from '../../src/client/settings-pipe.ts';
 import type { RemoteSettingsLike, SettingsResponse } from '../../src/client/host.ts';
 import type { SettingsPatch } from '../../src/client/settings-pipe.ts';
@@ -310,18 +301,10 @@ test('009 缺陷 1：入口两种形态都带 `Config`（宿主按包根解析�
 test('009 缺陷 1：宿主配置模块的运行时导出面 = 预期清单（不许夹带执行/提权入口）', async () => {
   const module = await import('../../src/config.ts');
   const names = Object.keys(module).filter((key) => key !== 'default').sort();
-  const expected = [
-    'CONFIG_DIAGNOSTICS',
-    'Config',
-    'HOST_SCHEMA_MODULE',
-    'PORTS_CONFIG_FIELDS',
-    'PROFILE_ANCHOR_MAX',
-    'createPortsSchema',
-    'hostModuleAnchors',
-    'isSchemaFactory',
-    'memberOf',
-    'resolveSchemaFactory',
-  ].sort();
+  // 016：schema 工厂的通用件（HOST_SCHEMA_MODULE / hostModuleAnchors / isSchemaFactory / memberOf /
+  // resolveSchemaFactory / PROFILE_ANCHOR_MAX）已搬进 `dsh-wsl-docker-core`，本包 `config.ts` 只剩
+  // 「本包的字段有哪些 + 构建结果」。核心侧导出面由 core 的 `check-exports` 门看住。
+  const expected = ['CONFIG_DIAGNOSTICS', 'Config', 'PORTS_CONFIG_FIELDS', 'createPortsSchema'].sort();
   assert.deepEqual(names, expected, '新增导出必须显式登记（否则「悄悄多一条执行入口」不会被任何断言拦住）');
   for (const forbidden of ['run', 'invoke', 'exec', 'elevate', 'spawn']) assert.equal(names.includes(forbidden), false, `配置模块不得出现 ${forbidden}`);
   console.log(`  · 扫了 ${String(names.length)} 个运行时导出：与预期清单一致，执行/提权类名字 0 个`);
