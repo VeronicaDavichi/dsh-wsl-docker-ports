@@ -62,10 +62,8 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
    「原始输出」就是「写通道预演」下面的那张兄弟卡片 —— 在子组件**下面**，不是子组件**外面**。 */
 .wdp-cfg-group { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 0; padding: 12px; border: 0.5px solid var(--dsw-alias-border-l2, transparent); border-radius: var(--dsw-radius-lg, 12px); background: var(--dsw-alias-bg-layer-1, transparent); }
 .wdp-cfg-group-title { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
-.wdp-cfg-cards { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
-.wdp-cfg-card { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 0.5px solid var(--dsw-alias-border-l2, transparent); border-radius: var(--dsw-radius-md, 8px); background: var(--dsw-alias-bg-layer-2, transparent); }
-/* 展开时这张卡片独占一整行（仍在本组内、仍在预演卡片**之后**）：9 KB 的 JSON 不该挤在 379px 窄栏里 */
-.wdp-cfg-card[data-open='1'] { flex-basis: 100%; }
+.wdp-cfg-cards { display: flex; flex-direction: column; gap: 10px; }
+.wdp-cfg-card { flex: none; min-width: 0; width: 100%; display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 0.5px solid var(--dsw-alias-border-l2, transparent); border-radius: var(--dsw-radius-md, 8px); background: var(--dsw-alias-bg-layer-2, transparent); }
 .wdp-cfg-card .wdp-textbtn { align-self: flex-start; text-align: left; }
 .wdp-cfg-card .wdp-pre { max-width: 100%; }
 .wdp-cfg-card-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }

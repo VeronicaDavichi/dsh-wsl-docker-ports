@@ -356,3 +356,12 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
 - 右栏页（acceptance profile 打不开页签 ⇒ 一次性静态渲染台架：真组件 + 真 `PAGE_CSS` + 真机 token 值）：`verticalScrollContainers = []`、`下一期` 不存在、19 行各带 1 个 ⚠、分割线 0 → [evidence-external-rules-marker.png](./evidence-external-rules-marker.png)；
 - 配置页（真机）：分组 + 两张卡片 → [evidence-config-write-cards.png](./evidence-config-write-cards.png)；点开后卡片宽 379 → **768**（= 分组内容宽），pre 收起/展开只读 1 次；
 - textarea 自动长高：DOM 实测 `before 76 → after 248`（12 行），`overflow-y: hidden`。
+
+#### 订正（同日，主人第三次拍板：「我说让你放到组件下面去」）
+
+上表第 4 行的第一版把两张卡片做成了 `flex-wrap: wrap` **横排并排** —— 那是「旁边」，不是「下面」。
+改为 `.wdp-cfg-cards { flex-direction: column }` + `.wdp-cfg-card { flex: none; width: 100% }`：
+「原始输出」卡片整宽落在「写通道预演」卡片**正下方**（实测 `gap 10px`、`raw.top ≥ preview.bottom`），
+仍在同一个 `wdp-cfg-group`「写通道」框内。判据补进 `write-style-gate.test.tsx` ⑩：
+`.wdp-cfg-cards` 规则必须含 `flex-direction: column`、且**不许**再出现 `flex-wrap: wrap`。
+证据图已按竖排重拍：[evidence-config-write-cards.png](./evidence-config-write-cards.png)。

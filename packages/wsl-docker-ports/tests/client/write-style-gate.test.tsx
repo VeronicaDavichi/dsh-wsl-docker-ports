@@ -75,7 +75,12 @@ describe('⑩ 右栏页语法与配置页同源（共享控件 / 段落 vs 面�
       expect(PAGE_CSS.includes(`${selector} `) || PAGE_CSS.includes(`${selector},`), `${selector} 不在 PAGE_CSS`).toBe(true);
       // 只允许「限定作用域」的补充（如 `.wdp-cfg-card .wdp-textbtn` 左对齐），
       // 不许再写一份**裸选择器**的基础规则（两处基础规则必然漂移）
-      const bare = new RegExp(`(^|\\n)${selector.replaceAll('.', '\\.')}[,\\s]*\\{`, 'u');
+      // 主人 2026-10-27 第三次拍板：「我说让你放到组件下面去」⇒ 分组里的卡片必须**竖着排**
+      // （原始输出在写通道预演正下方），不许 flex 横排挤成并排两张
+      const cardsRule = /\.wdp-cfg-cards \{[^}]*\}/u.exec(CONFIG_CSS)?.[0] ?? '';
+      expect(cardsRule, '.wdp-cfg-cards 规则不见了').not.toBe('');
+      expect(cardsRule, '卡片必须竖排（原始输出要在写通道预演**下面**）').toContain('flex-direction: column');
+      expect(cardsRule, '卡片区不许横向平分（会变成并排）').not.toContain('flex-wrap: wrap');      const bare = new RegExp(`(^|\\n)${selector.replaceAll('.', '\\.')}[,\\s]*\\{`, 'u');
       expect(bare.test(CONFIG_CSS), `${selector} 在 CONFIG_CSS 里又写了一份裸规则（会漂移）`).toBe(false);
     }
 
