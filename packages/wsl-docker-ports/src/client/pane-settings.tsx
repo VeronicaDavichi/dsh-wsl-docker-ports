@@ -65,7 +65,7 @@ export function ManagedPortsSummary(props: { readonly form: PortsPageView['manag
   const { form } = props;
   const declared = form.rangeText.trim();
   return (
-    <section className="wdp-card" data-testid="managed-ports-summary">
+    <section className="wdp-sec" data-testid="managed-ports-summary">
       <h3>端口声明（managedPorts）</h3>
       {declared === '' ? (
         <p className="wdp-muted" data-testid="managed-ports-empty">
@@ -106,7 +106,7 @@ export function ElevationBlock(props: {
   const { elevation, onChange } = props;
   const readOnly = onChange === undefined;
   return (
-    <section className="wdp-card">
+    <section className="wdp-sec">
       <h3>提权策略</h3>
       <select
         className="wdp-btn"
@@ -196,7 +196,7 @@ export function WriteTokenBlock(props: {
     }
   };
   return (
-    <section className="wdp-card" data-testid={WRITE_TOKEN_TESTID.block}>
+    <section className="wdp-sec" data-testid={WRITE_TOKEN_TESTID.block}>
       <h3>写通道凭据</h3>
       <p
         className="wdp-muted"
@@ -288,7 +288,7 @@ export function WriteTokenBlock(props: {
 /** exec 注入点（REQ-10.1/10.3/10.4）：**恒禁用**，只解释原因；002 缺失也不报错。 */
 export function NextPhaseBlock({ exec }: { readonly exec: ExecControlView }): ReactElement {
   return (
-    <section className="wdp-card">
+    <section className="wdp-sec">
       <h3>下一期</h3>
       <button type="button" className="wdp-btn" data-testid={TESTID.exec} data-write-control="1" disabled title={exec.reason}>
         {exec.label}
@@ -302,7 +302,7 @@ export function NextPhaseBlock({ exec }: { readonly exec: ExecControlView }): Re
 export function RawOutputBlock({ docker }: { readonly docker: DockerView }): ReactElement {
   const [open, setOpen] = useState(false);
   return (
-    <section className="wdp-card">
+    <section className="wdp-sec">
       <button type="button" className="wdp-btn" data-testid={TESTID.rawOutput} onClick={() => setOpen((value) => !value)}>
         {open ? '收起原始输出' : '查看原始输出'}
       </button>

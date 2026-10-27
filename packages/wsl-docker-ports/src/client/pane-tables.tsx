@@ -41,7 +41,7 @@ export function DistroAlarmBlock(props: { readonly distro: DistroPanelView }): R
   const note = distro.stateNote;
   if (stale === null && broken === null && note === null) return null;
   return (
-    <section className="wdp-card" data-testid="distro-alarm">
+    <section className="wdp-sec" data-testid="distro-alarm">
       <h3>发行版告警</h3>
       {note === null ? null : (
         <p className="wdp-secondary" data-testid="distro-state-note">
@@ -64,7 +64,7 @@ export function DistroAlarmBlock(props: { readonly distro: DistroPanelView }): R
 }
 export function DockerFailureBlock({ docker }: { readonly docker: Extract<DockerView, { ok: false }> }): ReactElement {
   return (
-    <section className="wdp-card" data-testid="docker-failure">
+    <section className="wdp-sec" data-testid="docker-failure">
       <h3>docker 读取失败（{docker.reason}）</h3>
       <p className="wdp-error">{docker.message}</p>
       <p className="wdp-secondary">{docker.hint}</p>
@@ -109,7 +109,7 @@ export function PortsBlock(props: {
 }): ReactElement {
   const { rows, note, scopeDraft, onScope, listenDraft, onListenAddress, onForward } = props;
   return (
-    <section className="wdp-card">
+    <section className="wdp-sec">
       <h3>端口转发（五态）</h3>
       {note !== null ? <p className="wdp-error">{note}</p> : null}
       <table className="wdp-table" data-testid={TESTID.ports}>
@@ -182,7 +182,7 @@ export function PortsBlock(props: {
 export function UnsupportedBlock({ rows }: { readonly rows: readonly UnsupportedRowView[] }): ReactElement | null {
   if (rows.length === 0) return null;
   return (
-    <section className="wdp-card" data-testid="unsupported-section">
+    <section className="wdp-sec" data-testid="unsupported-section">
       <h3>不可转发的映射（{rows.length}）</h3>
       <table className="wdp-table" data-testid="tbl-unsupported">
         <tbody>
@@ -209,7 +209,7 @@ export function UnsupportedBlock({ rows }: { readonly rows: readonly Unsupported
 export function ExternalRulesBlock({ external }: { readonly external: ExternalRulesView | null }): ReactElement | null {
   if (external === null) return null;
   return (
-    <section className="wdp-card" data-testid="external-rules">
+    <section className="wdp-sec" data-testid="external-rules">
       <h3>{external.title}</h3>
       <p className="wdp-muted">{external.note}</p>
       <ul className="wdp-list">

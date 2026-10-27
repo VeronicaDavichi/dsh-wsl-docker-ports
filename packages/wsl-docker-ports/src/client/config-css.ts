@@ -51,10 +51,6 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
 .wdp-cfg-preset { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dsw-alias-label-secondary, inherit); }
 .wdp-cfg-issues { margin: 0; padding: 6px 10px; list-style: none; display: flex; flex-direction: column; gap: 4px; border: 0.5px solid var(--dsw-alias-state-error-primary, currentColor); border-radius: var(--dsw-radius-sm, 6px); font-size: 12px; color: var(--dsw-alias-state-error-primary, inherit); }.wdp-cfg-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); overflow-wrap: anywhere; }
 .wdp-cfg-hint-error { color: var(--dsw-alias-state-error-primary, inherit); }
-.wdp-input { box-sizing: border-box; width: 100%; height: 34px; padding: 0 32px 0 12px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-md, 8px); background-color: var(--dsw-alias-bg-layer-3, transparent); font: inherit; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--dsw-alias-label-tertiary, currentColor) 50%), linear-gradient(135deg, var(--dsw-alias-label-tertiary, currentColor) 50%, transparent 50%); background-position: calc(100% - 17px) 15px, calc(100% - 12px) 15px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
-.wdp-input:hover:not(:disabled) { border-color: var(--dsw-alias-border-l2, currentColor); }
-.wdp-input:focus-visible { outline: none; border-color: var(--dsw-alias-state-business-primary, currentColor); }
-.wdp-input:disabled { color: var(--dsw-alias-label-tertiary, inherit); cursor: default; }
 .wdp-cfg-scopes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
 .wdp-cfg-scopes > li { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; line-height: 1.5; }
 .wdp-cfg-scopes > li + li { border-top: 0.5px solid var(--dsw-alias-border-l2, transparent); }
@@ -67,20 +63,12 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
 .wdp-cfg-footer { display: flex; align-items: center; gap: 8px; padding-top: 16px; border-top: 0.5px solid var(--dsw-alias-border-l2, transparent); }
 .wdp-cfg-footer-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .wdp-cfg-status { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); }
-.wdp-save { appearance: none; flex: none; border: 1px solid transparent; border-radius: var(--dsw-radius-md, 8px); padding: 5px 14px; font: inherit; font-size: 13px; line-height: 1.5; cursor: pointer; background: var(--dsw-alias-label-primary, currentColor); color: var(--dsw-alias-bg-layer-3, transparent); }
-.wdp-save[disabled] { opacity: 0.4; cursor: default; }
-.wdp-save:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, currentColor)); outline-offset: 1px; }
-.wdp-textbtn { appearance: none; border: none; background: none; padding: 0; font: inherit; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-secondary, inherit); cursor: pointer; }
-.wdp-textbtn:hover:not([disabled]) { color: var(--dsw-alias-label-primary, inherit); }
-.wdp-textbtn[disabled] { cursor: default; opacity: 0.5; }
 /* 017 三订：写通道预演在配置页里的宿主表单语法（标签在上 / 34px 控件 / 无内层卡片标题）。
    右栏页那张独立卡片仍走 wdp-card（variant=card），这套只作用于 variant=field。 */
 .wdp-cfg-write { display: flex; flex-direction: column; gap: 10px; }
 .wdp-cfg-write .wdp-cfg-label { flex: none; }
 .wdp-cfg-rows { display: flex; flex-direction: column; gap: 10px; }
 .wdp-cfg-row { display: flex; flex-direction: column; gap: 6px; }
-.wdp-input.wdp-cfg-input-plain { padding: 0 12px; background-image: none; }
-.wdp-input.wdp-textarea { height: auto; min-height: 74px; padding: 8px 12px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.6; background-image: none; }
 .wdp-cfg-btn { appearance: none; align-self: flex-start; box-sizing: border-box; height: 34px; padding: 0 14px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-md, 8px); background: var(--dsw-alias-bg-layer-3, transparent); font: inherit; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); cursor: pointer; }
 .wdp-cfg-btn:hover:not([disabled]) { border-color: var(--dsw-alias-border-l2, currentColor); }
 .wdp-cfg-btn:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, currentColor)); outline-offset: 1px; }

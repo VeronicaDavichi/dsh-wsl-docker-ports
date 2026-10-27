@@ -308,3 +308,31 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
 **真机**（最终包）：`tag=TEXTAREA`、`rows=3`、高 76px、`resize: vertical`、等宽字体；填
 `3306\n1000-3000, 5432\n\n8080`（换行 + 逗号 + 空行混写）⇒ 无非法项、保存亮起；
 截图 [evidence-managed-ports-textarea.png](./evidence-managed-ports-textarea.png)（**未保存**，profile 仍 `["3306"]`）。
+
+### 右栏页 CSS 对齐配置页（同日第五轮：主人「把侧边栏的 css 也调整成配置页这种样式吧」）
+
+**根因两处**（都在这轮修掉）：
+
+1. **右栏页从来没有控件样式** —— `.wdp-input` / `.wdp-save` / `.wdp-textbtn` 此前**只写在 `CONFIG_CSS`**
+   （配置页 chunk 才注入），而右栏页也在用它们 ⇒ 右栏页的下拉/输入框/主按钮一直是**浏览器默认样式**。
+   现在这三族**只在 `PAGE_CSS` 定义一次**（主包常驻），配置页**复用**同一套规则（不再各写一份，避免漂移）；
+   下拉的 ▼ 从「所有 `.wdp-input` 都画」收敛为 **`select.wdp-input` 才画**（文本输入框不再带箭头）。
+2. **视觉语言不统一** —— 右栏页是「1px 边框 + layer-1 底色的卡片堆」，配置页是宿主插件设置表单那套。
+   现在右栏页**逐条对齐**：段落 `.wdp-sec`（纵向 gap 6 / 上下 padding 12 / 相邻 0.5px `border-l2` 细分隔线）、
+   标题 13px·500·`label-primary`、提示 12px·`label-tertiary`、表格 `th` 11px·`label-secondary` +
+   0.5px `border-l4`、状态标签是 `currentColor` 描边的胶囊、按钮 28px（面板内 30px）/ `radius-sm` / `bg-layer-3`。
+   `wdp-card` **降级为「内嵌面板」**（0.5px `border-l2` + `radius-md` + `bg-layer-2`）：写通道预演、回执、确认框用它
+   —— 与配置页的「计划/回执」面板完全同款；右栏页的 12 个段落一律改成 `wdp-sec`。
+
+**顺带修掉的真机缺陷**（同一张表的窄栏表现）：真机栏宽 380–420px 时，端口表把「动作」列压成**一个字一行**，
+单行高 232px（截图见 evidence）。现在 `.wdp-table` 有 `min-width: 460px` + `.wdp-sec { overflow-x: auto }`
+（宁可横向滚动），按钮与下拉 `white-space: nowrap` / `max-width` 截断 ⇒ 行高回落到 ~76px。
+
+**体积**：`PAGE_CSS` 7,320 → **6,524 B**（合并多选择器、tone 类只改 `color`、`outline` 只写一遍 ——
+主包有「棘轮地板 56,350 B 只降不升」的硬账）；主包 51,883 → **55,971 B**（余 379 B），chunk 166,124 → **163,930 B**。
+判据：`write-style-gate.test.tsx` 新增 ⑩（控件唯一定义在 PAGE_CSS / 右栏页必须 `.wdp-sec` / 分隔线全 0.5px）。
+
+**验证**（⚠️ 右栏页在 acceptance profile 里**打不开**页签：宿主丢弃未知 kind）：
+- 静态渲染台架（**一次性、跑完即删**）：真组件 `PortsPane` + 真 `PAGE_CSS` + **真机取回的 19 个 `--dsw-alias-*` token 值**
+  渲染成 HTML 再用 Chrome 截图 → [evidence-sidebar-restyle.png](./evidence-sidebar-restyle.png)；
+- 配置页回归（同一次构建）：`SELECT.wdp-input` 34px/12px 圆角/`bg-layer-3` + ▼ 在；`TEXTAREA` 76px 未变；`wdp-save` 32px。

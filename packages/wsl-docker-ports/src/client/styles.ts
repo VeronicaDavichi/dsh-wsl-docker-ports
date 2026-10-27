@@ -10,8 +10,23 @@
  * 3. **查重 → 注入 → 返回移除器**：重复挂载不产生第二个 <style>，卸载时精确移除自己那个
  *    （与 ctx.effect 的 disposer 语义对齐）。
  *
- * ⚠️ 未验项：--dsw-alias-* 的**具体 token 名**在本机读不到官方源码（悬空 junction）
- * ⇒ 全部写成 var(--token, 非 hex 回落)。名字写错时表现为「颜色回落」，不会崩，但**真机需目视核对**。
+ * ## 版式（2026-10-27 主人：「把侧边栏的 css 也调整成配置页这种样式吧」）
+ *
+ * 右栏页此前是「1px 边框 + layer-1 底色的卡片堆」，配置页是宿主插件设置表单那套语法
+ * ——两者视觉语言不统一。现在右栏页**逐条对齐配置页**（同一批 token、同一套尺寸）：
+ *
+ *   段落 `.wdp-sec` = 宿主的 field：纵向 gap 6 / 上下 padding 12，
+ *                    相邻段落之间 **0.5px `border-l2`** 细分隔线（不再是独立卡片框）
+ *   标题 `h3`      = 13px / 500 / `label-primary`（配置页 `.wdp-cfg-label` 同款）
+ *   控件 `.wdp-input` = 高 34 / padding 0 12 / 0.5px `border-l4` / `radius-md` / `bg-layer-3`
+ *   按钮 `.wdp-btn`   = 0.5px `border-l4` / `radius-sm` / `bg-layer-3`；`.wdp-save` 用主色填充
+ *   提示 `.wdp-muted` = 12px / `label-tertiary`
+ *   内嵌面板 `.wdp-card` = 0.5px `border-l2` + `radius-md` + `bg-layer-2`
+ *                        （与配置页「计划 / 回执」那块完全同款：写通道、回执、确认框用它）
+ *
+ * ⚠️ `--dsw-alias-*` 的**具体 token 名**按宿主主题（`dsh-client-ui-theme`）的实物核对过；
+ * 名字写错时表现为「颜色回落 currentColor / transparent」，不会崩，但**真机需目视核对**。
+ * 颜色仍只从主题取（零 hex 不变，回落值也刻意不是 hex）。
  */
 
 import type { ClientContextLike } from './host.ts';
@@ -19,31 +34,64 @@ import type { ClientContextLike } from './host.ts';
 export const STYLE_ID = 'dsh-wsl-docker-ports/styles';
 export const ROOT_CLASS = 'wdp-page';
 
-/** 只用宿主 token，零硬编码颜色（回落值也刻意不是 hex —— 否则「零 hex」断言会变成文字游戏） */
+/**
+ * 右栏页样式表：与配置页（`config-css.ts` 的 CONFIG_CSS）同一套宿主表单语法。
+ *
+ * 🔴 **体积纪律**：这是**主包**里的字符串，本包主 bundle 有「棘轮地板 56,350 B（只降不升）」的硬账
+ * （`packages/wsl-shared/scripts/main-bundle-budgets.mjs` 的 SSoT）⇒ 下面刻意压缩：
+ * 共用声明合并成多选择器、tone 类只改 `color`（边框走 `currentColor`）、
+ * `outline` 只写一遍。省下的字节不是「少写样式」，是**同一个样式只写一次**。
+ */
 export const PAGE_CSS = `
-.wdp-page { color: var(--dsw-alias-label-primary, inherit); font-size: 13px; line-height: 1.6; padding: 8px 10px; display: flex; flex-direction: column; gap: 10px; }
-.wdp-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.wdp-muted { color: var(--dsw-alias-label-tertiary, inherit); }
+.wdp-page { display: flex; flex-direction: column; padding: 0 12px 12px; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
+.wdp-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 0; border-bottom: 0.5px solid var(--dsw-alias-border-l2, transparent); }
+.wdp-muted { font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); }
 .wdp-secondary { color: var(--dsw-alias-label-secondary, inherit); }
-.wdp-card { border: 1px solid var(--dsw-alias-border-l4, currentColor); border-radius: 6px; padding: 8px 10px; background: var(--dsw-alias-bg-layer-1, transparent); }
-.wdp-card > h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
-.wdp-gate { border-left: 3px solid var(--dsw-alias-state-warn-primary, currentColor); }
+.wdp-sec { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-top: 0.5px solid var(--dsw-alias-border-l2, transparent); overflow-x: auto; }
+.wdp-page > .wdp-sec:first-of-type { border-top: none; }
+.wdp-sec > h3, .wdp-card > h3 { margin: 0; font-weight: 500; line-height: 1.5; }
+.wdp-sec > h3 { font-size: 13px; color: var(--dsw-alias-label-primary, inherit); }
+.wdp-card > h3 { font-size: 12px; color: var(--dsw-alias-label-secondary, inherit); }
+.wdp-gate { border-left: 2px solid var(--dsw-alias-state-warn-primary, currentColor); padding-left: 10px; }
+.wdp-card { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 0.5px solid var(--dsw-alias-border-l2, currentColor); border-radius: var(--dsw-radius-md, 8px); background: var(--dsw-alias-bg-layer-2, transparent); }
 .wdp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.wdp-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border-top: 1px solid var(--dsw-alias-border-l2, currentColor); padding: 4px 0; }
-.wdp-table { width: 100%; border-collapse: collapse; }
-.wdp-table th, .wdp-table td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--dsw-alias-border-l2, currentColor); vertical-align: top; }
-.wdp-tag { border: 1px solid var(--dsw-alias-border-l4, currentColor); border-radius: 999px; padding: 0 6px; font-size: 12px; }
+.wdp-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 0; border-top: 0.5px solid var(--dsw-alias-border-l2, transparent); }
+.wdp-row:first-child { border-top: none; }
+.wdp-table { width: 100%; min-width: 460px; border-collapse: collapse; font-size: 12px; }
+.wdp-table th { text-align: left; padding: 4px 6px; font-size: 11px; font-weight: 500; color: var(--dsw-alias-label-secondary, inherit); border-bottom: 0.5px solid var(--dsw-alias-border-l4, transparent); white-space: nowrap; }
+.wdp-table td { text-align: left; padding: 4px 6px; vertical-align: middle; border-bottom: 0.5px solid var(--dsw-alias-border-l2, transparent); }
+.wdp-table tbody tr:last-child td { border-bottom: none; }
+/* 窄栏（真机 380–420px）里的表格：按钮不许折成一字一行；放不下就横向滚动 */
+.wdp-table .wdp-btn { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wdp-table select.wdp-btn { max-width: 116px; }
+.wdp-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border: 0.5px solid currentColor; border-radius: 999px; font-size: 11px; line-height: 1; white-space: nowrap; color: var(--dsw-alias-label-secondary, inherit); }
 .wdp-tag-ok { color: var(--dsw-alias-state-success-primary, inherit); }
 .wdp-tag-warn { color: var(--dsw-alias-state-warn-primary, inherit); }
 .wdp-tag-danger { color: var(--dsw-alias-state-error-primary, inherit); }
 .wdp-tag-muted { color: var(--dsw-alias-label-tertiary, inherit); }
-.wdp-pre { background: var(--dsw-alias-bg-layer-2, transparent); border-radius: 4px; padding: 6px 8px; overflow-x: auto; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 12px; }
-.wdp-btn { font: inherit; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--dsw-alias-border-l4, currentColor); background: var(--dsw-alias-bg-layer-2, transparent); color: inherit; cursor: pointer; }
-.wdp-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
-.wdp-btn-primary { background: var(--dsw-alias-button-primary-fill, transparent); border-color: var(--dsw-alias-button-primary-fill, currentColor); }
+.wdp-pre { margin: 0; padding: 8px 10px; border: 0.5px solid var(--dsw-alias-border-l2, transparent); border-radius: var(--dsw-radius-sm, 6px); background: var(--dsw-alias-bg-layer-2, transparent); overflow-x: auto; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.6; }
+.wdp-input, .wdp-btn, .wdp-save { appearance: none; box-sizing: border-box; font: inherit; cursor: pointer; }
+.wdp-input { width: 100%; height: 34px; padding: 0 12px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-md, 8px); background-color: var(--dsw-alias-bg-layer-3, transparent); font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
+.wdp-input:hover:not(:disabled), .wdp-btn:hover:not([disabled]) { border-color: var(--dsw-alias-border-l2, currentColor); }
+.wdp-input:focus-visible { outline: none; border-color: var(--dsw-alias-state-business-primary, currentColor); }
+.wdp-input:disabled { color: var(--dsw-alias-label-tertiary, inherit); cursor: default; }
+select.wdp-input { padding-right: 32px; background-image: linear-gradient(45deg, transparent 50%, var(--dsw-alias-label-tertiary, currentColor) 50%), linear-gradient(135deg, var(--dsw-alias-label-tertiary, currentColor) 50%, transparent 50%); background-position: calc(100% - 17px) 15px, calc(100% - 12px) 15px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+.wdp-input.wdp-cfg-input-plain { padding: 0 12px; background-image: none; }
+.wdp-input.wdp-textarea { height: auto; min-height: 74px; padding: 8px 12px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.6; background-image: none; }
+.wdp-btn { height: 28px; padding: 0 10px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-sm, 6px); background: var(--dsw-alias-bg-layer-3, transparent); font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
+.wdp-btn[disabled] { opacity: 0.4; cursor: default; }
+.wdp-btn-primary { border-color: transparent; background: var(--dsw-alias-label-primary, currentColor); color: var(--dsw-alias-bg-layer-3, transparent); }
+.wdp-card .wdp-btn { height: 30px; padding: 0 12px; font-size: 13px; }
+.wdp-save { flex: none; border: 1px solid transparent; border-radius: var(--dsw-radius-md, 8px); padding: 5px 14px; font-size: 13px; line-height: 1.5; background: var(--dsw-alias-label-primary, currentColor); color: var(--dsw-alias-bg-layer-3, transparent); }
+.wdp-save[disabled] { opacity: 0.4; cursor: default; }
+.wdp-textbtn { appearance: none; border: none; background: none; padding: 0; font: inherit; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-secondary, inherit); cursor: pointer; }
+.wdp-textbtn:hover:not([disabled]) { color: var(--dsw-alias-label-primary, inherit); }
+.wdp-textbtn[disabled] { cursor: default; opacity: 0.5; }
+.wdp-btn:focus-visible, .wdp-save:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, currentColor)); outline-offset: 1px; }
 .wdp-field { display: flex; flex-direction: column; gap: 4px; }
 .wdp-inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.wdp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px 10px; }
+.wdp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px 12px; font-size: 12px; }
+.wdp-listen { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .wdp-error { color: var(--dsw-alias-state-error-primary, inherit); }
 
 `;

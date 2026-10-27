@@ -56,3 +56,40 @@ describe('009 T1.3 ⑨：零硬编码 hex / 类名都来自真样式表（017 �
     );
   });
 });
+
+/**
+ * ⑩ 右栏页「调成配置页样式」的**结构判据**（2026-10-27 主人：「把侧边栏的 css 也调整成配置页这种样式吧」）
+ *
+ * 判据逐条二值：
+ * 1. 控件样式**唯一定义**在 PAGE_CSS（`.wdp-input` / `.wdp-save` / `.wdp-textbtn`）——
+ *    此前这三族只写在 CONFIG_CSS 里，而右栏页也用它们 ⇒ 右栏页的输入框/按钮一直是浏览器默认样式
+ *    （这才是「丑」的一半）。现在配置页**复用**主表的规则，不许再各写一份（两处定义必然漂移）。
+ * 2. 右栏页的段落一律 `.wdp-sec`，`wdp-card` 只留给「内嵌面板」（写通道 / 回执 / 确认框）——
+ *    段落 = 宿主 field（细分隔线），面板 = 宿主 layer-2 盒，两者层次不能混。
+ * 3. 分隔线一律 `0.5px`：PAGE_CSS 里出现 `1px solid` 只允许 `.wdp-save` 那一条
+ *    （它的边是 `transparent`，只用来占位撑高，不画线）。
+ */
+describe('⑩ 右栏页语法与配置页同源（共享控件 / 段落 vs 面板 / 0.5px 分隔线）', () => {
+  it('控件只在 PAGE_CSS 定义；右栏页用 .wdp-sec 不用 .wdp-card；分隔线全是 0.5px', () => {
+    for (const selector of ['.wdp-input', '.wdp-save', '.wdp-textbtn']) {
+      expect(PAGE_CSS.includes(`${selector} `) || PAGE_CSS.includes(`${selector},`), `${selector} 不在 PAGE_CSS`).toBe(true);
+      expect(CONFIG_CSS.includes(`${selector} {`), `${selector} 在 CONFIG_CSS 里又写了一份（会漂移）`).toBe(false);
+    }
+
+    const paneFiles = ['pane.tsx', 'pane-tables.tsx', 'pane-settings.tsx'];
+    for (const file of paneFiles) {
+      const text = readFileSync(path.join(CLIENT_DIR, file), 'utf8');
+      expect(text.includes('className="wdp-card'), `${file} 的段落还在用 wdp-card（应为 wdp-sec）`).toBe(false);
+    }
+    // 面板那三处必须还在 —— 否则「段落改完了、面板也顺手改没了」不会被发现
+    for (const file of ['write-panel.tsx', 'write-confirm.tsx']) {
+      const text = readFileSync(path.join(CLIENT_DIR, file), 'utf8');
+      expect(text.includes('wdp-card'), `${file} 的内嵌面板丢了 wdp-card`).toBe(true);
+    }
+
+    const onePx = [...PAGE_CSS.matchAll(/1px solid/gu)].length;
+    expect(onePx, `PAGE_CSS 里出现 ${String(onePx)} 处 1px solid（分隔线应统一 0.5px）`).toBe(1);
+    expect(PAGE_CSS.includes('.wdp-sec')).toBe(true);
+    console.log(`  · PAGE_CSS 里 1px solid = ${String(onePx)} 处（仅 .wdp-save 的 transparent 占位边）；段落 = .wdp-sec，面板 = .wdp-card`);
+  });
+});

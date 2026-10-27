@@ -49,7 +49,7 @@ export function plannedKinds(action: ForwardAction, scope: Scope, fix: PortRowVi
 function NatGateBlock({ nat }: { readonly nat: NatGatePanelView }): ReactElement {
   const [open, setOpen] = useState(false);
   return (
-    <section className="wdp-card wdp-gate" data-testid={nat.testId} data-gate-open={nat.open ? '1' : '0'}>
+    <section className="wdp-sec wdp-gate" data-testid={nat.testId} data-gate-open={nat.open ? '1' : '0'}>
       <h3>NAT 硬前提</h3>
       <p className={nat.open ? 'wdp-secondary' : 'wdp-error'}>{nat.reason}</p>
       {nat.guide !== null ? (
@@ -80,7 +80,7 @@ function NatGateBlock({ nat }: { readonly nat: NatGatePanelView }): ReactElement
 function LastWriteBlock({ lastWrite }: { readonly lastWrite: LastWriteView | null }): ReactElement | null {
   if (lastWrite === null) return null;
   return (
-    <section className="wdp-card" data-testid="last-write">
+    <section className="wdp-sec" data-testid="last-write">
       <h3>最近一次写操作：{lastWrite.status}</h3>
       <p className="wdp-secondary">{lastWrite.message}</p>
       {lastWrite.unapplied.length > 0 ? (
