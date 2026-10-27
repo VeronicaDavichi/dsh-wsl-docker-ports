@@ -34,7 +34,8 @@ describe('017 行级配置页（点「WSL Port Forwarding」名字进去的那�
     expect(screen.getByText('原始输出').className).toBe('wdp-cfg-label');
     expect(screen.getByTestId('config-raw-output').textContent).toBe('查看原始输出');
     // 主人 2026-10-27：「我是让你把它变成按钮！！！」⇒ 断言它真是按钮外壳（不是文字链）
-    expect(screen.getByTestId('config-raw-output').className).toContain('wdp-btn');
+    // 与配置页其它按钮**同一套**类名（`.wdp-cfg-btn`），不是自造皮
+    expect(screen.getByTestId('config-raw-output').className).toBe('wdp-cfg-btn');
     expect(screen.getByTestId('config-raw-output').tagName).toBe('BUTTON');
     // 进页面不读：这条 2–5 秒的冷启只落在真点开的人身上
     expect(reads).toBe(0);

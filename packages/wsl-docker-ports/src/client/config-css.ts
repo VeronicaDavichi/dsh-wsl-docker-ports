@@ -48,11 +48,6 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
 /* 主人 2026-10-27：「点击查看原始输出的时候下拉一个窗口展开里面是内容」⇒ 展开区是一块面板 */
 .wdp-cfg-raw-panel { display: flex; flex-direction: column; align-self: stretch; max-width: 100%; max-height: 260px; overflow: auto; padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-2); }
 .wdp-cfg-raw-panel .wdp-pre { margin: 0; }
-/* 主人 2026-10-27：「我是让你把它变成按钮！！！」⇒ 查看/收起是**按钮**，不是文字链 */
-.wdp-cfg-raw-btn { height: 30px; padding: 0 12px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-layer-3); color: inherit; font: inherit; cursor: pointer; }
-.wdp-cfg-raw-btn:hover:not([disabled]) { border-color: var(--dsw-alias-border-l2, currentColor); }
-.wdp-cfg-raw-btn[disabled] { opacity: 0.4; cursor: default; }
-.wdp-cfg-raw-btn:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-label-primary, currentColor)); outline-offset: 1px; }
 .wdp-cfg-field-body { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .wdp-cfg-field-body .wdp-pre { align-self: stretch; max-width: 100%; }
 .wdp-cfg-field { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; }

@@ -464,3 +464,9 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
   `border 1px`、`radius 8px`、`bg rgb(53,54,56)`（layer-3）；CONFIG_CSS 里自带一份
   `.wdp-cfg-raw-btn`（边框/圆角/底色/`:hover`/`[disabled]`/`:focus-visible`），不依赖主包样式是否已装。
   判据：`config-raw-page.test.tsx` R1 断言 `tagName === 'BUTTON'` 且 `className` 含 `wdp-btn`。
+- 🔴 **订正（六订·十一再补）**：主人又指「css 和其他按钮保持一致」—— 我先自造了一套
+  `.wdp-cfg-raw-btn`（30 px 高 / 12 px 内边距 / 1 px 边框 / `radius 8`）⇒ 与同页「预演（只读，零写入）」
+  对不上。**改法**：删掉自造皮，直接用配置页共享的 `.wdp-cfg-btn`（`height 34` / `padding 0 14` /
+  `0.5px border-l4` / `radius-md 12` / `bg-layer-3` / `13px`）。实测两颗按钮除宽度（文字长度）外
+  完全一致：`wdp-cfg-btn · 34 px 高 · radius 12 px · bg rgb(53,54,56) · padding 14 px · 13 px`。
+  判据：`config-raw-page.test.tsx` R1 断言 `className === 'wdp-cfg-btn'`（不再允许自造类）。
