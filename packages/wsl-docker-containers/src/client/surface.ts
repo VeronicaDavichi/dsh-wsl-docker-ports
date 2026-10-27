@@ -22,7 +22,7 @@
 import { createElement, type ReactElement } from 'react';
 
 import { ChunkBoot, type ChunkSeatModule } from './chunk-degrade.ts';
-import { registerConfigSlot } from './config-slot.ts';
+import { CONFIG_ROW_KEY, registerConfigSlot } from './config-slot.ts';
 import type { ConfigSlotContext } from './config-slot.ts';
 import type { ContainersRuntime } from './containers/runtime.ts';
 import type {
@@ -157,7 +157,9 @@ export function createSurface(
     runtime,
     registerConfig: (scope: ClientContextLike): void => {
       const configSeat = (): ReactElement => createElement(ContainersConfigSeat, { runtime });
-      const slot = registerConfigSlot(scope as unknown as ConfigSlotContext, configSeat as unknown as (props: never) => unknown, PAGE_ID);
+      // 017 六订·九：键必须是宿主查的 **`包名#行 id`**（`rowConfigKey(bundle, rowId)`）——
+      // 旧写法传 `PAGE_ID`（只写行 id）⇒ 宿主按复合键查不到，这一行**根本没有**「配置」按钮。
+      const slot = registerConfigSlot(scope as unknown as ConfigSlotContext, configSeat as unknown as (props: never) => unknown, CONFIG_ROW_KEY);
       if (!slot.registered) console.warn(`${logTag} 容器行配置页未注册：${slot.reason ?? '原因未记录'}`);
     },
     registerTab: (tabs: SidebarRightTabsServiceLike, slots: SlotsServiceLike, sidebar?: SidebarRightServiceLike | undefined): (() => void)[] => {

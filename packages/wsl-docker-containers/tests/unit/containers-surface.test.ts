@@ -142,14 +142,14 @@ test('拆包后**无探活**：注册即成功 + 主动 openTab + 零 store 订�
   assert.deepEqual(surface.registerTab(tabs, slots, sidebar).length, 3, '一次注册返回 3 个 disposer（类型 + 两个 seat）');
 });
 
-test('配置槽用**本行 id** 注册（`wsl-containers`，不是转发侧）', () => {
+test('配置槽用**复合键**注册（`组合包包名#行 id`，宿主按这个键查「配置」按钮）', () => {
   const rig = harness({});
   const surface = surfaceOf(rig);
   surface.registerConfig(rig.ctx);
   assert.deepEqual(
     rig.calls.map((call) => call.text),
-    [`seat:plugins.row.config@${PAGE_ID}`],
-    '配置槽恰好注册一次，且 key = 本包行 id（决定写哪个命名空间）',
+    [`seat:plugins.row.config@dsh-wsl-docker-ports#wsl-containers`],
+    '配置槽恰好注册一次，且 key = `组合包包名#行 id`（2026-10-27 真机：写成只行 id ⇒ 宿主查不到 ⇒ 这一行没有「配置」按钮）',
   );
 
   // 宿主没有 slots ⇒ 只降级、不抛（配置页是可选的编辑入口，不该拖垮整包加载）

@@ -19,7 +19,6 @@ export type Policy = 'none' | 'ask' | 'passby';
 export interface Draft {
   readonly distro: string;
   readonly portsRefresh: number;
-  readonly containersRefresh: number;
   readonly policy: Policy;
   /** 端口声明区间原文（多行 / 逗号都算分隔，原文原样回写） */
   readonly managedPortsText: string;
@@ -30,7 +29,6 @@ export interface Draft {
 export const EMPTY_DRAFT: Draft = {
   distro: '',
   portsRefresh: 0,
-  containersRefresh: 0,
   policy: 'none',
   managedPortsText: '',
   presets: [],

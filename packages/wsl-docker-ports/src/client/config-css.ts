@@ -43,6 +43,8 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
 .wdp-cfg { display: flex; flex-direction: column; color: var(--dsw-alias-label-primary, inherit); font-size: 13px; line-height: 1.5; }
 /* 017 六订·六（主人 2026-10-27：「写通道预演 只读事实层 这两个的css保持和其他一致」）：
    两块都改成与其他项同构的 field；控件竖向排、原文占满整行。 */
+/* 017 六订·八（主人 2026-10-27：「原始输出 这个标签离上面再远点」）：它与上面的保存条之间留足呼吸（28 → 52 px，主人连说两次「再远点」） */
+.wdp-cfg-raw { margin-top: 52px; }
 .wdp-cfg-field-body { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .wdp-cfg-field-body .wdp-pre { align-self: stretch; max-width: 100%; }
 .wdp-cfg-field { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; }

@@ -26,12 +26,15 @@
 export const CONFIG_SLOT_NAME = 'plugins.row.config';
 
 /**
- * 注册键 = `<包名>#<行 id>`（017 订正；宿主文档逐字：「keyed by `<package name>#<row id>`」）。
+ * 注册键 = `<组合包包名>#<行 id>`（017 订正；宿主源码 `rowConfigKey(bundle, rowId)` 逐字：
+ * `` `${bundle}#${rowId}` ``，调用点是 `ledger.rows.has(rowConfigKey(pkg.name, row.rowId))`）。
  *
- * 015 当初只写行 id（`wsl-containers`）⇒ 宿主按「包名#行 id」查不到 ⇒ 这一行的
- * **配置**控件不会出现。同一条订正也适用于转发行（键 `dsh-wsl-docker-ports#wsl-ports`）。
+ * 🔴 **`bundle` 是「卡片所属的包」，不是本包名**（2026-10-27 真机实测纠正）：`wsl-containers` 这一行
+ * 挂在 `dsh-wsl-docker-ports` 那张卡片下面（容器包自己不出卡）⇒ 键的第 half 是 **`dsh-wsl-docker-ports`**。
+ * 我先前按「本包名」写成 `dsh-wsl-docker-containers#wsl-containers` ⇒ 宿主查不到 ⇒ 这一行**始终没有**
+ * 「配置」按钮（页永远进不去）。同一条规则下转发行的键 = `dsh-wsl-docker-ports#wsl-ports`。
  */
-export const CONFIG_ROW_KEY = 'dsh-wsl-docker-containers#wsl-containers';
+export const CONFIG_ROW_KEY = 'dsh-wsl-docker-ports#wsl-containers';
 
 export const AUTO_FORM_EFFECT_LABEL = `${CONFIG_SLOT_NAME}: auto-form off`;
 

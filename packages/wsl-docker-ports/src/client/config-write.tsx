@@ -73,7 +73,7 @@ export function RawOutputSection(props: RawOutputSectionProps): ReactElement {
   };
 
   return (
-    <div data-testid="config-raw-page">
+    <div className="wdp-cfg-raw" data-testid="config-raw-page">
       <ConfigField
         label="原始输出"
         tag="只在点开时读"

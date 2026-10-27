@@ -2,11 +2,13 @@
  * **容器行自己的配置页**（015 `P4`；017 收窄）—— 挂在 `plugins.row.config` 槽、键 =
  * `<包名>#<行 id>`（`dsh-wsl-docker-containers#wsl-containers`）。
  *
- * ## 017：distro / refreshIntervalSec 已搬走
+ * ## 017 六订·九：`refreshIntervalSec` 回到**这一页**
+
+ * 主人 2026-10-27 原话：「容器页刷新频次 把这个移到容器的内页里面」—— 这个字段只影响容器页，
+ * 放在转发行的页面上等于让另一个组件替你改自己的刷新节奏。⇒ 本页放两个字段：
+ * 容器页刷新频次（写 `wsl-containers` 的 `refreshIntervalSec`）+ 容器通道凭据。
+ * `distro` 仍是**共用**项，只由组合包卡片页写（本页只读不写）。
  *
- * 这两个字段现在只由**组合包级配置页**（`plugins.bundle.config`，在卡片页「描述与组件行
- * 之间」）写。本页保留的唯一字段是**容器行独占的** `writeToken`（与转发侧各自独立，属于
- * 行级卫生）。判定依据：同一字段两个写入口 = 两份可能分叉的值 ⇒ 017 只留一个入口。
  *
  * ## 为什么键是 `<包名>#<行 id>`
  *
@@ -23,9 +25,13 @@
 import { createElement, useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 
+import { REFRESH_INTERVAL_OPTIONS } from '../refresh.ts';
+
 import type { ContainersRuntime } from './runtime.ts';
 
 export const CONFIG_CID = {
+  refresh: 'inp-containers-config-refresh',
+  refreshState: 'txt-containers-config-refresh-state',
   token: 'inp-containers-config-token',
   tokenSave: 'btn-containers-config-token-save',
   tokenState: 'txt-containers-config-token-state',
@@ -35,6 +41,7 @@ export const CONFIG_CID = {
 
 export function ContainersConfigPage(props: { readonly runtime?: ContainersRuntime }): ReactElement {
   const runtime = props.runtime;
+  const [refresh, setRefresh] = useState(0);
   const [token, setToken] = useState('');
   const [tokenConfigured, setTokenConfigured] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -54,6 +61,7 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
       .then((view) => {
         if (!alive) return;
         setTokenConfigured(view.writeTokenConfigured === true);
+        setRefresh(view.refreshIntervalSec);
       })
       .catch(() => {
         if (alive) setUnavailable('读容器行配置失败：请稍后重试（不影响容器列表）');
@@ -62,6 +70,18 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
       alive = false;
     };
   }, [runtime]);
+
+  /** 改刷新频次：立刻写（用户改一次就期望生效，没有「保存」二次确认） */
+  const saveRefresh = useCallback(
+    async (next: number): Promise<void> => {
+      const pipe = runtime?.settings();
+      if (pipe === undefined) return;
+      setRefresh(next);
+      const result = await pipe.writeRefreshInterval(next);
+      setMessage(result.message);
+    },
+    [runtime],
+  );
 
   const saveToken = useCallback(async (): Promise<void> => {
     const pipe = runtime?.settings();
@@ -85,8 +105,23 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
     createElement(
       'p',
       { className: 'wdp-muted' },
-      '只显示**容器行独占**的字段。目标发行版与刷新频次已搬到卡片页的「配置」（组合包级配置页）；转发侧字段（managedPorts、scopes、listenAddresses、elevationPolicy）在转发行的配置页里改。',
+      '只显示容器行独占的字段：刷新频次与通道凭据。目标发行版是两个组件共用的，在卡片页的「配置」里改；转发侧字段（managedPorts、scopes、listenAddresses、elevationPolicy）在转发行的配置页里改。',
     ),
+    createElement(
+      'label',
+      { className: 'wdp-field' },
+      '容器页刷新频次',
+      createElement(
+        'select',
+        {
+          'data-testid': CONFIG_CID.refresh,
+          value: String(refresh),
+          onChange: (event: { target: { value: string } }) => void saveRefresh(Number(event.target.value)),
+        },
+        REFRESH_INTERVAL_OPTIONS.map((option) => createElement('option', { key: option.value, value: String(option.value) }, option.label)),
+      ),
+    ),
+    createElement('p', { className: 'wdp-muted', 'data-testid': CONFIG_CID.refreshState }, refresh === 0 ? '容器页不自动刷新（只手动）' : `容器页每 ${String(refresh)} 秒自动刷新一次`),
     createElement(
       'label',
       { className: 'wdp-field' },

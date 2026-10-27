@@ -423,3 +423,28 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
   `.wdp-cfg-card` 命中 **0**；组合包卡片页 `config-row-page` 命中 **0**（不再有配置页）。
 - 体积：主包 **56,145 B**（地板 56,350，余 205 B —— 删掉组合包座位反而腾出 186 B）。
 - 证据：[evidence-row-page-unified-fields.png](./evidence-row-page-unified-fields.png)。
+
+#### 六订·九 / 六订·十（同日，主人第七次、第八次拍板）
+
+主人原话：「容器页刷新频次 把这个移到容器的内页里面」「原始输出 这个标签离上面再远点」「再远点」。
+
+1. **容器页刷新频次搬进容器行自己的配置页**：转发行配置页不再渲染它、不再写
+   `wsl-containers.refreshIntervalSec`（`config-page.tsx` 删字段、`config-model.ts` 删
+   `containersRefresh`）；容器行配置页（`wsl-docker-containers` 的
+   `containers/config-page.tsx`）新增「容器页刷新频次」下拉（关闭 / 15 / 30 / 60 / 5 分钟，
+   改一次写一次，读自本行命名空间）。转发行保存时容器命名空间**只**收共用的 `distro`。
+2. **原始输出与上面拉开距离**：`.wdp-cfg-raw { margin-top: 52px; }`（28 → 52，主人连说两次）。
+3. 🔴 **顺带修掉一个真机缺陷（不属加戏，是第 1 条能成立的前提）**：容器行的配置页
+   **一直进不去** —— 宿主 `dsh-client-ui-plugin-manager/lib/client.js:2357` 用
+   `ledger.rows.has(rowConfigKey(pkg.name, row.rowId))` 查键，`pkg.name` 是**卡片所属包**
+   （= `dsh-wsl-docker-ports`），而容器包按「本包名」注册成
+   `dsh-wsl-docker-containers#wsl-containers` ⇒ 查不到 ⇒ 该行没有「配置」按钮。
+   改成 `dsh-wsl-docker-ports#wsl-containers` 后按钮出现、页面可达（截图已验）。
+
+- 判据：`containers-config-page.test.tsx` R1–R3（初值 30 秒 / 关闭档文案 / 无管道不装成能用）；
+  `config-page.test.tsx` C1 断言本页**没有** `config-refresh-containers`、C3 断言容器命名空间
+  只收 `distro`、C5 用 distro 触发容器命名空间失败；`containers-surface.test.ts` 改为断言复合键。
+- 真机：容器行页 `inp-containers-config-refresh` 在、值 0、选项五档、文案「容器页不自动刷新（只手动）」；
+  转发行页 8 个字段里**没有**「容器页刷新频次」，`.wdp-cfg-raw` 与上方保存条的实测间距 **52 px**。
+- 证据：[evidence-containers-row-refresh.png](./evidence-containers-row-refresh.png)、
+  [evidence-ports-row-gap-52.png](./evidence-ports-row-gap-52.png)。

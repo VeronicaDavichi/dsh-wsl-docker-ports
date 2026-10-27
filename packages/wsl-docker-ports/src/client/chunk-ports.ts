@@ -28,5 +28,7 @@ export { PortsPane } from './pane.tsx';
  * 与右栏页同住这个 chunk —— 主包棘轮零余量，任何 UI 都只能长在 chunk 侧。
  * 组合包卡片页不再挂配置页（主人原话：「内页有了的外页就不需要了」）。
  */
-/** 017 六订·五：**行级**配置页（点「WSL Port Forwarding」那一行进去的页面）= 整页配置 + 原始输出 */
+/** 017 六订·五：**行级**配置页（点「WSL Port Forwarding」那一行进去的页面）= 属于本插件的各项 + 原始输出 */
 export { RowConfigPage } from './config-row-page.tsx';
+/** 017 六订·七：**组合包卡片页**只放两个组件共用的 `目标发行版` */
+export { BundleConfigPage } from './config-bundle-page.tsx';

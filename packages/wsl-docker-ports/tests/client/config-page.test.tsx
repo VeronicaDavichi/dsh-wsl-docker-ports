@@ -7,7 +7,8 @@
  *    （`dirty` 门）；页头那三个旧控件不再出现在这里（它们已经从页头删除，见 refresh-interval 与
  *    containers-pane 两组用例）。
  * 2. **一次保存写两个命名空间**：`wsl-ports`（自己）与 `wsl-containers`（容器行）——
- *    目标发行版两边都写，刷新频次各写各的；断言的是**真实发出的 patch**，不是「看起来保存了」。
+ *    只因为**目标发行版**是两边共用的（017 六订·九起刷新频次各写各的：容器那份在容器行级页）；
+ *    断言的是**真实发出的 patch**，不是「看起来保存了」。
  * 3. **提权策略仍两段式**：改了档位首次点保存只亮确认条，未点确认 ⇒ `update` 调用 0 次。
  */
 
@@ -15,7 +16,6 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { CONFIG_PAGE_TESTID, ConfigPage, CONTAINERS_SETTINGS_NAMESPACE, DISTROS_PATH } from '../../src/client/config-page.tsx';
-import { RowConfigPage } from '../../src/client/config-row-page.tsx';
 import type { SettingsConfigView, SettingsPipe, SettingsWriteResult } from '../../src/client/settings-pipe.ts';
 import { createWriteChannel, type WriteWiring } from '../../src/client/write-channel.ts';
 import { createWriteTokenStore, type StorageLike } from '../../src/client/write-token.ts';
@@ -136,7 +136,6 @@ describe('017 bundle 级配置页', () => {
 
     expect((screen.getByTestId(CONFIG_PAGE_TESTID.distro) as HTMLSelectElement).value).toBe('Ubuntu2204');
     expect((screen.getByTestId(CONFIG_PAGE_TESTID.refreshPorts) as HTMLSelectElement).value).toBe('15');
-    expect((screen.getByTestId(CONFIG_PAGE_TESTID.refreshContainers) as HTMLSelectElement).value).toBe('30');
     expect((screen.getByTestId(CONFIG_PAGE_TESTID.policy) as HTMLSelectElement).value).toBe('none');
 
     await waitFor(() => {
@@ -144,7 +143,9 @@ describe('017 bundle 级配置页', () => {
       expect(options).toEqual(['', 'Ubuntu2204', 'Debian']);
     });
     expect(fetchCalls).toEqual([DISTROS_PATH]);
-    console.log(`  · C1 初值：distro=Ubuntu2204 / ports=15 / containers=30 / policy=none；清单请求 ${String(fetchCalls.length)} 次`);
+    // 017 六订·九：「容器页刷新频次」搬去容器行自己的配置页 ⇒ 本页**不该**有它
+    expect(screen.queryByTestId('config-refresh-containers')).toBeNull();
+    console.log(`  · C1 初值：distro=Ubuntu2204 / ports=15 / policy=none（容器刷新频次不在本页）；清单请求 ${String(fetchCalls.length)} 次`);
   });
 
   it('C2 没改 ⇒ 保存置灰、零写入（脏判定靠指纹，不靠「点过没有」）', async () => {
@@ -160,13 +161,12 @@ describe('017 bundle 级配置页', () => {
     console.log('  · C2 未改动：保存按钮 disabled=true、写入 0 次');
   });
 
-  it('C3 改发行版 + 两个刷新频次 ⇒ 一次保存写两个命名空间（发行版两边都写）', async () => {
+  it('C3 改发行版 + 本页刷新频次 ⇒ 一次保存写两个命名空间（容器侧只收共用的 distro）', async () => {
     const writes: Write[] = [];
     await mount(writes);
 
     fireEvent.change(screen.getByTestId(CONFIG_PAGE_TESTID.distro), { target: { value: 'Debian' } });
     fireEvent.change(screen.getByTestId(CONFIG_PAGE_TESTID.refreshPorts), { target: { value: '60' } });
-    fireEvent.change(screen.getByTestId(CONFIG_PAGE_TESTID.refreshContainers), { target: { value: '300' } });
 
     const save = screen.getByTestId(CONFIG_PAGE_TESTID.save) as HTMLButtonElement;
     expect(save.disabled).toBe(false);
@@ -180,7 +180,9 @@ describe('017 bundle 级配置页', () => {
 
     expect(writes).toContainEqual({ ns: 'wsl-ports', patch: { distro: 'Debian' } });
     expect(writes).toContainEqual({ ns: 'wsl-ports', patch: { refreshIntervalSec: 60 } });
-    expect(writes).toContainEqual({ ns: CONTAINERS_SETTINGS_NAMESPACE, patch: { refreshIntervalSec: 300, distro: 'Debian' } });
+    // 容器侧只收共用的 distro（刷新频次已归容器的行级页，本页不再写它）
+    expect(writes).toContainEqual({ ns: CONTAINERS_SETTINGS_NAMESPACE, patch: { distro: 'Debian' } });
+    expect(writes.some((write) => write.ns === CONTAINERS_SETTINGS_NAMESPACE && 'refreshIntervalSec' in write.patch)).toBe(false);
     await waitFor(() => {
       expect(screen.getByTestId(CONFIG_PAGE_TESTID.note).textContent ?? '').toContain('设置已保存');
     });
@@ -211,11 +213,11 @@ describe('017 bundle 级配置页', () => {
     console.log(`  · C4 提权档：确认前 0 次写、确认后 ${String(writes.length)} 次写`);
   });
 
-  it('C5 某个命名空间写失败 ⇒ 页面如实报失败，不谎报「已保存」', async () => {
+  it('C5 容器命名空间被拒 ⇒ 页面如实报失败，不谎报「已保存」', async () => {
     const writes: Write[] = [];
     await mount(writes, { failNs: CONTAINERS_SETTINGS_NAMESPACE });
 
-    fireEvent.change(screen.getByTestId(CONFIG_PAGE_TESTID.refreshContainers), { target: { value: '60' } });
+    fireEvent.change(screen.getByTestId(CONFIG_PAGE_TESTID.distro), { target: { value: 'Debian' } });
     fireEvent.click(screen.getByTestId(CONFIG_PAGE_TESTID.save));
     await act(async () => {
       await Promise.resolve();
@@ -223,7 +225,7 @@ describe('017 bundle 级配置页', () => {
     await waitFor(() => {
       expect(screen.getByTestId(CONFIG_PAGE_TESTID.note).textContent ?? '').toContain('保存失败');
     });
-    console.log(`  · C5 容器命名空间被拒：提示「保存失败」、成功写入 ${String(writes.length)} 次`);
+    console.log(`  · C5 容器命名空间被拒：提示「保存失败」`);
   });
   it('C6 端口声明：勾 preset + 填区间 ⇒ 与其它字段共用一次「保存设置」，写的是合并后的数组', async () => {
     const writes: Write[] = [];
@@ -354,41 +356,5 @@ describe('017 端口声明输入形态（主人两次拍板：半角逗号照认
       cleanup();
     }
     console.log(`  · C13 扫了 ${String(cases.length)} 种写法（换行 / 逗号 / 混写）⇒ 同一个数组`);
-  });
-});
-
-describe('017 六订·五：行级配置页（点「WSL Port Forwarding」那一行进去的页面）', () => {
-  it('C15 六件事与原始输出都在**同一页**里（主人 2026-10-27：「都放进去」）', async () => {
-    const writes: Write[] = [];
-    let reads = 0;
-    render(
-      <RowConfigPage
-        settings={fakePipe(writes, {})}
-        loadRawOutput={async () => {
-          reads += 1;
-          return 'CONTAINER ID   IMAGE';
-        }}
-      />,
-    );
-    await act(async () => {
-      await Promise.resolve();
-    });
-    await waitFor(() => {
-      expect(screen.getByTestId('config-row-page')).toBeTruthy();
-    });
-    // ① 整张配置页在（写通道预演 / 端口声明 / 刷新频次 / 提权策略 / 端口作用域 / 保存）
-    for (const id of ['config-page', 'config-write-channel', 'config-write-preview', 'config-managed-ports', 'config-policy', 'config-scope', 'config-refresh-ports', CONFIG_PAGE_TESTID.save]) {
-      expect(screen.getByTestId(id), `缺 ${String(id)}`).toBeTruthy();
-    }
-    // ② 原始输出也在同一页、且在配置页**之后**
-    const page = screen.getByTestId('config-row-page');
-    const configPage = screen.getByTestId('config-page');
-    const raw = screen.getByTestId('config-raw-page');
-    expect(page.contains(raw)).toBe(true);
-    expect(configPage.compareDocumentPosition(raw) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    // ③ 进页面零读（原始输出仍按需）
-    expect(reads).toBe(0);
-    console.log('  · C15 行级页：配置页 6 项 + 原始输出同页；进页读 ' + String(reads) + ' 次');
-    cleanup();
   });
 });

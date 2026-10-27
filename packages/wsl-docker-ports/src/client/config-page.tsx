@@ -44,7 +44,6 @@ import {
   EMPTY_DRAFT,
   mergedManagedPorts,
   policyOf,
-  refreshOf,
   type Draft,
   type Policy,
 } from './config-model.ts';
@@ -80,7 +79,6 @@ export const CONFIG_PAGE_TESTID = {
   policy: 'config-policy',
   distro: 'config-distro',
   refreshPorts: 'config-refresh-ports',
-  refreshContainers: 'config-refresh-containers',
   save: 'config-save',
   confirm: 'config-confirm',
   cancel: 'config-cancel',
@@ -99,6 +97,12 @@ export interface ConfigPageProps {
    * 017 三订（主人 2026-10-27）：「写通道预演也放到配置页里面去」⇒ 块从右栏页搬到这里。
    */
   readonly write?: WriteWiring | undefined;
+  /**
+   * 017 六订·七（主人 2026-10-27：「目标发行版依然放在外面啊，两个组件都要用的」）：
+   * `distro` = 组合包卡片页（只放**共用**的目标发行版）；`rest` = 行级页（其余各项）；
+   * `all` = 两块都放（单测与旧调用）。`commit()` 只写真正改过的字段 ⇒ 隐藏的字段不会被动。
+   */
+  readonly part?: 'all' | 'distro' | 'rest' | undefined;
 }
 
 /** 发行版清单：失败不抛（页面照常可编辑手头的值，只是下拉里少几项） */
@@ -117,7 +121,7 @@ async function fetchDistros(): Promise<readonly string[]> {
 }
 
 export function ConfigPage(props: ConfigPageProps): ReactElement {
-  const { settings, write } = props;
+  const { settings, write, part = 'all' } = props;
   const [view, setView] = useState<SettingsConfigView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
@@ -140,7 +144,6 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
       const loaded: Draft = {
         distro: next.distro ?? distroOf(containers),
         portsRefresh: next.refreshIntervalSec,
-        containersRefresh: refreshOf(containers),
         policy: policyOf(next),
         managedPortsText: declaredText(next.managedPorts),
         presets: checkedPresetsOf(next.managedPorts),
@@ -202,12 +205,11 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
         const result = await settings.writeManagedPorts(mergedDecl);
         (result.ok ? messages : failures).push(`端口声明 → ${mergedDecl.length === 0 ? '（空）' : mergedDecl.join(', ')}`);
       }
-      if (draft.containersRefresh !== before.containersRefresh || draft.distro !== before.distro) {
-        const result = await settings.writeNamespace(CONTAINERS_SETTINGS_NAMESPACE, {
-          refreshIntervalSec: draft.containersRefresh,
-          distro: draft.distro,
-        });
-        (result.ok ? messages : failures).push(`容器页刷新 → ${String(draft.containersRefresh)} 秒`);
+      if (draft.distro !== before.distro) {
+        // 017 六订·九（主人 2026-10-27：「容器页刷新频次 把这个移到容器的内页里面」）：
+        // 刷新频次不再由本页写；distro 是两个组件共用的，仍然两边都写。
+        const result = await settings.writeNamespace(CONTAINERS_SETTINGS_NAMESPACE, { distro: draft.distro });
+        (result.ok ? messages : failures).push(`容器侧发行版 → ${draft.distro === '' ? '自动发现' : draft.distro}`);
       }
       if (failures.length > 0) {
         setNote(`保存失败：${failures.join('；')}`);
@@ -251,119 +253,109 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
         </p>
       )}
 
-      <ConfigSelect
-        id={CONFIG_PAGE_TESTID.distro}
-        testId={CONFIG_PAGE_TESTID.distro}
-        label="目标发行版"
-        tag="两个组件共用"
-        hint={
-          distros.length === 0
-            ? '清单读取失败或没有已安装的发行版（不影响手头的值）'
-            : `已安装 ${String(distros.length)} 个发行版；留空 = 自动发现`
-        }
-        value={draft.distro}
-        options={[{ value: '', label: '自动发现（优先默认发行版）' }, ...distroOptions.map((name) => ({ value: name, label: name }))]}
-        disabled={disabled}
-        onChange={(next) => {
-          setDraft((current) => ({ ...current, distro: next }));
-          setNote(null);
-        }}
-      />
-
-      <ConfigSelect
-        id={CONFIG_PAGE_TESTID.refreshPorts}
-        testId={CONFIG_PAGE_TESTID.refreshPorts}
-        label="端口转发页刷新频次"
-        hint="关闭 = 只手动刷新；页头上的旧下拉已删除，这里是唯一入口。"
-        value={String(draft.portsRefresh)}
-        options={REFRESH_INTERVAL_OPTIONS.map((option) => ({ value: String(option.value), label: option.label }))}
-        disabled={disabled}
-        onChange={(next) => {
-          setDraft((current) => ({ ...current, portsRefresh: Number(next) }));
-          setNote(null);
-        }}
-      />
-
-      <ConfigSelect
-        id={CONFIG_PAGE_TESTID.refreshContainers}
-        testId={CONFIG_PAGE_TESTID.refreshContainers}
-        label="容器页刷新频次"
-        hint="与端口转发页各存一份，互不影响。"
-        value={String(draft.containersRefresh)}
-        options={REFRESH_INTERVAL_OPTIONS.map((option) => ({ value: String(option.value), label: option.label }))}
-        disabled={disabled}
-        onChange={(next) => {
-          setDraft((current) => ({ ...current, containersRefresh: Number(next) }));
-          setNote(null);
-        }}
-      />
-
-      <ConfigSelect
-        id={CONFIG_PAGE_TESTID.policy}
-        testId={CONFIG_PAGE_TESTID.policy}
-        label="提权策略"
-        tag="改档需再确认"
-        hint="该档位决定后续写动作的提权行为；只改以后的行为，不动任何现有规则。"
-        value={draft.policy}
-        options={POLICY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
-        disabled={disabled}
-        onChange={(next) => {
-          setDraft((current) => ({ ...current, policy: next as Policy }));
-          setConfirming(false);
-          setNote(null);
-        }}
-      />
-
-      {confirming ? (
-        <ConfirmCallout
-          panelTestId="config-confirm-panel"
-          confirmTestId={CONFIG_PAGE_TESTID.confirm}
-          cancelTestId={CONFIG_PAGE_TESTID.cancel}
-          text={`确认把提权档改成「${draft.policy}」？这只影响后续写动作的行为，不改任何现有规则。`}
-          busy={busy}
-          onConfirm={() => void commit()}
-          onCancel={() => {
-            setConfirming(false);
+      {part === 'rest' ? null : (
+        <ConfigSelect
+          id={CONFIG_PAGE_TESTID.distro}
+          testId={CONFIG_PAGE_TESTID.distro}
+          label="目标发行版"
+          tag="两个组件共用"
+          hint={
+            distros.length === 0
+              ? '清单读取失败或没有已安装的发行版（不影响手头的值）'
+              : `已安装 ${String(distros.length)} 个发行版；留空 = 自动发现`
+          }
+          value={draft.distro}
+          options={[{ value: '', label: '自动发现（优先默认发行版）' }, ...distroOptions.map((name) => ({ value: name, label: name }))]}
+          disabled={disabled}
+          onChange={(next) => {
+            setDraft((current) => ({ ...current, distro: next }));
+            setNote(null);
           }}
         />
-      ) : null}
+      )}
 
-      <ManagedPortsField
-        text={draft.managedPortsText}
-        presets={PORT_PRESETS.map((preset) => ({
-          name: preset.name,
-          label: preset.label,
-          port: preset.port,
-          checked: draft.presets.includes(preset.name),
-        }))}
-        issues={issues}
-        disabled={disabled}
-        onChangeText={(next) => {
-          setDraft((current) => ({ ...current, managedPortsText: next }));
-          setNote(null);
-        }}
-        onTogglePreset={(name, on) => {
-          setDraft((current) => ({
-            ...current,
-            // 按表序重排，避免「关了再开」改掉顺序 ⇒ 假脏
-            presets: PORT_PRESETS.filter((preset) => (preset.name === name ? on : current.presets.includes(preset.name))).map(
-              (preset) => preset.name,
-            ),
-          }));
-          setNote(null);
-        }}
-      />
+      {part === 'distro' ? null : (<>
+        <ConfigSelect
+          id={CONFIG_PAGE_TESTID.refreshPorts}
+          testId={CONFIG_PAGE_TESTID.refreshPorts}
+          label="端口转发页刷新频次"
+          hint="关闭 = 只手动刷新；页头上的旧下拉已删除，这里是唯一入口。"
+          value={String(draft.portsRefresh)}
+          options={REFRESH_INTERVAL_OPTIONS.map((option) => ({ value: String(option.value), label: option.label }))}
+          disabled={disabled}
+          onChange={(next) => {
+            setDraft((current) => ({ ...current, portsRefresh: Number(next) }));
+            setNote(null);
+          }}
+        />
 
-      <WriteChannelSection write={write} />
+        <ConfigSelect
+          id={CONFIG_PAGE_TESTID.policy}
+          testId={CONFIG_PAGE_TESTID.policy}
+          label="提权策略"
+          tag="改档需再确认"
+          hint="该档位决定后续写动作的提权行为；只改以后的行为，不动任何现有规则。"
+          value={draft.policy}
+          options={POLICY_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+          disabled={disabled}
+          onChange={(next) => {
+            setDraft((current) => ({ ...current, policy: next as Policy }));
+            setConfirming(false);
+            setNote(null);
+          }}
+        />
 
-      <ScopeField        rows={scopeRows}
-        hint="逐端口切换在右栏页的端口表里；本页只展示当前值，避免同一字段两个写入口。"
-        emptyText="还没有逐端口设置（全部按 loopback 处理）"
-        busy={busy}
-        scopeTestId={CONFIG_PAGE_TESTID.scope}
-        refreshTestId={CONFIG_PAGE_TESTID.refresh}
-        onRefresh={() => void load()}
-      />
+        {confirming ? (
+          <ConfirmCallout
+            panelTestId="config-confirm-panel"
+            confirmTestId={CONFIG_PAGE_TESTID.confirm}
+            cancelTestId={CONFIG_PAGE_TESTID.cancel}
+            text={`确认把提权档改成「${draft.policy}」？这只影响后续写动作的行为，不改任何现有规则。`}
+            busy={busy}
+            onConfirm={() => void commit()}
+            onCancel={() => {
+              setConfirming(false);
+            }}
+          />
+        ) : null}
+
+        <ManagedPortsField
+          text={draft.managedPortsText}
+          presets={PORT_PRESETS.map((preset) => ({
+            name: preset.name,
+            label: preset.label,
+            port: preset.port,
+            checked: draft.presets.includes(preset.name),
+          }))}
+          issues={issues}
+          disabled={disabled}
+          onChangeText={(next) => {
+            setDraft((current) => ({ ...current, managedPortsText: next }));
+            setNote(null);
+          }}
+          onTogglePreset={(name, on) => {
+            setDraft((current) => ({
+              ...current,
+              // 按表序重排，避免「关了再开」改掉顺序 ⇒ 假脏
+              presets: PORT_PRESETS.filter((preset) => (preset.name === name ? on : current.presets.includes(preset.name))).map(
+                (preset) => preset.name,
+              ),
+            }));
+            setNote(null);
+          }}
+        />
+
+        <WriteChannelSection write={write} />
+
+        <ScopeField        rows={scopeRows}
+          hint="逐端口切换在右栏页的端口表里；本页只展示当前值，避免同一字段两个写入口。"
+          emptyText="还没有逐端口设置（全部按 loopback 处理）"
+          busy={busy}
+          scopeTestId={CONFIG_PAGE_TESTID.scope}
+          refreshTestId={CONFIG_PAGE_TESTID.refresh}
+          onRefresh={() => void load()}
+        />
+      </>)}
 
       <div className="wdp-cfg-footer">
         <div className="wdp-cfg-footer-text">
