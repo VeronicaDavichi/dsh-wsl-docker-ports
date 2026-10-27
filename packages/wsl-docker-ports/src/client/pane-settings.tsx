@@ -15,7 +15,7 @@ import { useState, type ReactElement } from 'react';
 
 import { TESTID } from './rows.ts';
 import type { ElevationPolicyValue } from './settings-pipe.ts';
-import type { ExecControlView, ManagedPortsFormView, DockerView, PortsPageView } from './types.ts';
+import type { ExecControlView, DockerView, PortsPageView } from './types.ts';
 
 /**
  * 提权告知块的 `data-testid`（005 T2b.3）。**刻意不进 `rows.ts` 的 `TESTID`** ——
@@ -51,69 +51,49 @@ export const WRITE_TOKEN_TESTID = {
   delivery: 'write-token-delivery',
 } as const;
 
-export function ManagedPortsBlock(props: {
-  readonly form: ManagedPortsFormView;
-  readonly draft: string;
-  readonly checked: readonly string[];
-  readonly onDraft: (value: string) => void;
-  readonly onToggle: (name: string, on: boolean) => void;
-  readonly onSave: () => void;
-}): ReactElement {
-  const { form, draft, checked, onDraft, onToggle, onSave } = props;
+/**
+ * 017 二订（主人 2026-10-27 原话）：「端口声明（managedPorts） 放到插件页面的配置里，
+ * 展示放在外面容器的侧边栏里」⇒ 本块**只展示、不编辑**：
+ *
+ * - 编辑入口只剩 bundle 卡片页的配置页（那里和提权档/刷新频次/发行版共用底部一个「保存设置」）；
+ * - 这里保留「声明了什么」的读数，因为它紧挨端口表与「集合外规则」区：
+ *   看到某条规则为什么不在五态里，比翻一次配置页快得多。
+ *
+ * 只读 ⇒ **不携带 `data-write-control`**，也**不因提权档 `none` 置灰**（它不触发任何写）。
+ */
+export function ManagedPortsSummary(props: { readonly form: PortsPageView['managedPorts'] }): ReactElement {
+  const { form } = props;
+  const declared = form.rangeText.trim();
   return (
-    <section className="wdp-card">
+    <section className="wdp-card" data-testid="managed-ports-summary">
       <h3>端口声明（managedPorts）</h3>
-      <div className="wdp-field">
-        <label htmlFor={TESTID.managedPortsInput}>端口或区间（每行一项，如 3306 或 1000-3000）</label>
-        <textarea
-          id={TESTID.managedPortsInput}
-          className="wdp-pre"
-          data-testid={TESTID.managedPortsInput}
-          data-write-control="1"
-          rows={3}
-          value={draft}
-          disabled={!form.enabled}
-          title={form.disabledReason ?? ''}
-          onChange={(event) => onDraft(event.target.value)}
-        />
-      </div>
+      {declared === '' ? (
+        <p className="wdp-muted" data-testid="managed-ports-empty">
+          还没有声明任何端口（集合外的规则一律不进五态、不计入任何计数）。
+        </p>
+      ) : (
+        <p className="wdp-pre" data-testid="managed-ports-declared">
+          {declared}
+        </p>
+      )}
+      {form.presets.some((preset) => preset.checked) ? (
+        <p className="wdp-muted" data-testid="managed-ports-presets">
+          已声明的常用端口：{form.presets.filter((preset) => preset.checked).map((preset) => preset.label).join('、')}
+        </p>
+      ) : null}
       {form.issues.length > 0 ? (
-        <ul className="wdp-list wdp-error">
+        <ul className="wdp-list wdp-error" data-testid="managed-ports-issues">
           {form.issues.map((issue) => (
             <li key={issue}>{issue}</li>
           ))}
         </ul>
       ) : null}
-      <div className="wdp-grid">
-        {form.presets.map((preset) => (
-          <label key={preset.name}>
-            <input
-              type="checkbox"
-              data-testid={preset.testId}
-              data-write-control="1"
-              disabled={!form.enabled}
-              checked={checked.includes(preset.name)}
-              onChange={(event) => onToggle(preset.name, event.target.checked)}
-            />{' '}
-            {preset.label}（{preset.port}）
-          </label>
-        ))}
-      </div>
-      <button
-        type="button"
-        className="wdp-btn wdp-btn-primary"
-        data-testid={TESTID.managedPortsSave}
-        data-write-control="1"
-        disabled={!form.enabled}
-        title={form.disabledReason ?? ''}
-        onClick={onSave}
-      >
-        保存声明（只改配置）
-      </button>
+      <p className="wdp-muted" data-testid="managed-ports-readonly-note">
+        本页只读：要改声明请到「插件 → WSL Port Forwarding」卡片页的配置区（配置页是唯一写入口）。
+      </p>
     </section>
   );
 }
-
 export function ElevationBlock(props: {
   readonly elevation: PortsPageView['elevation'];
   /**

@@ -17,7 +17,7 @@
  * 区域组件拆在 `pane-tables.tsx` / `pane-settings.tsx`（单文件 ≤ 400 行是 SHALL）。
  */
 
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 
 import type { Scope } from '../diff/types.ts';
 import { usePageScrollFix } from './pane-scroll.ts';
@@ -25,8 +25,8 @@ import type { ClientRuntime, ForwardAction } from './host.ts';
 import { summarizeWriteReport } from './page.ts';
 import { DistroBlock, DockerFailureBlock, ExternalRulesBlock, PortsBlock, UnsupportedBlock } from './pane-tables.tsx';
 import { PaneHeader } from './pane-header.tsx';
-import { ElevationBlock, ManagedPortsBlock, NextPhaseBlock, RawOutputBlock, WriteTokenBlock } from './pane-settings.tsx';
-import { mergeManagedPortsDecl, TESTID } from './rows.ts';
+import { ElevationBlock, ManagedPortsSummary, NextPhaseBlock, RawOutputBlock, WriteTokenBlock } from './pane-settings.tsx';
+import { TESTID } from './rows.ts';
 import type { LastWriteView, NatGatePanelView, PortRowView } from './types.ts';
 import { useAutoRefresh } from './use-auto-refresh.ts';
 import { WriteChannelBlock } from './write-panel.tsx';
@@ -100,8 +100,6 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
   // 017：页头上的频次下拉已删（搬到 bundle 级配置页）；`useAutoRefresh` 内部仍按配置值
   //      自动刷新，页面本身不再需要这个数值。
   const { view, loadError, busy, refresh } = useAutoRefresh(runtime, autoLoad, setActionError);
-  const [draft, setDraft] = useState('');
-  const [checkedPresets, setCheckedPresets] = useState<readonly string[]>([]);
   const [scopeDraft, setScopeDraft] = useState<Readonly<Record<string, Scope>>>({});
   /** 012：监听地址的本地草稿（键 = 端口号）。⚠️ 持久化/写请求本轮**未接线**（常驻主包零余量），见交付报告 */
   const [listenDraft, setListenDraft] = useState<Readonly<Record<string, string>>>({});
@@ -207,11 +205,6 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
     }
   };
 
-  useEffect(() => {
-    if (view === null) return;
-    setDraft(view.managedPorts.rangeText);
-    setCheckedPresets(view.managedPorts.presets.filter((preset) => preset.checked).map((preset) => preset.name));
-  }, [view]);
 
   /** 宿主把本页挂进零高 div ⇒ 见 `pane-scroll.ts`（chunk 侧修复，主包零字节） */
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -257,10 +250,6 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
     await refresh(false, lastWrite);
   };
 
-  const savePorts = async (): Promise<void> => {
-    const ports = view.managedPorts.presets.filter((preset) => checkedPresets.includes(preset.name)).map((preset) => preset.port);
-    await writeSettings(async () => runtime.settings?.writeManagedPorts(mergeManagedPortsDecl(draft, ports)));
-  };
 
 
   return (
@@ -314,14 +303,9 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
       </p>
       <UnsupportedBlock rows={view.unsupported} />
       <ExternalRulesBlock external={view.external} />
-      <ManagedPortsBlock
-        form={view.managedPorts}
-        draft={draft}
-        checked={checkedPresets}
-        onDraft={setDraft}
-        onToggle={(name, on) => setCheckedPresets((previous) => (on ? [...previous, name] : previous.filter((item) => item !== name)))}
-        onSave={() => void savePorts()}
-      />
+      {/* 017 二订（主人 2026-10-27）：「端口声明放到插件页面的配置里，展示放在外面容器的侧边栏里」
+          ⇒ 本页只**展示**声明，编辑入口**没了**（单入口在 bundle 卡片页的配置页）。 */}
+      <ManagedPortsSummary form={view.managedPorts} />
       {/* 010 收口（真机反馈）：配置页在本机 profile 的「内置插件」里没有座位（那是插件管理器自己的列表），
           所以提权档的写入口**必须**留在右栏页 —— 否则用户无处可改。 */}
       <WriteTokenBlock

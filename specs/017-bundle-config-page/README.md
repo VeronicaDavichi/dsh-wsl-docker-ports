@@ -116,6 +116,47 @@ packages/wsl-docker-containers/src/client/containers/config-page.tsx → 收窄�
 真机复核（同 profile 同端口，截图 `evidence-config-page-restyle.png`）：
 改「端口转发页刷新频次」15 秒 → 60 秒后，`保存设置` 由 disabled → enabled、
 状态由「设置已保存」→「有未保存的改动」（evaluate 返回值逐字：`{"before":{"disabled":true,"status":"设置已保存"},"after":{"value":"60","disabled":false,"status":"有未保存的改动"}}`）。
+## 二订（2026-10-27 第三轮：端口声明搬家）
+
+**主人原话**：「端口声明（managedPorts） 放到插件页面的配置里，展示放在外面容器的侧边栏里」；
+拍板一问：「端口声明搬进配置页后，保存动作怎么算？」→ **并入「保存设置」**（不再有第二个保存钮）。
+
+**落点与理由**
+
+| 面 | 之前 | 现在 |
+| --- | --- | --- |
+| 编辑 | 右栏页「端口声明」块（textarea + 13 个 presets + 独立「保存声明」钮） | **bundle 卡片页配置页**新字段「端口声明（managedPorts）」：标签行 + 区间 textarea + presets 勾选 + 就地报非法原因；**共用底部那一个「保存设置」** |
+| 展示 | 无（同一块既编辑又展示） | **右栏页只读块**：声明原文 + 已声明的常用端口一句话 + 非法原因 + 「要改请去插件卡片页配置区」；**不携带 `data-write-control`**、不因提权档置灰 |
+| 写路径 | `runtime.settings.writeManagedPorts(mergeManagedPortsDecl(...))`（右栏页） | 同一函数，调用点搬到配置页的 `commit()`（一次保存里与 distro / 刷新 / 提权档并列） |
+
+**语义一字未动**：区间原文 + presets → `mergeManagedPortsDecl` 合成**同一个** `managedPorts` 数组（REQ-16.4 不另建存储）；
+勾选本身零写入（REQ-16.4）；非法项**原样留在输入里**并报原因（REQ-16.1），且此时保存闸门关闭（`disabled = … || issues.length > 0`）。
+
+**顺手拆出两个文件**（`config-page.tsx` 已 379 行，贴着 400 行 SHALL）：
+`config-model.ts`（Draft / EMPTY_DRAFT / `policyOf` / `refreshOf` / `distroOf` / `presetPortsOf` / `mergedManagedPorts` /
+`checkedPresetsOf` / `draftIssues` / `declaredText`，80 行）与 `config-managed-ports.tsx`（编辑块本体，97 行）。
+
+**用例跟着搬家**（没有一条被删掉，只是换了断言对象）：
+
+| 旧用例（右栏页，`pane-write.test.tsx`） | 新家 |
+| --- | --- |
+| T5.7 勾 preset + 填区间 ⇒ 一次写入、零提权 | 配置页 **C6**（同一断言 + 顺带断言「其它字段没动就不产生多余写」＝ `writes.length === 1`） |
+| T5.7 非法声明就地报原因、零写入 | 配置页 **C7** + 右栏页「只报原因不给改法」 |
+| 009 缺陷 4：保存失败给可读原因、尝试 1 次、不重试 | 配置页 **C8**（`failNs: 'wsl-ports'` ⇒ 提示含「保存失败」、成功写入 0 次） |
+| 右栏页编辑控件存在 | **反向**断言：`inp-managed-ports` / `btn-save-managed-ports` / `chk-preset-mysql` **全为 null**、开页零配置写 |
+
+**真机**（同 profile 同端口 43391，截图 `evidence-config-managed-ports.png`）：勾「Spring Boot 应用（8080）」→ 状态「有未保存的改动」→ 点「保存设置」→
+evaluate 实测 `{"after":{"status":"设置已保存","note":"设置已保存：端口声明 → 3306, 8080","saveDisabled":true}}`；
+`cordis.patch.yml` 真字节出现
+`managedPorts: ["3306","8080"]`（写的就是合并后的数组，presets 没有另立存储）。
+
+**门**：ports `node --test` **442/442**、vitest **19 files / 165 tests**（+1：共 8 条配置页用例）、三个 tsconfig exit 0、
+`check-borders` **232 文件** R1–R6 全绿、`check-exports` 25/25、`assert-client-split` 20/20、`verify-client-loader` 40/40、
+`check-size` 375 文件最大 399 行、`p2-main-bundle-gate` exit 0；主包 **51,734 B**（地板 56,350，未动）、chunk 160,283 B。
+
+**已知边界**：真机这个临时 profile 里**开不出「WSL Docker 端口」页签**（宿主只认已注册 kind，该页签从未在此 profile 打开过，
+手工往 `localStorage` 的布局记录里塞 `tab3` 也会在下次启动被宿主按「未注册」丢弃）⇒ 右栏页只读块的行为证据是
+jsdom 那 4 条用例（`pane-write.test.tsx`）；主人 desktop 里页签本来就在，打开即可看到。
 ## 不做（本轮边界）
 
 - 不做 whale-pet 那种 **600ms 防抖自动保存**（提权档是安全开关，显式保存 + 二次确认才符合 REQ-12.4）。

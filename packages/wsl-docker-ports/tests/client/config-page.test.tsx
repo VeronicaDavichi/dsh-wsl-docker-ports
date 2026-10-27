@@ -50,7 +50,7 @@ function fakePipe(writes: Write[], overrides: { readonly failNs?: string } = {})
     writeRefreshInterval: async (sec: number) => record('wsl-ports', { refreshIntervalSec: sec }),
     writeElevationPolicy: async (policy: string) => record('wsl-ports', { elevationPolicy: policy }),
     writeNamespace: async (ns: string, patch: Record<string, unknown>) => record(ns, patch),
-    writeManagedPorts: async () => ok({}),
+    writeManagedPorts: async (decls: readonly string[]) => record('wsl-ports', { managedPorts: [...decls] }),
     writeScope: async () => ok({}),
     writeListenAddress: async () => ok({}),
     writeWriteToken: async () => ok({}),
@@ -185,4 +185,54 @@ describe('017 bundle 级配置页', () => {
     });
     console.log(`  · C5 容器命名空间被拒：提示「保存失败」、成功写入 ${String(writes.length)} 次`);
   });
+  it('C6 端口声明：勾 preset + 填区间 ⇒ 与其它字段共用一次「保存设置」，写的是合并后的数组', async () => {
+    const writes: Write[] = [];
+    await mount(writes);
+    expect((screen.getByTestId('config-managed-ports') as HTMLTextAreaElement).value).toBe('3306');
+    expect((screen.getByTestId('config-preset-mysql') as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(screen.getByTestId('config-preset-spring-boot'));
+    fireEvent.change(screen.getByTestId('config-managed-ports'), { target: { value: '3306\n1000-3000' } });
+    fireEvent.click(screen.getByTestId(CONFIG_PAGE_TESTID.save));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(writes).toContainEqual({ ns: 'wsl-ports', patch: { managedPorts: ['3306', '1000-3000', '8080'] } });
+    });
+    // 只写了声明这一条（其它字段没动 ⇒ 不产生多余写）
+    expect(writes).toHaveLength(1);
+    console.log(`  · C6 端口声明与保存共用：${JSON.stringify(writes)}`);
+  });
+
+  it('C7 非法声明 ⇒ 就地报原因、保存置灰、零写入（非法项不被悄悄丢掉）', async () => {
+    const writes: Write[] = [];
+    await mount(writes);
+    fireEvent.change(screen.getByTestId('config-managed-ports'), { target: { value: 'abc' } });
+
+    const issues = await screen.findByTestId('config-managed-ports-issues');
+    expect(issues.textContent).toContain('abc');
+    expect((screen.getByTestId(CONFIG_PAGE_TESTID.save) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId(CONFIG_PAGE_TESTID.save));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(writes).toHaveLength(0);
+    console.log(`  · C7 非法声明：原因「${(issues.textContent ?? '').slice(0, 30)}…」/ 写入 ${String(writes.length)} 次`);
+  });
+
+  it('C8 端口声明写失败 ⇒ 页面如实报失败（不谎报已保存）', async () => {
+    const writes: Write[] = [];
+    await mount(writes, { failNs: 'wsl-ports' });
+    fireEvent.change(screen.getByTestId('config-managed-ports'), { target: { value: '3306\n9999' } });
+    fireEvent.click(screen.getByTestId(CONFIG_PAGE_TESTID.save));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId(CONFIG_PAGE_TESTID.note).textContent ?? '').toContain('保存失败');
+    });
+    console.log(`  · C8 端口声明被拒：提示「保存失败」、成功写入 ${String(writes.length)} 次`);
+  });
 });
+

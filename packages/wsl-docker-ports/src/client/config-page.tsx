@@ -34,7 +34,22 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 
 import { installConfigStyles } from './config-css.ts';
+import { ManagedPortsField } from './config-managed-ports.tsx';
+import {
+  checkedPresetsOf,
+  distroOf,
+  declaredText,
+  draftIssues,
+  EMPTY_DRAFT,
+  mergedManagedPorts,
+  policyOf,
+  refreshOf,
+  type Draft,
+  type Policy,
+} from './config-model.ts';
+
 import { ConfirmCallout, ConfigSelect, ScopeField, type ScopeRow } from './config-fields.tsx';
+import { PORT_PRESETS } from '../diff/port-presets.ts';
 import { REFRESH_INTERVAL_OPTIONS } from './refresh.ts';
 import type { SettingsConfigView, SettingsPipe } from './settings-pipe.ts';
 
@@ -79,33 +94,6 @@ export interface ConfigPageProps {
   readonly settings?: SettingsPipe | undefined;
 }
 
-type Policy = (typeof POLICY_OPTIONS)[number]['value'];
-
-/** 页面上的四个可编辑值（= 一次保存要覆盖的全部字段） */
-interface Draft {
-  readonly distro: string;
-  readonly portsRefresh: number;
-  readonly containersRefresh: number;
-  readonly policy: Policy;
-}
-
-const EMPTY_DRAFT: Draft = { distro: '', portsRefresh: 0, containersRefresh: 0, policy: 'none' };
-
-function policyOf(view: SettingsConfigView | null): Policy {
-  return view?.elevationPolicy ?? 'none';
-}
-
-function refreshOf(record: Record<string, unknown> | null): number {
-  const raw = record?.['refreshIntervalSec'];
-  const value = typeof raw === 'number' ? raw : Number(raw);
-  return Number.isFinite(value) && value > 0 ? value : 0;
-}
-
-function distroOf(record: Record<string, unknown> | null): string {
-  const raw = record?.['distro'];
-  return typeof raw === 'string' ? raw : '';
-}
-
 /** 发行版清单：失败不抛（页面照常可编辑手头的值，只是下拉里少几项） */
 async function fetchDistros(): Promise<readonly string[]> {
   try {
@@ -147,6 +135,8 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
         portsRefresh: next.refreshIntervalSec,
         containersRefresh: refreshOf(containers),
         policy: policyOf(next),
+        managedPortsText: declaredText(next.managedPorts),
+        presets: checkedPresetsOf(next.managedPorts),
       };
       setView(next);
       setDraft(loaded);
@@ -200,6 +190,11 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
         const result = await settings.writeElevationPolicy(draft.policy);
         (result.ok ? messages : failures).push(`提权策略 → ${draft.policy}`);
       }
+      const mergedDecl = mergedManagedPorts(draft);
+      if (mergedDecl.join('\n') !== mergedManagedPorts(before).join('\n')) {
+        const result = await settings.writeManagedPorts(mergedDecl);
+        (result.ok ? messages : failures).push(`端口声明 → ${mergedDecl.length === 0 ? '（空）' : mergedDecl.join(', ')}`);
+      }
       if (draft.containersRefresh !== before.containersRefresh || draft.distro !== before.distro) {
         const result = await settings.writeNamespace(CONTAINERS_SETTINGS_NAMESPACE, {
           refreshIntervalSec: draft.containersRefresh,
@@ -229,6 +224,7 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
     void commit();
   };
 
+  const issues = draftIssues(draft);
   const scopeRows: ScopeRow[] =
     view === null ? [] : Object.entries(view.scopes).map(([port, scope]) => ({ port, scope: String(scope) }));
   const distroOptions = draft.distro !== '' && !distros.includes(draft.distro) ? [draft.distro, ...distros] : distros;
@@ -325,8 +321,33 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
         />
       ) : null}
 
-      <ScopeField
-        rows={scopeRows}
+      <ManagedPortsField
+        text={draft.managedPortsText}
+        presets={PORT_PRESETS.map((preset) => ({
+          name: preset.name,
+          label: preset.label,
+          port: preset.port,
+          checked: draft.presets.includes(preset.name),
+        }))}
+        issues={issues}
+        disabled={disabled}
+        onChangeText={(next) => {
+          setDraft((current) => ({ ...current, managedPortsText: next }));
+          setNote(null);
+        }}
+        onTogglePreset={(name, on) => {
+          setDraft((current) => ({
+            ...current,
+            // 按表序重排，避免「关了再开」改掉顺序 ⇒ 假脏
+            presets: PORT_PRESETS.filter((preset) => (preset.name === name ? on : current.presets.includes(preset.name))).map(
+              (preset) => preset.name,
+            ),
+          }));
+          setNote(null);
+        }}
+      />
+
+      <ScopeField        rows={scopeRows}
         hint="逐端口切换在右栏页的端口表里；本页只展示当前值，避免同一字段两个写入口。"
         emptyText="还没有逐端口设置（全部按 loopback 处理）"
         busy={busy}
@@ -349,7 +370,7 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
             </p>
           )}
         </div>
-        <button type="button" className="wdp-save" data-testid={CONFIG_PAGE_TESTID.save} disabled={disabled || !dirty || confirming} onClick={requestSave}>
+        <button type="button" className="wdp-save" data-testid={CONFIG_PAGE_TESTID.save} disabled={disabled || !dirty || confirming || issues.length > 0} onClick={requestSave}>
           保存设置
         </button>
       </div>
