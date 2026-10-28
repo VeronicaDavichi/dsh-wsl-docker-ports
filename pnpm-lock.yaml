@@ -160,6 +160,15 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@26.6.4)(jsdom@25.0.1)(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.2))
 
+  packages/wsl-docker-ports-bundle:
+    dependencies:
+      dsh-wsl-docker-containers:
+        specifier: workspace:*
+        version: link:../wsl-docker-containers
+      dsh-wsl-docker-ports:
+        specifier: workspace:*
+        version: link:../wsl-docker-ports
+
   packages/wsl-shared:
     devDependencies:
       vitest:
