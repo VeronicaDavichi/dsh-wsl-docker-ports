@@ -313,7 +313,7 @@ describe('D2 容器页刷新间隔（017 后：页头无控件，只按配置值
  *   ② 首屏取数成功 ⇒ 变成 `上次刷新 HH:mm:ss`（本地时间，逐字符比对）；
  *   ③ 手动点「刷新」⇒ 时间跟着走；**轮询到同一份数据 ⇒ 时间不动**（保住 D2-3 的零重绘）。
  */
-describe('六订·三十一 页头「上次刷新 HH:mm:ss」', () => {
+describe('六订·三十一 / 三十二 页头「上次刷新：YYYY-MM-DD HH:mm:ss」', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     // 固定本地时间 09:07:05 ⇒ 断言可以写死字面量（不看运行机时区/系统时钟）
@@ -334,11 +334,11 @@ describe('六订·三十一 页头「上次刷新 HH:mm:ss」', () => {
     const toolbar = container.querySelector('.wdp-toolbar');
     expect(toolbar).not.toBeNull();
     const parts = [...(toolbar?.children ?? [])].map((node) => (node.textContent ?? '').trim());
-    expect(parts).toEqual(['刷新', '上次刷新 —', '容器通道凭据：未保存']);
+    expect(parts).toEqual(['刷新', '上次刷新：—', '容器通道凭据：未保存']);
     console.log(`  · ① 页头三件套顺序：${parts.join(' → ')}`);
   });
 
-  it('② 首屏取数成功 ⇒ 显示 `上次刷新 09:07:05`（本地时间）', async () => {
+  it('② 首屏取数成功 ⇒ 显示 `上次刷新：2026-10-28 09:07:05`（本地日期 + 时间、全角冒号）', async () => {
     globalThis.fetch = (async () =>
       ({ ok: true, status: 200, json: async () => SNAPSHOT })) as unknown as typeof globalThis.fetch;
     render(<ContainersPane runtime={productionRuntime()} /> as ReactElement);
@@ -346,7 +346,7 @@ describe('六订·三十一 页头「上次刷新 HH:mm:ss」', () => {
     await flush();
 
     const stamp = screen.getByTestId(CID.refreshedAt);
-    expect(stamp.textContent).toBe('上次刷新 09:07:05');
+    expect(stamp.textContent).toBe('上次刷新：2026-10-28 09:07:05');
     console.log(`  · ② 首屏成功后：${String(stamp.textContent)}`);
   });
 
@@ -361,21 +361,21 @@ describe('六订·三十一 页头「上次刷新 HH:mm:ss」', () => {
     render(<ContainersPane runtime={runtime} /> as ReactElement);
     await flush();
     await flush();
-    expect(screen.getByTestId(CID.refreshedAt).textContent).toBe('上次刷新 09:07:05');
+    expect(screen.getByTestId(CID.refreshedAt).textContent).toBe('上次刷新：2026-10-28 09:07:05');
 
     // 轮询到同一份数据（载荷逐字节相同）：时间原地不动
     vi.setSystemTime(new Date(2026, 9, 28, 9, 7, 20));
     await advance(15_000);
-    expect(screen.getByTestId(CID.refreshedAt).textContent).toBe('上次刷新 09:07:05');
+    expect(screen.getByTestId(CID.refreshedAt).textContent).toBe('上次刷新：2026-10-28 09:07:05');
 
     // 手动刷新：即便载荷没变，也盖上新时刻（这次刷新本来就重绘）
     vi.setSystemTime(new Date(2026, 9, 28, 9, 8, 42));
     fireEvent.click(screen.getByTestId(CID.refresh));
     await flush();
     await flush();
-    expect(screen.getByTestId(CID.refreshedAt).textContent).toBe('上次刷新 09:08:42');
+    expect(screen.getByTestId(CID.refreshedAt).textContent).toBe('上次刷新：2026-10-28 09:08:42');
     console.log(
-      `  · ③ 轮询(未变)后 ${String(screen.getByTestId(CID.refreshedAt).textContent)}、手动刷新后 09:08:42、请求 ${String(version)} 次`,
+      `  · ③ 轮询(未变)后仍是 09:07:05、手动刷新后 ${String(screen.getByTestId(CID.refreshedAt).textContent)}、请求 ${String(version)} 次`,
     );
   });
 });

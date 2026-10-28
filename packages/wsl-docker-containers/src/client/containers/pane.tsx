@@ -19,14 +19,16 @@
  * `sameContainersPayload`，与 014 忽略 `refreshedAt` 同一口径）。
  * 配置服务不可用 ⇒ 仍按「关闭」处理：**不猜一个默认秒数、不偷偷轮询**。
  *
- * ## 「上次刷新 HH:mm:ss」（017 六订·三十一，2026-10-28 主人：「先在刷新的右边
+ * ## 「上次刷新：YYYY-MM-DD HH:mm:ss」（017 六订·三十一 / 三十二，2026-10-28 主人：「先在刷新的右边
  * 容器通道凭据的左边插入上次刷新时间」）
  *
  * 位置固定在页头三件套的中间：**刷新按钮 → 上次刷新 → 容器通道凭据**，同一行。
+ * 格式（017 六订·三十二，主人原话「上次刷新：2026-10-28 14:12:56 这个格式表现」）：
+ * `上次刷新：YYYY-MM-DD HH:mm:ss` —— **全角冒号** + 日期 + 空格 + 本地时刻，缺一不可。
  * 时钟口径刻意与 D2 的「数据未变零重绘」对齐：**只在那次刷新真的会引起重绘时才更新**
  * （首屏成功 / 手动刷新 / 数据真变），轮询到同一份数据时**既不重绘也不动时间** ——
  * 否则每 15 秒为一个时间戳重绘一次，D2-3 的判据（`renders === 0`）当场作废。
- * 没成功过就显示 `上次刷新 —`，**不写占位时间**（不猜）。
+ * 没成功过就显示 `上次刷新：—`，**不写占位时间**（不猜）。
  */
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -60,7 +62,7 @@ export const CID = {
   token: 'inp-containers-token',
   tokenSave: 'btn-containers-token-save',
   tokenState: 'txt-containers-token-state',
-  /** 页头的「上次刷新 HH:mm:ss」（017 六订·三十一） */
+  /** 页头的「上次刷新：YYYY-MM-DD HH:mm:ss」（017 六订·三十一 / 三十二） */
   refreshedAt: 'txt-containers-refreshed-at',
 } as const;
 
@@ -73,15 +75,19 @@ const LOG_TAIL = 200;
 
 const pad2 = (n: number): string => String(n).padStart(2, '0');
 
-/** 把毫秒时间戳格式化成**本地**的 `HH:mm:ss`（不本地化、不猜时区：就用浏览器本地时间） */
+/**
+ * 把毫秒时间戳格式化成**本地**的 `YYYY-MM-DD HH:mm:ss`
+ * （不本地化、不猜时区：就用浏览器本地时间；017 六订·三十二 主人指定带日期）
+ */
 export function formatRefreshClock(at: number): string {
   const date = new Date(at);
-  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+  const day = `${String(date.getFullYear())}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  return `${day} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 }
 
-/** 页头中间那格的字面量：没成功刷过 = `上次刷新 —`（不填占位时间） */
+/** 页头中间那格的字面量：没成功刷过 = `上次刷新：—`（不填占位时间；冒号是全角） */
 export function refreshClockText(at: number | null): string {
-  return at === null ? '上次刷新 —' : `上次刷新 ${formatRefreshClock(at)}`;
+  return at === null ? '上次刷新：—' : `上次刷新：${formatRefreshClock(at)}`;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

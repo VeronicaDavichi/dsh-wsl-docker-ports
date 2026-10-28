@@ -1024,3 +1024,28 @@ computed max-width = 139px
 - 证据：[evidence-containers-last-refresh.png](./evidence-containers-last-refresh.png)。
 
 **未做（报告不擅自改）**：容器表 5 列在 417 px 里的换行/横向溢出仍在（老问题，见六订·十四）。
+
+#### 六订·三十二（2026-10-28，主人第三十一次拍板）
+
+主人：「上次刷新：2026-10-28 14:12:56  这个格式表现」。
+
+**改法**（只动文案格式，位置/口径都不变）
+
+- 正文格式：`上次刷新：YYYY-MM-DD HH:mm:ss` —— **全角冒号** `：` + 日期 + 空格 + 本地时刻；
+  空值占位同步改成 `上次刷新：—`（同样全角冒号）。
+- `formatRefreshClock` 由 `HH:mm:ss` 扩成 `YYYY-MM-DD HH:mm:ss`（本地时区，月/日/时/分/秒补零）。
+- 判据同步（同一 describe 内 3 条全部改成逐字符比对）：`上次刷新：2026-10-28 09:07:05`、
+  `上次刷新：2026-10-28 09:08:42`、占位 `上次刷新：—`。
+
+**真机（43391）**
+
+```
+页头：["刷新", "上次刷新：2026-10-28 14:19:14", "容器通道凭据：未保存"]
+点「刷新」后：上次刷新：2026-10-28 14:19:31（advanced = true）
+正则 ^上次刷新：\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$ ⇒ true
+页头横向不溢出（scrollWidth 388 == clientWidth 388）
+```
+
+- 门：containers `node --test` **26/26**、vitest 4 files/**29** tests、tsc root/client 0、
+  exports 22/22、split 14/14（主 **31,165** ≤ 棘轮 31,324）、borders 247、size 0；chunk 32,334 → **32,476 B**。
+- 证据：[evidence-containers-last-refresh-datetime.png](./evidence-containers-last-refresh-datetime.png)。
