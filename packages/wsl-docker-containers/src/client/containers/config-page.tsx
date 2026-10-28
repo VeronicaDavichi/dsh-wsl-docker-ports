@@ -12,10 +12,16 @@
  * ## 017 六订·十二：删掉自带标题与说明，版式与转发侧一致
  *
  * 主人 2026-10-28：「把『WSL Docker 容器（本行配置）』『只显示容器行独占的字段……』这些字去掉
- * 剩下的东西保持 css 和其他的一致」。⇒ 页面上**只留字段**（宿主自己已经在上面画了
+ * 剩下的东西保持 css 和其他的一致」。⇒ 页面上**只留字段 + 页脚**（宿主自己已经在上面画了
  * 「Docker Containers」标题），字段语法与转发侧配置页同一套类名与尺寸：
  * `.wdp-cfg` / `.wdp-cfg-field` / `.wdp-cfg-label` / `.wdp-cfg-input` / `.wdp-cfg-btn` / `.wdp-cfg-hint`
- * （规则在 `styles.ts` 的 `PAGE_CSS` 里，与转发侧 `CONFIG_CSS` 逐条同值）。
+ * （规则在 `containers/config-css.ts`，与转发侧 `CONFIG_CSS` 逐条同值）。
+ *
+ * ## 017 六订·十三：补上「保存设置」（与转发侧同一条页脚）
+ *
+ * 主人 2026-10-28：「这个页面缺少保存键」。⇒ 字段变成**草稿**：改了下拉或填了凭据 = 有未保存改动，
+ * 页脚「保存设置」才可点；点一次只写**脏了的那几项**（刷新频次 / 凭据），写完状态回到「设置已保存」。
+ * 原先「下拉一改就写」与单独的「保存凭据」按钮一并收进这条页脚 —— 一页一个保存键。
  *
  * ## 为什么键是 `<组合包包名>#<行 id>`
  *
@@ -35,24 +41,27 @@ import type { ReactElement } from 'react';
 import { REFRESH_INTERVAL_OPTIONS } from '../refresh.ts';
 
 import { installConfigStyles } from './config-css.ts';
-
 import type { ContainersRuntime } from './runtime.ts';
 
 export const CONFIG_CID = {
   refresh: 'inp-containers-config-refresh',
   refreshState: 'txt-containers-config-refresh-state',
   token: 'inp-containers-config-token',
-  tokenSave: 'btn-containers-config-token-save',
   tokenState: 'txt-containers-config-token-state',
+  status: 'txt-containers-config-status',
+  save: 'btn-containers-config-save',
   message: 'txt-containers-config-message',
   unavailable: 'txt-containers-config-unavailable',
 } as const;
 
 export function ContainersConfigPage(props: { readonly runtime?: ContainersRuntime }): ReactElement {
   const runtime = props.runtime;
+  /** 页面上正在编辑的草稿；`savedRefresh` = 读回来的 / 刚写成功的那份 */
   const [refresh, setRefresh] = useState(0);
+  const [savedRefresh, setSavedRefresh] = useState(0);
   const [token, setToken] = useState('');
   const [tokenConfigured, setTokenConfigured] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState<string | null>(null);
 
@@ -74,6 +83,7 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
         if (!alive) return;
         setTokenConfigured(view.writeTokenConfigured === true);
         setRefresh(view.refreshIntervalSec);
+        setSavedRefresh(view.refreshIntervalSec);
       })
       .catch(() => {
         if (alive) setUnavailable('读容器行配置失败：请稍后重试（不影响容器列表）');
@@ -83,28 +93,39 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
     };
   }, [runtime]);
 
-  /** 改刷新频次：立刻写（用户改一次就期望生效，没有「保存」二次确认） */
-  const saveRefresh = useCallback(
-    async (next: number): Promise<void> => {
-      const pipe = runtime?.settings();
-      if (pipe === undefined) return;
-      setRefresh(next);
-      const result = await pipe.writeRefreshInterval(next);
-      setMessage(result.message);
-    },
-    [runtime],
-  );
+  /** 脏判定：下拉改了，或者填了凭据（凭据框写入成功后清空 ⇒「非空」就是待保存） */
+  const dirty = refresh !== savedRefresh || token.trim() !== '';
 
-  const saveToken = useCallback(async (): Promise<void> => {
+  const save = useCallback(async (): Promise<void> => {
     const pipe = runtime?.settings();
     if (pipe === undefined) return;
-    const result = await pipe.writeWriteToken(token);
-    setMessage(result.message);
-    if (result.ok) {
-      setToken('');
-      setTokenConfigured(token.trim() !== '');
+    setBusy(true);
+    const messages: string[] = [];
+    const failures: string[] = [];
+    const nextToken = token.trim();
+    try {
+      if (refresh !== savedRefresh) {
+        const result = await pipe.writeRefreshInterval(refresh);
+        (result.ok ? messages : failures).push(`容器页刷新 → ${refresh === 0 ? '关闭' : `${String(refresh)} 秒`}`);
+      }
+      if (nextToken !== '') {
+        const result = await pipe.writeWriteToken(nextToken);
+        (result.ok ? messages : failures).push('容器通道凭据已更新');
+      }
+    } finally {
+      setBusy(false);
     }
-  }, [runtime, token]);
+    if (failures.length > 0) {
+      setMessage(`保存失败：${failures.join('；')}`);
+      return;
+    }
+    setSavedRefresh(refresh);
+    if (nextToken !== '') {
+      setToken('');
+      setTokenConfigured(true);
+    }
+    setMessage(messages.length === 0 ? '没有需要保存的改动' : `设置已保存：${messages.join('；')}`);
+  }, [refresh, savedRefresh, token, runtime]);
 
   if (unavailable !== null) {
     return createElement(
@@ -128,7 +149,7 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
           className: 'wdp-cfg-input',
           'data-testid': CONFIG_CID.refresh,
           value: String(refresh),
-          onChange: (event: { target: { value: string } }) => void saveRefresh(Number(event.target.value)),
+          onChange: (event: { target: { value: string } }) => setRefresh(Number(event.target.value)),
         },
         REFRESH_INTERVAL_OPTIONS.map((option) => createElement('option', { key: option.value, value: String(option.value) }, option.label)),
       ),
@@ -150,13 +171,24 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
         value: token,
         onChange: (event: { target: { value: string } }) => setToken(event.target.value),
       }),
+      createElement('p', { className: 'wdp-cfg-hint', 'data-testid': CONFIG_CID.tokenState }, tokenConfigured ? '凭据：已配置（宿主不回显既有值）' : '凭据：未配置'),
+    ),
+    createElement(
+      'div',
+      { className: 'wdp-cfg-footer' },
       createElement(
         'div',
-        { className: 'wdp-cfg-field-actions' },
-        createElement('button', { type: 'button', className: 'wdp-cfg-btn', 'data-testid': CONFIG_CID.tokenSave, onClick: () => void saveToken() }, '保存凭据'),
+        { className: 'wdp-cfg-footer-text' },
+        createElement('p', { className: 'wdp-cfg-status', role: 'status', 'data-testid': CONFIG_CID.status }, busy ? '正在处理…' : dirty ? '有未保存的改动' : '设置已保存'),
+        message === null
+          ? null
+          : createElement('p', { className: `wdp-cfg-hint${message.includes('失败') ? ' wdp-cfg-hint-error' : ''}`, 'data-testid': CONFIG_CID.message }, message),
       ),
-      createElement('p', { className: 'wdp-cfg-hint', 'data-testid': CONFIG_CID.tokenState }, tokenConfigured ? '凭据：已配置（宿主不回显既有值）' : '凭据：未配置'),
-      message === null ? null : createElement('p', { className: 'wdp-cfg-hint', 'data-testid': CONFIG_CID.message }, message),
+      createElement(
+        'button',
+        { type: 'button', className: 'wdp-cfg-save', 'data-testid': CONFIG_CID.save, disabled: busy || !dirty, onClick: () => void save() },
+        '保存设置',
+      ),
     ),
   );
 }

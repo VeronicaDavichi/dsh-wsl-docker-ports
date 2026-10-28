@@ -25,7 +25,15 @@ select.wdp-cfg-input { padding-right: 32px; background-image: linear-gradient(45
 .wdp-cfg-btn { appearance: none; align-self: flex-start; box-sizing: border-box; height: 34px; padding: 0 14px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-md, 8px); background: var(--dsw-alias-bg-layer-3, transparent); font: inherit; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); cursor: pointer; }
 .wdp-cfg-btn:hover:not([disabled]) { border-color: var(--dsw-alias-border-l2, currentColor); }
 .wdp-cfg-btn:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, currentColor)); outline-offset: 1px; }
-.wdp-cfg-btn[disabled] { opacity: 0.4; cursor: default; }`;
+.wdp-cfg-btn[disabled] { opacity: 0.4; cursor: default; }
+/* 六订·十三（主人 2026-10-28：「这个页面缺少保存键」）：页脚 + 保存键，与转发侧同值 */
+.wdp-cfg-footer { display: flex; align-items: center; gap: 8px; padding-top: 16px; border-top: 0.5px solid var(--dsw-alias-border-l2, transparent); }
+.wdp-cfg-footer-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wdp-cfg-status { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); }
+.wdp-cfg-hint-error { color: var(--dsw-alias-state-error-primary, inherit); }
+.wdp-cfg-save { flex: none; appearance: none; box-sizing: border-box; cursor: pointer; border: 1px solid transparent; border-radius: var(--dsw-radius-md, 8px); padding: 5px 14px; font: inherit; font-size: 13px; line-height: 1.5; background: var(--dsw-alias-label-primary, currentColor); color: var(--dsw-alias-bg-layer-3, transparent); }
+.wdp-cfg-save[disabled] { opacity: 0.4; cursor: default; }
+.wdp-cfg-save:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, currentColor)); outline-offset: 1px; }`;
 
 /** 挂载时注入、返回移除器；同一个 id 的旧节点先摘掉（重复挂载不产生第二份） */
 export function installConfigStyles(): () => void {

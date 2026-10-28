@@ -489,3 +489,21 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
 - 判据：`containers-config-page.test.tsx` R1 增加「没有『本行配置』/『只显示容器行独占』字样」+
   `label`/`select`/`button` 的 `className` 分别是 `wdp-cfg-label` / `wdp-cfg-input` / `wdp-cfg-btn`。
 - 证据：[evidence-containers-row-config-clean.png](./evidence-containers-row-config-clean.png)。
+#### 六订·十三（2026-10-28，主人第十一次拍板）
+
+主人原话：「这个页面缺少保存键」。
+
+- **补一条页脚**：`.wdp-cfg-footer`（`padding-top 16` + 0.5px `border-l2` 上分隔）左边状态字右边
+  「保存设置」，与转发侧同一条版式；保存键用 `.wdp-cfg-save`（主色填充 / `radius-md` / `5px 14px` /
+  disabled 透明 .4），实测 **82 × 32 px / radius 12**。
+- **改成草稿语义**：改下拉或填凭据 = 「有未保存的改动」⇒ 保存键才可点；点一次只写**脏了的那几项**，
+  写完状态回「设置已保存」+ 一行 `设置已保存：容器页刷新 → N 秒`。原先「下拉一改就写」与单独的
+  「保存凭据」按钮一并收进这条页脚 —— **一页一个保存键**（转发侧同理）。
+- 判据：`containers-config-page.test.tsx` R1（初值 30 → 改 60：**改完 0 写**、状态转「有未保存的改动」、
+  保存键解禁 → 点保存后**恰好 1 写** `refreshIntervalSec:60` → 状态回「设置已保存」）、
+  R3（凭据填了就脏、保存才写 `writeWriteToken`、写完清空并标「已配置」、`refresh` 没动就不写）、
+  R4（无管道时连保存键都不出现）。
+- **真机**（acceptance 实例 43391）：`0 → 15 秒` 点保存 → 提示「设置已保存：容器页刷新 → 15 秒」，
+  `~/.dsh/profiles/accept-docker-ports/cordis.patch.yml` 的 `wsl-containers.refreshIntervalSec` 落盘为 `15`；
+  随后 `15 → 关闭(0)` 再保存 → 落盘回 `0`（**验收后已还原**）。
+- 证据：[evidence-containers-row-save.png](./evidence-containers-row-save.png)（「有未保存的改动」+ 保存键亮点）。
