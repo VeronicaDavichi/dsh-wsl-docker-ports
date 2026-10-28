@@ -568,3 +568,37 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
 **没做（按主人「剩下的我们挨个调整」）**：转发页表格仍是 5 列挤在 417px、容器页「状态/动作」列
 换行与横向溢出（布局问题）；`.wdp-sec` vs `.wdp-cfg-field` 两套段落壳的取舍；`.wdp-muted` vs
 `.wdp-cfg-hint` 是否合并成一个名字。这些都不影响「按钮/输入框/表格线已经同值」这条判据。
+#### 六订·十六（2026-10-28，主人第十四次拍板）
+
+主人原话：「你看到右侧的这下滚动条了吗？我希望长度能够自动满足，不要每块都加一个滚动条，不够的
+自动挤占下方空间，整个侧边栏应该只有一个总的滚动条」。
+
+**根因（真机 43391 / 侧栏 417px 实测，不是猜）**
+
+- 宿主的 tab body 是滚动容器（`.P3OORG_tabBody`，`overflow-y: auto`），并且它给页面根**内联**写了
+  `height: auto; min-height: 0; overflow-y: visible` ⇒ 页面根自己不滚。
+- `.wdp-page` 是 `display: flex; flex-direction: column` ⇒ 每个 `.wdp-sec` 是 flex item，会被**压缩**。
+  实测六个段落：`h 49 / sh 95`、`129 / 307`、`44 / 75`、`269 / 728`、`86 / 182`、`170 / 429`。
+- 而 `.wdp-sec` 上那句 `overflow-x: auto` 按 CSS 规范会把**另一轴**也算成 `auto`
+  ⇒ 被压缩的每块**自己长出一条竖向滚动条** = 主人截图里那一列小滚动条。
+
+**改法（3 处，主包 56,238 → 56,245 B）**
+
+- `.wdp-page > * { flex: none; }` —— 子块**不许被压缩**，内容撑开、往下挤（新增一条规则）。
+- `.wdp-sec` 去掉 `overflow-x: auto`；`.wdp-pre` 的 `overflow-x: auto` 换成 `overflow-wrap: anywhere`
+  —— 谁都不许自滚，长串靠断行。
+- 顺带治掉两条**横向**溢出：`.wdp-table` 的 `min-width: 460px` 删除（侧栏只有 412px）、
+  `.wdp-gate` 加 `overflow-wrap: anywhere`（提权提示里那句 `HKLM\SOFTWARE\…` 原来溢出 38px）。
+
+**真机复测（同一个实例）**
+
+```
+六个段落：h 95/340/76/729/202/443 —— 每块 scrollHeight == clientHeight（squished 0）
+横向溢出：0（改前 提权策略 426>388、端口转发 460>388）
+滚动容器：只有宿主 tab body 一个（overflow-y auto，scrollHeight 2003 / clientHeight 879）
+```
+
+- 新判据：`packages/wsl-docker-ports/tests/client/sidebar-scroll-gate.test.tsx`（4 条静态门：
+  `.wdp-sec` 不许自滚 / `.wdp-page > *` 必须 `flex: none` / `.wdp-pre` 断行 / 表格不许写死 460px）。
+- 证据：[evidence-ports-single-scroll.png](./evidence-ports-single-scroll.png)。
+- 备注：容器页那一栏本来就是单滚（实测块内滚动容器 **0** 个），这次没有它的改动。
