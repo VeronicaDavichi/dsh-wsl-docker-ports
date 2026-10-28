@@ -212,6 +212,38 @@ node packages/wsl-docker-containers/scripts/build-client.mjs   # 三个插件包
 
 **容器包 2026-10-28 实测**：`node --test` **26/26**、`vitest` **5 files / 34 tests**、`tsc` ×3 全 0、`check:exports` 22/22、`assert-client-split` 14/14（主包 **31,165 B ≤ 31,324 B**）、`check:borders` 248 文件、`check:size` exit 0。
 
+### 发布门（`scripts/release-smoke.mjs`）—— **三条硬规矩**
+
+> 由来：2026-10-28 发出去的 `0.1.0` 能装、装完起不来（`shared`/`core` 当时是**源码包**，`node_modules` 下 Node 禁止类型剥离 ⇒ `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`）。这道门就是把「消费者视角」固化下来。
+
+```powershell
+# 1) 打包（pnpm pack 会把 workspace:* 改写成真实版本号）
+# 2) 冒烟：干净目录 install + 逐个 import —— exit 0 才允许发布
+node scripts/release-smoke.mjs --tarballs <含 *.tgz 的目录>
+# 3) 负向自检（改门本身时跑一次，确保门还会红）
+node scripts/release-smoke.mjs --tarballs <坏包目录> --expect-fail
+```
+
+| 规矩 | 内容 |
+| --- | --- |
+| **① 冒烟绿才发** | `release-smoke` exit 0（4 个包 import 全通 + ports/containers 的 `Config`/`apply` 都是函数）⇒ 允许 publish；红则**禁止发布** |
+| **② 永不删包、永不删版本** | 有问题一律**发新版本号**修（`0.1.1`、`0.1.2`…）。整包 unpublish 会触发 npm「**24 小时内不得重发同名**」（实测 `cannot be republished until 24 hours have passed`）⇒ 直接断供 24 小时 |
+| **③ 发布后三步验证** | registry 快照（`versions` / `latest` / bundle 的 `dependencies`）→ 干净目录 `pnpm add <bundle>@<ver>` → 壳包上下文四个 `import` 全成功；缺一条视为未发成功 |
+
+**真实判据（2026-10-28 实测，同一脚本两个方向）**
+
+```
+坏包（当天 0.1.0 的 tarball）→ exit 1
+  ✗ dsh-wsl-shared → Stripping types is currently unsupported for files under node_modules …
+  ✗ dsh-wsl-docker-core / ports / containers 同因
+  [3/3] 结论：冒烟失败 → 禁止 publish
+
+修好的 0.1.0（shared/core 已编译 lib/）→ exit 0
+  ✓ dsh-wsl-shared (exports=8)      ✓ dsh-wsl-docker-core (exports=48)
+  ✓ dsh-wsl-docker-ports (Config=function apply=function)
+  ✓ dsh-wsl-docker-containers (Config=function apply=function)
+```
+
 ---
 
 ## 目录
