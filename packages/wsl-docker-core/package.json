@@ -1,15 +1,23 @@
 {
   "name": "dsh-wsl-docker-core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "type": "module",
   "description": "WSL Docker 端口转发/容器的共享底座（非插件包，纯库）：schema 工厂、只读探针、HTTP／凭据／健康／错误模型",
   "exports": {
-    ".": "./src/index.ts",
-    "./browser": "./src/browser.ts",
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./browser": {
+      "types": "./lib/browser.d.ts",
+      "default": "./lib/browser.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test --test-concurrency=1 \"tests/**/*.test.ts\" && vitest run",
     "check:exports": "node scripts/check-exports.mjs",
@@ -23,6 +31,8 @@
     "vitest": "^5.0.3"
   },
   "files": [
-    "src/**"
-  ]
+    "lib/**"
+  ],
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts"
 }

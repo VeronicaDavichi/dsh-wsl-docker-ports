@@ -1,6 +1,6 @@
 {
   "name": "dsh-wsl-docker-ports-bundle",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "type": "module",
   "description": "WSL Docker Ports（组合包壳）：只声明卡片标题与两个组件行，实现都在 dsh-wsl-docker-ports / dsh-wsl-docker-containers",

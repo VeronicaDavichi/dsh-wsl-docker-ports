@@ -1,13 +1,18 @@
 {
   "name": "dsh-wsl-shared",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "type": "module",
   "description": "WSL 事实层共享底座（非插件包）：发行版发现 / eth0 IP / 路径翻译 / NAT 判定 / 结构化命令执行",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    }
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:contract": "node --test \"tests/contract/**/*.test.ts\"",
@@ -21,6 +26,8 @@
     "vitest": "^5.0.3"
   },
   "files": [
-    "src/**"
-  ]
+    "lib/**"
+  ],
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts"
 }
