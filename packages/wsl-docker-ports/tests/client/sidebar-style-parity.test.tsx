@@ -158,3 +158,11 @@ describe('017 六订·二十五：去掉「证据」列 / 事实位文案收紧 
     expect(PAGE_CSS).toContain('.wdp-table { width: 100%; border-collapse: collapse; font-size: 12px; }');
   });
 });
+
+describe('017 六订·二十七：作用域下拉宽度 +20%（116px → 139px）', () => {
+  it('① max-width = 139px（= 116 × 1.2，取整）', () => {
+    expect(PAGE_CSS).toContain('.wdp-table select.wdp-btn { max-width: 139px; }');
+    // 旧值 116px 是基准：改回去这条会红（116 × 1.2 = 139.2 ⇒ 139）
+    expect(PAGE_CSS).not.toContain('max-width: 116px');
+  });
+});

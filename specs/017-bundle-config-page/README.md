@@ -850,3 +850,28 @@ h3 顺序：端口转发 → NAT 硬前提 → 提权策略 → 外部规则（�
   `queryByTestId('write-token-delivery')` 为 null，且 `2026-10-12` / `settings/describe` / `轮换即时生效` / `未验证`
   四条关键串在整块 DOM 里 0 处，凭据样值 0 处（原用例断言的是「这段话必须写全」，现在反转为「必须没有」）。
 - 证据：[evidence-write-token-note-removed.png](./evidence-write-token-note-removed.png)。
+
+#### 六订·二十七（2026-10-28，主人第二十六次拍板）
+
+主人发来一张截断的截图（`仅本机（loopba…`）并写下：「宽度+20%」。
+
+**改法（一字符数不变的替换）**
+
+- `.wdp-table select.wdp-btn { max-width: 116px; }` → `max-width: 139px;`
+  （116 × 1.2 = **139.2** ⇒ 取整 **139**，实测 **+19.8%**；两个值同为 5 字符 ⇒ 主包字节零增长）。
+
+**真机复测（43391 / 右栏 412px）**
+
+```
+6 个作用域下拉实测宽度：139 / 139 / 139 / 139 / 139 / 139（改前 116）
+computed max-width = 139px
+表格总宽仍 388px；动作列 81px → 65px（三个按钮仍恰 42px、无截断）
+标签仍是「仅本机（loopback，默认）」—— 12px 下整串约 150px，139px 仍截掉末尾 3 字，属「+20%」这一档的正常结果
+```
+
+- 判据：`tests/client/sidebar-style-parity.test.tsx` 新增 describe 一条 ——
+  `max-width: 139px` 必须在场，且旧值 `max-width: 116px` 不得再出现（这条同时钉住「116 × 1.2」的换算口径）。
+- 证据：[evidence-scope-select-139.png](./evidence-scope-select-139.png)。
+
+**如果主人要的是「整串不截断」**：12px 下实测需要 ≈ **152px**（再 +9%）。那是另一个数，一句话我就改；
+现在这版严格按「+20%」执行，没有擅自加码。

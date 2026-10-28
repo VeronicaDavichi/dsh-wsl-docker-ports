@@ -63,7 +63,7 @@ export const PAGE_CSS = `
 .wdp-table tbody tr:last-child td { border-bottom: none; }
 /* 窄栏（真机 380–420px）里的表格：按钮不许折成一字一行；放不下就横向滚动 */
 .wdp-table .wdp-btn { height: 26px; padding: 0 8px; font-size: 12px; max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wdp-table select.wdp-btn { max-width: 116px; }
+.wdp-table select.wdp-btn { max-width: 139px; }
 .wdp-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border: 0.5px solid currentColor; border-radius: 999px; font-size: 11px; line-height: 1; white-space: nowrap; color: var(--dsw-alias-label-secondary, inherit); }
 .wdp-tag-ok { color: var(--dsw-alias-state-success-primary, inherit); }
 .wdp-tag-warn { color: var(--dsw-alias-state-warn-primary, inherit); }
