@@ -55,7 +55,7 @@ function mount(options: MountOptions): ReturnType<typeof render> {
   return render(
     <ChunkBoot
       spec={SPEC}
-      title="WSL Docker 端口"
+      title="WSL 端口转发"
       load={options.load}
       paneProps={{ runtime: {} }}
       online={() => options.online ?? true}

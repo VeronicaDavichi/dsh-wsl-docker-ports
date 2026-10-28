@@ -134,7 +134,7 @@ export function WriteChannelSection(props: WriteChannelSectionProps): ReactEleme
         <br />
       </span>
       <span data-testid="config-write-token-pointer">
-        凭据不在这儿：「WSL Docker 端口」右栏页的「写通道凭据」块生成；没有凭据时预演会在本地被拦下（零请求）。
+        凭据不在这儿：「WSL 端口转发」右栏页的「写通道凭据」块生成；没有凭据时预演会在本地被拦下（零请求）。
       </span>
     </>
   );

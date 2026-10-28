@@ -166,3 +166,15 @@ describe('017 六订·二十七：作用域下拉宽度 +20%（116px → 139px�
     expect(PAGE_CSS).not.toContain('max-width: 116px');
   });
 });
+
+describe('017 六订·二十九：右栏页标题改名「wsl 端口转发」', () => {
+  it('① 标题常量与全部指路文案都用新名字，旧名「WSL Docker 端口」在客户端源码里 0 处', () => {
+    const tabDef = read('tab-def.ts');
+    expect(tabDef).toContain("export const PAGE_TITLE = 'WSL 端口转发';");
+    // 指路文案必须跟标题同步（否则用户按提示去找一个不存在的名字）
+    expect(read('config-write.tsx')).toContain('「WSL 端口转发」右栏页');
+    expect(read('write-token.ts')).toContain('「WSL 端口转发」右栏页');
+    expect(read('write-token.ts')).not.toContain('「WSL Docker 端口」右栏页');
+    expect(read('config-write.tsx')).not.toContain('「WSL Docker 端口」右栏页');
+  });
+});

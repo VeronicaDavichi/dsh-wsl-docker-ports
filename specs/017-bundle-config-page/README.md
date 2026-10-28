@@ -917,3 +917,31 @@ computed max-width = 139px
 
 **只报不改**：`<code>` 走浏览器默认样式 `font-size: 0.92em` ⇒ 实测 **12px**（正文 13px），等宽字体看着略小一号。
 要完全等大加一条 `.wdp-page code { font-size: inherit; }` 即可（≈55 B，主包余 73 B 够），等主人点头再动。
+
+#### 六订·二十九（2026-10-28，主人第二十八次拍板）
+
+主人先发一张被截断的页签截图（`WSL Docker 容…`）说「这个改名叫做 wsl 端口转发」，紧接着补一句「WSL 端口转发」
+⇒ 最终定名 **`WSL 端口转发`**（WSL 大写）。
+
+**改法（标题 + 所有指路文案必须同步，否则用户按提示去找一个不存在的名字）**
+
+| 文件 | 改前 | 改后 |
+| --- | --- | --- |
+| `tab-def.ts` `PAGE_TITLE` | `WSL Docker 端口` | **`WSL 端口转发`** |
+| `config-write.tsx` 预演提示 | 「WSL Docker 端口」右栏页 | 「WSL 端口转发」右栏页 |
+| `write-token.ts` 两条凭据提示 | 「WSL Docker 端口」右栏页 | 「WSL 端口转发」右栏页 |
+| `chunk-degrade.test.tsx` 台架标题 | `WSL Docker 端口` | `WSL 端口转发` |
+
+**真机复测（43391 / 右栏 412px）**
+
+```
+页签文本：["WSL Docker 容器"(121px), "WSL 端口转发"(102px)]
+新标题文本宽 82px = 客户端宽 82px ⇒ **不再被截断**（旧名 101px 在窄栏里会被切）
+```
+
+- 判据：`sidebar-style-parity.test.tsx` 新增 describe 一条 —— `PAGE_TITLE` 必须是 `WSL 端口转发`，
+  且 `config-write.tsx` / `write-token.ts` 的指路文案必须同步到新名字（旧名 `「WSL Docker 端口」右栏页` 0 处）。
+- 证据：[evidence-tab-renamed-wsl-ports.png](./evidence-tab-renamed-wsl-ports.png)。
+
+**只报不改**：容器页页签仍是 `WSL Docker 容器`（121px，窄栏里会被截成 `WSL Docker 容…` —— 就是主人截图里那个样子）。
+要不要一起改成 `WSL 容器`（≈70px，不会被截）？一个常量的事，等一句话。

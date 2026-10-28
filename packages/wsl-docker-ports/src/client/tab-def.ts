@@ -27,7 +27,7 @@ import type { SidebarRightTabDefinitionLike, SlotsServiceLike } from './host.ts'
 /** 转发侧页类型 id / kind / 标题 */
 export const PAGE_ID = 'wsl-ports';
 export const PAGE_KIND = 'wslDockerPorts';
-export const PAGE_TITLE = 'WSL Docker 端口';
+export const PAGE_TITLE = 'WSL 端口转发';
 
 /** 两个 keyed seat（contract §C10）：`key = definition.id` */
 export const TAB_SLOT = 'sidebar.right.pane.tab';
