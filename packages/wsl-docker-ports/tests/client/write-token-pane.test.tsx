@@ -158,25 +158,21 @@ describe('009 T2.1 判据③：未点生成 ⇒ DOM 零凭据样值（含「已�
     console.log(`  · 扫了 1 条后果文案：${consequence.slice(0, 40)}…`);
   });
 
-  it('③d T2 文案订正：投递链说明里**不再**有「未验证」，且如实写明 2026-10-12 真机结论（零凭据样值）', async () => {
+  it('③d 投递链说明**整段已删**（主人 2026-10-28：这行字去掉）：页面上不再有该 testid、也不再有那段文案', async () => {
     const configuredValue = 'a'.repeat(64);
     const test = harness({ config: { writeToken: configuredValue } });
     const container = await mountPane(test.runtime);
 
-    const delivery = screen.getByTestId(WRITE_TOKEN_TESTID.delivery).textContent ?? '';
-    // ① 旧文案的「未验证」必须消失（它已经不是事实：真机 19→20 命名空间 + secrets 脱敏 + 轮换即时生效）
-    expect(delivery).not.toContain('未验证');
-    // ② 新文案必须**指名**订正时间与结论，别写成含糊的「已验证」
-    expect(delivery).toContain('2026-10-12');
-    expect(delivery).toContain('settings/describe');
-    expect(delivery).toContain('secrets');
-    expect(delivery).toContain('轮换即时生效');
-    // ③ 说明文案里不得出现任何凭据样值（也不得出现被脱敏的那一格的值）
-    expect(delivery).not.toMatch(TOKEN_SHAPE);
-    expect(delivery).not.toContain(configuredValue);
+    // ① 那块（旧 testid write-token-delivery）必须不存在
+    expect(screen.queryByTestId('write-token-delivery')).toBeNull();
+    // ② 文案里的关键串一个都不许残留
+    for (const gone of ['2026-10-12', 'settings/describe', '轮换即时生效', '未验证']) {
+      expect(container.textContent ?? '').not.toContain(gone);
+    }
+    // ③ 删了说明也不许漏凭据样值
     expect(container.innerHTML).not.toContain(configuredValue);
     expect(TOKEN_SHAPE.test(container.innerHTML)).toBe(false);
-    console.log(`  · 扫了 1 段投递链文案（${String(delivery.length)} 字符）：「未验证」0 处、凭据样值 0 处、含订正日期与三条事实`);
+    console.log('  · 扫了 1 处：投递链说明 0 段（testid 不在、四条关键串 0 处、凭据样值 0 处）');
   });
 });
 

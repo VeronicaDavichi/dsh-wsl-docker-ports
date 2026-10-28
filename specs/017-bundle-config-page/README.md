@@ -822,3 +822,31 @@ h3 文本：["端口转发","NAT 硬前提","提权策略","外部规则（只�
   ① thead 恰好 4 列且不含「证据」；② `drift-` / `fix-` testid 仍在；③ 事实位文案已收紧（`不判冲突` 不再出现）；
   ④ `.wdp-table .wdp-btn` = 26px / 12px，且 `.wdp-table` 正文 12px 是基准（改一边就红）。
 - 证据：[evidence-ports-table-4col-26px.png](./evidence-ports-table-4col-26px.png)。
+
+#### 六订·二十六（2026-10-28，主人第二十五次拍板）
+
+主人原话：「⚠️ **2026-10-12 真机已订正**：…**不需要重载插件行**。 这行字去掉」。
+
+**改法**
+
+- `pane-settings.tsx` 的 `WriteTokenBlock` 末尾那整段 `<p data-testid="write-token-delivery">` 删除；
+  同时把 `WRITE_TOKEN_TESTID.delivery` 常量一并摘掉（此后没有消费方，留着就是死码）。
+- **不动**的：`写通道凭据` 块本身、布尔报数、`后果：写入口会 401…` 那段、「再点一次 = **轮换**…」提示、
+  `检查服务端配置状态（只报布尔）` / `清除凭据（二次确认）` 两个按钮 —— 只删这一行说明。
+
+**为什么可以放心删**：那段话是**给开发者/验收者的结论留痕**（2026-10-12 真机订正），不是操作说明；
+结论本身仍完整记在 Spec（009 的 acceptance-round 与 017 的六订·七）与 changelog 里，界面上不必重复。
+
+**真机复测（43391 / 右栏 412px）**
+
+```
+[data-testid="write-token-delivery"] 存在？ false
+页面文本含「2026-10-12」 false ·「轮换即时生效」false ·「未验证」false ·「settings/describe」false
+h3 顺序：端口转发 → NAT 硬前提 → 提权策略 → 外部规则（只读，13 条）→ 端口声明（managedPorts）→ 写通道凭据
+写通道凭据块仍在（高度 464px）：本会话持有凭据：否；服务端配置 writeToken：未检查
+```
+
+- 判据：`tests/client/write-token-pane.test.tsx` 的 ③d **改写**为「这块必须不存在」——
+  `queryByTestId('write-token-delivery')` 为 null，且 `2026-10-12` / `settings/describe` / `轮换即时生效` / `未验证`
+  四条关键串在整块 DOM 里 0 处，凭据样值 0 处（原用例断言的是「这段话必须写全」，现在反转为「必须没有」）。
+- 证据：[evidence-write-token-note-removed.png](./evidence-write-token-note-removed.png)。

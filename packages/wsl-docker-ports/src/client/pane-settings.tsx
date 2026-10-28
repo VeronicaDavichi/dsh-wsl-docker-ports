@@ -48,7 +48,6 @@ export const WRITE_TOKEN_TESTID = {
    * 「服务端要读到新值」那段说明的锚点（009 收口轮 T2 加的）：文案原文里**不许**再出现
    * 「未验证」——真机已验通投递链；用例按这个 testid 取 `textContent` 逐字核。
    */
-  delivery: 'write-token-delivery',
 } as const;
 
 /**
@@ -282,10 +281,6 @@ export function WriteTokenBlock(props: {
           {note}
         </p>
       )}
-      <p className="wdp-muted" data-testid={WRITE_TOKEN_TESTID.delivery}>
-        ⚠️ **2026-10-12 真机已订正**：`settings/describe` 里会出现本插件命名空间，凭据经 `secrets` 脱敏下发（服务端不回显值）；
-        `writeToken` 是 volatile 字段、宿主每次请求现读 ⇒ **轮换即时生效**（旧串立即 401、新串立即 200）、**清除同样即时生效**，**不需要重载插件行**。
-      </p>
     </section>
   );
 }
