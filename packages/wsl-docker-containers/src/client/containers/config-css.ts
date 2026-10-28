@@ -18,6 +18,11 @@ export const CONFIG_CSS = `/* ── 017 六订·十二：本行配置页与转�
    field/label/input/btn/hint 逐条抄转发侧 CONFIG_CSS 的值（宿主 token 真名 + 同尺寸），**零 hex**）。 */
 .wdp-cfg { display: flex; flex-direction: column; color: var(--dsw-alias-label-primary, inherit); font-size: 13px; line-height: 1.5; }
 .wdp-cfg-field { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; }
+/* 017 六订·三十五（主人：「镜像这里转行有点问题，如果太长了应当在/或者:处转行」）：
+   镜像格优先在 / 与 : 之后换行（配合 pane 里插的 <wbr>）；某一段自身仍撑不下时，
+   overflow-wrap: anywhere 才 emergency 断行 ⇒ 长串不再溢出压到状态列。
+   放在 chunk 侧而不是主包 styles.ts：主包有 31,324 B 棘轮地板，这条实测 +297 B 会顶穿。 */
+.wdp-table td.wdp-cell-image { overflow-wrap: anywhere; }
 .wdp-cfg-field + .wdp-cfg-field { border-top: 0.5px solid var(--dsw-alias-border-l2, transparent); }
 .wdp-cfg-label { font-size: 13px; font-weight: 500; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
 .wdp-cfg-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); overflow-wrap: anywhere; }

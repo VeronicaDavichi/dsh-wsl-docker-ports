@@ -11,7 +11,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 
-import { ContainersPane, CID } from '../../src/client/containers/pane.tsx';
+import { ContainersPane, CID, splitImageAtSeparators } from '../../src/client/containers/pane.tsx';
 import type { ContainersRuntime } from '../../src/client/containers/runtime.ts';
 import type { SettingsPipe } from '../../src/client/settings-pipe.ts';
 
@@ -158,5 +158,42 @@ describe('六订·三十三 / 三十四 容器表列宽', () => {
     // 合计必须收进侧栏内容宽（真机 412 px），否则「动作」列又要横向滚
     expect(110 + 92 + 58 + 85 + 64).toBeLessThanOrEqual(412);
     console.log(`  · ① 列宽：${widths.join(' / ')}（table-layout=${table.style.tableLayout}，合计 ${String(110 + 92 + 58 + 85 + 64)} px）`);
+  });
+});
+
+/* ─────────────── 六订·三十五：镜像列在 `/` 与 `:` 处换行（主人 2026-10-28） ───────────────
+ * 主人原话：「镜像这里转行有点问题，如果太长了应当在/或者:处转行」（截图：`semitechnologies/weaviate:1.27.0`
+ * 从中间断开、越界压到状态列）。
+ * 判据：① 拆段函数在 `/` `:` 之后切且拼回**逐字符一致**；② 镜像格渲染出 `<wbr>` 且文字零丢失；
+ *       ③ 单元格带 `wdp-cell-image` 类（`overflow-wrap: anywhere` 兜底，长段不溢出）。
+ */
+describe('六订·三十五 镜像列按 / 与 : 换行', () => {
+  it('① splitImageAtSeparators：在 / 与 : 之后切，拼回与原串完全一致', () => {
+    expect(splitImageAtSeparators('semitechnologies/weaviate:1.27.0')).toEqual([
+      'semitechnologies/',
+      'weaviate:',
+      '1.27.0',
+    ]);
+    expect(splitImageAtSeparators('redis:6-alpine')).toEqual(['redis:', '6-alpine']);
+    expect(splitImageAtSeparators('nginx')).toEqual(['nginx']);
+    // 不留空段、尾部无分隔符时原样收尾
+    expect(splitImageAtSeparators('a/b/c')).toEqual(['a/', 'b/', 'c']);
+    const joined = splitImageAtSeparators('registry.local:5000/ns/app:1.0').join('');
+    expect(joined).toBe('registry.local:5000/ns/app:1.0');
+    console.log(`  · ① 拆段：${JSON.stringify(splitImageAtSeparators('semitechnologies/weaviate:1.27.0'))}`);
+  });
+
+  it('② 镜像格渲染 <wbr> 且文字零丢失；单元格带 wdp-cell-image', async () => {
+    globalThis.fetch = (async () =>
+      ({ ok: true, status: 200, json: async () => SNAPSHOT })) as unknown as typeof globalThis.fetch;
+    render(<ContainersPane runtime={productionRuntime()} /> as ReactElement);
+    const table = await screen.findByTestId(CID.table);
+
+    const cell = table.querySelector('tbody tr td:nth-child(2)') as HTMLTableCellElement;
+    expect(cell.className).toBe('wdp-cell-image');
+    // 夹具首行镜像 = nginx:1.27 ⇒ 恰好在 ':' 后插一个 <wbr>
+    expect(cell.querySelectorAll('wbr')).toHaveLength(1);
+    expect(cell.textContent).toBe('nginx:1.27');
+    console.log(`  · ② 镜像格：textContent=${String(cell.textContent)}、wbr=${String(cell.querySelectorAll('wbr').length)} 个`);
   });
 });

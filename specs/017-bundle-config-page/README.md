@@ -1117,3 +1117,38 @@ colgroup = ["110px","92px","58px","85px","64px"]，table-layout = fixed
   exports 22/22、split 14/14（主 **31,165** ≤ 棘轮 31,324）、loader 13/13、borders **248** 绿、size **exit 0**
   （最大文件 399 行）、chunk **32,924 B**。
 - 证据：[evidence-containers-col-widths-2.png](./evidence-containers-col-widths-2.png)。
+
+#### 六订·三十五（2026-10-28，主人第三十四次拍板）
+
+主人（截图指向镜像列 `semitechnologies/weaviate:1.27.0` 从中间断开、压到状态列）：「镜像这里转行有点问题，
+如果太长了应当在/或者:处转行」。
+
+**改法**
+
+- `splitImageAtSeparators()`：在 `/` 与 `:` **之后**切段（分隔符留在前一段），渲染时在段间插 `<wbr>` ⇒
+  浏览器的换行点只落在这些位置；切完拼回与原串**逐字符一致**（有单测钉住）。
+- `.wdp-table td.wdp-cell-image { overflow-wrap: anywhere; }`：仅当「某一段自身就撑不下」时才 emergency 断行，
+  长串不再溢出压到状态列（修前 `scrollWidth 183 > 92`）。
+- 🔴 这条 CSS 放在 **chunk 侧** `containers/config-css.ts`，**不放主包 `styles.ts`**：主包有 31,324 B 棘轮地板，
+  实测放主包会让主包 31,165 → **31,621 B（+456 B，顶穿 297 B）**、`assert-client-split` ⓪ 当场判红；搬进 chunk 后
+  主包回到 **31,165 B ≤ 31,324 B** ✓。
+
+**真机复测（43391）**
+
+```
+镜像格 class = wdp-cell-image，overflow-wrap = anywhere
+wbr 数量：redis:6-alpine 1 个 / langgenius/dify-sandbox:0.2.15 2 个 / semitechnologies/weaviate:1.27.0 2 个
+逐格 scrollWidth == clientWidth == 92 ⇒ 零溢出（修前长串 183 px 溢出）
+实际换行：langgenius/ | dify-sandbox: | 0.2.15  ；  semitechnologies/ 自身再折 + weaviate: | 1.27.0
+```
+
+**已知残余（报告不擅自改）**：`semitechnologies/` 这一段自身 16 字符 ≈ 96 px > 单元格内容宽 80 px
+（92 − 左右各 6 padding）⇒ 它**仍然会在段内断一次**（emergency 断行），因为该段没有 `/` `:` 可断。
+要连这一处也好看，有三条路（需主人点名）：① 镜像格字号 12 → 11 px；② 镜像列 92 → 110 px（表 409 → 427 px，
+会重新溢出一屏）；③ 就这样接受。
+
+- 判据（`containers-pane-layout.test.tsx` 新增 describe「六订·三十五」2 条）：拆段函数逐项相等 + 拼回一致；
+  镜像格渲染出 `<wbr>`、`textContent` 零丢失、class = `wdp-cell-image`。
+- 门：containers `node --test` **26/26**、vitest **5 files / 32 tests**、tsc root/client 0、exports 22/22、
+  split 14/14（主 **31,165** ≤ 31,324）、loader 13/13、borders 248、size exit 0；chunk 32,924 → **34,483 B**。
+- 证据：[evidence-containers-image-wrap.png](./evidence-containers-image-wrap.png)。

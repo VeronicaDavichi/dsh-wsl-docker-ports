@@ -97,6 +97,39 @@ export const CONTAINERS_COL_WIDTHS = ['110px', '92px', '58px', '85px', '64px'] a
 const pad2 = (n: number): string => String(n).padStart(2, '0');
 
 /**
+ * **镜像串的换行点**（017 六订·三十五，2026-10-28 主人：「镜像这里转行有点问题，
+ * 如果太长了应当在/或者:处转行」）。
+ *
+ * 规则：在 `/` 与 `:` **之后**切开（分隔符留在前一段），渲染时在段间插 `<wbr>` ⇒
+ * 浏览器优先在这些位置换行；某一段自身仍撑不下时，由 `.wdp-cell-image` 的
+ * `overflow-wrap: anywhere` 兜底（不溢出到状态列）。切完再拼回去必须与原串**逐字符相同**。
+ */
+export function splitImageAtSeparators(image: string): string[] {
+  const segments: string[] = [];
+  let buffer = '';
+  for (const char of image) {
+    buffer += char;
+    if (char === '/' || char === ':') {
+      segments.push(buffer);
+      buffer = '';
+    }
+  }
+  if (buffer !== '') segments.push(buffer);
+  return segments;
+}
+
+/** 把镜像串渲染成「段 + `<wbr>`」序列（只在段之间插，不改任何字符） */
+function breakableImage(image: string): (string | ReactElement)[] {
+  const segments = splitImageAtSeparators(image);
+  const nodes: (string | ReactElement)[] = [];
+  segments.forEach((segment, index) => {
+    nodes.push(segment);
+    if (index < segments.length - 1) nodes.push(createElement('wbr', { key: `wbr-${String(index)}` }));
+  });
+  return nodes;
+}
+
+/**
  * 把毫秒时间戳格式化成**本地**的 `YYYY-MM-DD HH:mm:ss`
  * （不本地化、不猜时区：就用浏览器本地时间；017 六订·三十二 主人指定带日期）
  */
@@ -308,7 +341,8 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
                 'tr',
                 { key: row.id },
                 createElement('td', { title: row.id }, row.name),
-                createElement('td', null, row.image),
+                // 镜像：优先在 / 与 : 处换行（017 六订·三十五）
+                createElement('td', { className: 'wdp-cell-image' }, breakableImage(row.image)),
                 createElement('td', null, `${row.state} / ${row.status}`),
                 createElement('td', null, row.ports.length === 0 ? '（未发布）' : row.ports.join(', ')),
                 createElement(
