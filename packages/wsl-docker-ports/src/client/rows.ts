@@ -168,9 +168,9 @@ export function buildForwardActions(
     return { kind, testId, label, enabled: reason === null, disabledReason: reason };
   };
   return [
-    allow('apply', classification.state === 'missing', '应用转发', `btn-apply-${String(classification.port)}`, '该端口当前不需要新增规则'),
-    allow('remove', classification.state === 'ok' || classification.state === 'extra', '移除转发', `btn-remove-${String(classification.port)}`, '只有已就绪/多余的规则才允许移除'),
-    allow('fix-drift', classification.state === 'drift', '修复漂移', `btn-fix-drift-${String(classification.port)}`, '只有漂移状态才需要修复'),
+    allow('apply', classification.state === 'missing', '转发', `btn-apply-${String(classification.port)}`, '该端口当前不需要新增规则'),
+    allow('remove', classification.state === 'ok' || classification.state === 'extra', '移除', `btn-remove-${String(classification.port)}`, '只有已就绪/多余的规则才允许移除'),
+    allow('fix-drift', classification.state === 'drift', '修复', `btn-fix-drift-${String(classification.port)}`, '只有漂移状态才需要修复'),
   ];
 }
 
@@ -255,11 +255,12 @@ export function buildPresetOptions(
  *
  * 🔴 **2026-10-27 主人两次拍板**：
  * 1. 先：「端口或区间（每行一项…）这个不行，不能每行，要支持**半角逗号分隔**」⇒ 读入侧逗号是主用法；
- * 2. 再：「这个还是做成 **textarea** 吧，如果多了的话这里一个长条会很难维护」
- *    ⇒ 控件回到多行 textarea，**回写用换行**（一行一项最好读、最好改）；逗号照样认，两种写法等价。
+ * 2. 再：「这个还是做成 **textarea** 吧，如果多了的话这里一个长条会很难维护」；
+ * 3. **2026-10-28 定稿**：「通过打勾维护上来的都用逗号维护」⇒ **回填也用半角逗号**（一行一项只剩
+ *    用户自己敲换行这一种情况；读入侧照样认换行 / 全角逗号 / 顿号，两种写法仍然等价）。
  */
 export function managedPortsText(decls: readonly string[]): string {
-  return decls.join('\n');
+  return decls.join(', ');
 }
 
 /**

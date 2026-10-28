@@ -43,6 +43,7 @@ import {
   draftIssues,
   EMPTY_DRAFT,
   mergedManagedPorts,
+  togglePreset,
   policyOf,
   type Draft,
   type Policy,
@@ -334,13 +335,8 @@ export function ConfigPage(props: ConfigPageProps): ReactElement {
             setNote(null);
           }}
           onTogglePreset={(name, on) => {
-            setDraft((current) => ({
-              ...current,
-              // 按表序重排，避免「关了再开」改掉顺序 ⇒ 假脏
-              presets: PORT_PRESETS.filter((preset) => (preset.name === name ? on : current.presets.includes(preset.name))).map(
-                (preset) => preset.name,
-              ),
-            }));
+            // 017 六订·十八：勾选当场把原文按**半角逗号**重排（主人 2026-10-28：「通过打勾维护上来的都用逗号维护」）
+            setDraft((current) => togglePreset(current, name, on));
             setNote(null);
           }}
         />

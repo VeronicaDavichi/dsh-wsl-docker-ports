@@ -282,7 +282,7 @@ p2 0、主包 51,883 B、chunk **165,887 B**。
 `config-page.test.tsx` +2（C11 粘贴多行自动转逗号 + 写出的数组；C12 三项回填是逗号形态）、
 静态样式门迁出 1 条 ⇒ **`node --test` 444/444、vitest 20 files / 174 tests**。
 **真机**：输入 `3306, 1000-3000, 5432` ⇒ 无非法项、保存亮起；`onPaste` 派发 `8080\n9000\n`
-⇒ `defaultPrevented=true`、值变 `…, 8080, 9000`（截图 [evidence-managed-ports-comma.png](./evidence-managed-ports-comma.png)，**未保存**，配置仍是 `["3306"]`）。
+⇒ `defaultPrevented=true`、值变 `…, 8080, 9000`（截图 [evidence-ports-comma-backfill.png](./evidence-ports-comma-backfill.png)，**未保存**，配置仍是 `["3306"]`）。
 
 ### 端口声明控件回退成 textarea（同日第四轮：主人「还是做成 textarea 吧」）
 
@@ -602,3 +602,92 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
   `.wdp-sec` 不许自滚 / `.wdp-page > *` 必须 `flex: none` / `.wdp-pre` 断行 / 表格不许写死 460px）。
 - 证据：[evidence-ports-single-scroll.png](./evidence-ports-single-scroll.png)。
 - 备注：容器页那一栏本来就是单滚（实测块内滚动容器 **0** 个），这次没有它的改动。
+
+#### 六订·十七 ~ 六订·二十一（2026-10-28，主人第十五~十九次拍板，七条一起收）
+
+主人这一轮把待办编号发下来（P1–P7），逐条落地如下。
+
+**P1 括号前转行 + 按钮加高**（原话：「在括号前转行并让按钮加高」）
+
+- 两个按钮的字面拆成「主文本 + `<span class="wdp-btn-sub">（…）</span>`」，主文本一行、括号整体一行，
+  括号**不许**再从中间断开（改前侧栏 417px 里是 `（二次确` / `认）`）。
+- 版式走 **chunk**（`config-css.ts` 的 `.wdp-btn-stacked`：`inline-flex / column / height auto /
+  min-height 34 / padding 5px 14px / line-height 1.35`，`.wdp-btn-sub` = `white-space: nowrap`）
+  —— 主包当时只剩 **105 B**，塞不进 163 B 的规则；同时让右栏页也 `installConfigStyles()`
+  （此前只有配置页装这张表）。
+- 真机：两枚按钮 **34 → 47px**，`flex-direction: column`，`sub nowrap`。
+
+**P2 凭据与复制按钮同一行，凭据横向滚**（原话：「把生成的凭据和按钮放到一行，压缩凭据的宽度…
+宽度不够不要自动向下扩展高度，直接用横向滚轮。宽度随窗口宽度调整」）
+
+- 结构：`.wdp-once-row`（flex / gap 8）+ `.wdp-once-code`（`flex: 1 1 auto; min-width: 0`）
+  + `.wdp-once-copy`（`flex: none`）；`.wdp-once-code .wdp-pre` 回到 `white-space: pre` +
+  `overflow-x: auto`（**只这一处**允许横向滚，六订·十六 的「谁都不许自滚」讲的是纵向）。
+- 顺序也按主人要求挪了：**生成键 → 凭据行 → 「再点一次 = 轮换…」提示**（原来提示在凭据前面）。
+- 真机（388px 行宽）：凭据框 **42px 高（单行）**、宽 259（`scrollWidth 404 > clientWidth 259` ⇒
+  出横向滚轮、不换行不长高），复制键 34px、同一行、间距 8。
+
+**P3 勾选维护的端口一律用逗号**（原话：「通过打勾维护上来的都用逗号维护」）
+
+- `managedPortsText` 的回填从 `\n` 改成 `', '`；读入侧继续认换行 / 全角逗号 / 顿号（两种写法等价）。
+- 勾选本身当场按逗号重排（`togglePreset` 纯函数）：勾上并进原文、取消从原文里摘掉**恰好等于该端口号**
+  的那一项（否则「取消了却还在」）。已知取舍写进代码注释：用户自己敲的同一个数字，勾一次再取消会被摘掉。
+- 真机：配置页 textarea 回填 = `3306, 1521, 8080, 5432, 6379, 27017, 5672, 9092, 9200, 8848, 9000, 5173, 5000`
+  （13 个 preset 全勾，零换行）。证据：[evidence-ports-comma-backfill.png](./evidence-ports-comma-backfill.png)。
+
+**P4 三个动作按钮改名**（原话：「这三个按钮上的字改名为 转发 移除 修复」）
+
+- `buildForwardActions`：`应用转发 → 转发`、`移除转发 → 移除`、`修复漂移 → 修复`（`testid` 与
+  `kind` 一字不动，只是字面变短；侧栏 417px 里不再挤成两行）。
+
+**P5 容器页凭据行 + 保存键 + 表格距离**（原话：「把粘贴凭据的输入框和按钮放到一行，压缩凭据的宽度…
+把【保存凭据】改为【保存】且下方表格距离需要再远点」）
+
+- `.wdp-token-row`：`flex-wrap: nowrap` + 输入框 `flex: 1 1 auto; min-width: 0; width: auto` +
+  按钮 `flex: none`（改前输入框 `width: 100%` 把按钮挤到下一行）；密码输入框天然横向滚、宽度随窗口。
+- 按钮字面 `保存凭据 → 保存`；表格 `.wdp-table` 加 `margin-top: 6px`（真机：输入框与保存键同一行、
+  输入框 348px，**表格顶距保存键底 20px**）。
+
+**P6 表头字号加大加粗**（原话：「表头字号加大加粗」）—— `.wdp-table th` `11px/500 → 12px/600`
+（真机 `12px/600`）。
+
+**P7 全页纵向滚动条**（原话：「缺少全页纵向滚动条」）
+
+- 根因与转发侧六订·十六同源：宿主的零高包装盒 + `overflow: hidden` 祖先把内容裁住。容器页原先**没有**
+  `usePageScrollFix` ⇒ 只能看第一屏、滚不动。
+- 改法：容器侧补 `src/client/containers/page-scroll.ts`（与转发侧 `pane-scroll.ts` 同一手法：页根自然高度、
+  往上第一层非 `visible` 的祖先设成 `overflow-y: auto`），`pane.tsx` 用根 ref 调用。
+- 真机：滚动容器只剩 `.P3OORG_tabBody` 一个（`scrollHeight 4848 / clientHeight 879`，滚动 ✓），块内 0 个。
+
+**顺带修掉的真 bug（六订·二十一）：chunk 样式被「先删后插」互踩**
+
+- 现象：从插件配置页返回右栏，转发侧两行按钮与凭据行版式**一起消失**（实测
+  `style[data-plugin="dsh-wsl-docker-ports/config"]` 不存在，`.wdp-btn-stacked` 计算值退回 `block`）。
+- 根因：侧栏页与配置内页**共用同一个 STYLE_ID**，而 `installConfigStyles` 是「先删同名节点再插自己 +
+  卸载时删自己」⇒ 后挂载者删掉前者、前者卸载时再删自己 ⇒ 两边都没了。
+- 改法：**引用计数**（第一个消费者插入、最后一个离开摘除），两包同步改。真机复测：切到容器页再切回转发页，
+  `dsh-wsl-docker-ports/config` 在场、两行按钮 47px 稳定。
+
+**判据（新增/更新，全部二值）**
+
+- `tests/client/sidebar-style-parity.test.tsx` +4 条：两行版式（column / height auto / min-height 34）、
+  `.wdp-btn-sub` nowrap、两个按钮字面已拆 `span`（且原文整串不再出现）、右栏也装 chunk 表。
+- `tests/unit/config-managed-text.test.ts` 4 条：勾选并进原文用逗号、取消摘掉该项、多行归并成逗号、
+  按端口号去重。
+- `tests/unit/client-rows.test.ts` 回填判据改成逗号（并加「读入侧仍认换行」的等价性）。
+- `tests/client/config-page.test.tsx` C12 改成「回填逗号、不含换行」。
+
+**门（本轮实跑）**
+
+| 包 | node --test | vitest | tsc ×3 | borders | exports | split | loader | p2 | size |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| wsl-docker-ports | 448/448 | 24 files / 195 | 0 / 0 / 0 | 245 绿 | 25/25 | 20/20（主 **56,245** / 上限 56,350，余 105） | 40/40 | 0 | 0 |
+| wsl-docker-containers | 26/26 | 4 files / 25 | 0 / 0 / 0 | 245 绿 | 22/22 | 14/14（主 **31,141** / 上限 31,324） | 13/13 | 无此脚本 | 0 |
+
+**证据**：[evidence-ports-stacked-and-credential-row.png](./evidence-ports-stacked-and-credential-row.png)
+（两行按钮 + 凭据行 + 顺序）、[evidence-containers-token-row-p5-p7.png](./evidence-containers-token-row-p5-p7.png)
+（容器页：凭据输入框与「保存」同一行、表头加粗、表格拉开、整页一条滚动条）、
+[evidence-ports-comma-backfill.png](./evidence-ports-comma-backfill.png)（端口声明逗号回填）。
+
+**没做（照旧只报不改）**：转发侧表头**实测已跟着变成 12px/600** —— 因为两包都在同一文档里定义 `.wdp-table th`（跨包同名类，本轮未动，见报告）；端口声明 textarea
+仍是 `rows={3}` 的最小高（一行内容也占三行高度的空白）；5 列挤 417px 的换行问题。

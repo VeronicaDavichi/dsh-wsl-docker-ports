@@ -326,14 +326,15 @@ describe('017 端口声明输入形态（主人两次拍板：半角逗号照认
     console.log(`  · C11 逗号写法 ⇒ ${JSON.stringify(writes)}`);
   });
 
-  it('C12 控件是 textarea、回填一行一项（多了好改；逗号/换行两种写法等价）', async () => {
+  it('C12 控件是 textarea、回填**半角逗号**（2026-10-28 主人：「通过打勾维护上来的都用逗号维护」）', async () => {
     const writes: Write[] = [];
     await mount(writes, { managedPorts: ['3306', '5432', '1000-3000'] });
     const field = screen.getByTestId('config-managed-ports') as HTMLTextAreaElement;
     expect(field.tagName).toBe('TEXTAREA');
-    expect(field.value).toBe('3306\n5432\n1000-3000');
+    expect(field.value).toBe('3306, 5432, 1000-3000');
+    expect(field.value).not.toContain('\n');
     expect(field.placeholder).toContain(',');
-    console.log(`  · C12 textarea 回填 = 「${field.value.replaceAll('\n', '⏎')}」`);
+    console.log(`  · C12 textarea 回填 = 「${field.value}」`);
   });
 
   it('C13 换行 / 逗号 / 混着写 ⇒ 同一个声明数组（textarea 不再需要拦粘贴）', async () => {

@@ -17,9 +17,10 @@
  * 区域组件拆在 `pane-tables.tsx` / `pane-settings.tsx`（单文件 ≤ 400 行是 SHALL）。
  */
 
-import { useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 
 import type { Scope } from '../diff/types.ts';
+import { installConfigStyles } from './config-css.ts';
 import { usePageScrollFix } from './pane-scroll.ts';
 import type { ClientRuntime, ForwardAction } from './host.ts';
 import { summarizeWriteReport } from './page.ts';
@@ -93,6 +94,8 @@ function LastWriteBlock({ lastWrite }: { readonly lastWrite: LastWriteView | nul
 }
 
 export function PortsPane(props: PortsPaneProps): ReactElement {
+  // 017 六订·十七：控件版式（含两行按钮）与配置页共用**同一份** chunk 表 ⇒ 侧栏也装一次
+  useEffect(() => installConfigStyles(), []);
   const { runtime, autoLoad = true } = props;
   const [actionError, setActionError] = useState<string | null>(null);
   // 014：拉取 / 自动轮询 / 频次状态机（含挂载读频次、选择写频次、卸载清定时器）

@@ -23,6 +23,7 @@
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { installConfigStyles } from './config-css.ts';
+import { usePageScrollFix } from './page-scroll.ts';
 import type { ReactElement } from 'react';
 
 import type { FetchLike } from '../host.ts';
@@ -80,6 +81,7 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
   const [tokenDraft, setTokenDraft] = useState('');
   const [tokenPresent, setTokenPresent] = useState<boolean>(() => (runtime?.token() ?? '') !== '');
   const alive = useRef(true);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   // 侧边栏与配置内页**同一份版式**（主人 2026-10-28：「这个css和插件配置内页保持一致」）
   useEffect(() => installConfigStyles(), []);
@@ -200,10 +202,12 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
   }, [runtime, tokenDraft]);
 
   const rows: readonly ContainerRow[] = snapshot?.containers ?? [];
+  // 017 六订·二十（P7）：全页纵向滚动条只在宿主壳上出现一次（行数变了重新量）
+  usePageScrollFix(rootRef, rows.length);
 
   return createElement(
     'div',
-    { className: 'wdp-containers', 'data-side': 'containers' },
+    { className: 'wdp-containers', 'data-side': 'containers', ref: rootRef },
     createElement(
       'div',
       { className: 'wdp-row wdp-toolbar' },
@@ -212,7 +216,7 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
     ),
     createElement(
       'div',
-      { className: 'wdp-row' },
+      { className: 'wdp-row wdp-token-row' },
       createElement('input', {
         type: 'password',
         className: 'wdp-cfg-input',
@@ -221,7 +225,7 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
         value: tokenDraft,
         onChange: (event: { target: { value: string } }) => setTokenDraft(event.target.value),
       }),
-      createElement('button', { type: 'button', className: 'wdp-cfg-btn', 'data-testid': CID.tokenSave, onClick: saveToken }, '保存凭据'),
+      createElement('button', { type: 'button', className: 'wdp-cfg-btn', 'data-testid': CID.tokenSave, onClick: saveToken }, '保存'),
     ),
     configNote === null ? null : createElement('p', { className: 'wdp-note' }, configNote),
     snapshot?.distro?.message == null ? null : createElement('p', { className: 'wdp-warn' }, snapshot.distro.message),

@@ -69,3 +69,31 @@ describe('017 六订·十五：右栏页按钮与配置内页按钮同值', () =
     expect(read('config-fields.tsx')).toContain('className="wdp-input"');
   });
 });
+
+describe('017 六订·十七：括号说明单独一行（按钮加高，不拆括号）', () => {
+  const stacked = ruleBody(CONFIG_CSS, '.wdp-btn-stacked');
+  const settings = read('pane-settings.tsx');
+  const pane = read('pane.tsx');
+
+  it('① 两行按钮：纵向排列 + 高度自适应（min-height 仍是 34px）', () => {
+    expect(stacked).toContain('flex-direction: column;');
+    expect(stacked).toContain('height: auto;');
+    expect(stacked).toContain('min-height: 34px;');
+  });
+
+  it('② 括号部分整体不断行（nowrap）', () => {
+    expect(ruleBody(CONFIG_CSS, '.wdp-btn-stacked > .wdp-btn-sub')).toContain('white-space: nowrap;');
+  });
+
+  it('③ 两枚按钮的括号都拆成独立 span，且不再写成一整串', () => {
+    expect(settings).toContain('<span className="wdp-btn-sub">（只报布尔）</span>');
+    expect(settings).toContain('<span className="wdp-btn-sub">（二次确认）</span>');
+    expect(settings).not.toContain('检查服务端配置状态（只报布尔）');
+    expect(settings).not.toContain('清除凭据（二次确认）');
+  });
+
+  it('④ 右栏也装 chunk 表（否则两行规则不生效）', () => {
+    expect(pane).toContain("from './config-css.ts'");
+    expect(pane).toContain('installConfigStyles()');
+  });
+});

@@ -11,6 +11,9 @@
 
 export const CONFIG_STYLE_ID = 'dsh-wsl-docker-containers/row-config';
 
+/** 当前有几个消费者共享这张表（侧栏页 / 配置内页 / 写通道面板） */
+let configStyleRefs = 0;
+
 export const CONFIG_CSS = `/* ── 017 六订·十二：本行配置页与转发侧配置页**同一套版式**（主人：「剩下的东西保持css和其他的一致」）
    field/label/input/btn/hint 逐条抄转发侧 CONFIG_CSS 的值（宿主 token 真名 + 同尺寸），**零 hex**）。 */
 .wdp-cfg { display: flex; flex-direction: column; color: var(--dsw-alias-label-primary, inherit); font-size: 13px; line-height: 1.5; }
@@ -40,16 +43,27 @@ select.wdp-cfg-input { padding-right: 32px; background-image: linear-gradient(45
 /** 挂载时注入、返回移除器；同一个 id 的旧节点先摘掉（重复挂载不产生第二份） */
 export function installConfigStyles(): () => void {
   if (typeof document === 'undefined') return () => undefined;
-  const selector = `style[data-plugin="${CONFIG_STYLE_ID}"]`;
-  document.querySelector(selector)?.remove();
-  const style = document.createElement('style');
-  style.dataset['plugin'] = CONFIG_STYLE_ID;
-  style.textContent = CONFIG_CSS;
-  document.head.append(style);
-  let removed2 = false;
+  // 017 六订·二十一：**引用计数**，不再"先删后插"。
+  // 侧栏页与配置内页共用同一张表 ⇒ 谁后挂载就把前者的节点删掉、前者卸载时再删自己的，
+  // 结果两边都没样式（实测：从配置页返回右栏，两行按钮与凭据行版式一起消失）。
+  // 现在：第一个消费者进来插一次，最后一个离开摘一次。
+  const selector = `style[data-plugin="dsh-wsl-docker-containers/config"]`;
+  let style = document.querySelector(selector) as HTMLStyleElement | null;
+  if (style === null) {
+    style = document.createElement('style');
+    style.dataset['plugin'] = CONFIG_STYLE_ID;
+    style.textContent = CONFIG_CSS;
+    document.head.append(style);
+  }
+  configStyleRefs += 1;
+  let released = false;
   return () => {
-    if (removed2) return;
-    removed2 = true;
-    style.remove();
+    if (released) return;
+    released = true;
+    configStyleRefs -= 1;
+    if (configStyleRefs <= 0) {
+      configStyleRefs = 0;
+      style?.remove();
+    }
   };
 }

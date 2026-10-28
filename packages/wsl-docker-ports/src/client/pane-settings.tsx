@@ -224,17 +224,40 @@ export function WriteTokenBlock(props: {
       >
         生成并保存写通道凭据
       </button>
+      {issued === null ? null : (
+        <div>
+          <p className="wdp-error">
+            ⚠️ 这串**离开后将不再显示，请立即复制**（页面不提供「再显示一次」的入口）。它**不进无障碍树**（屏幕阅读器读不到该值）—— 请用下面的「复制写通道凭据」按钮，或鼠标选中手工复制。
+          </p>
+          <div className="wdp-once-row">
+            <p className="wdp-once-code" aria-hidden="true">
+              <code className="wdp-pre" data-testid={WRITE_TOKEN_TESTID.once}>
+                {issued}
+              </code>
+            </p>
+            <button type="button" className="wdp-btn wdp-once-copy" data-testid={WRITE_TOKEN_TESTID.copy} onClick={() => void copyIssued()}>
+              复制写通道凭据
+            </button>
+          </div>
+          {copyNote === null ? null : (
+            <p className="wdp-secondary" data-testid={WRITE_TOKEN_TESTID.copyNote}>
+              {copyNote}
+            </p>
+          )}
+        </div>
+      )}
       <p className="wdp-muted">再点一次 = **轮换**（新值覆盖旧值）；`writeToken` 是 volatile 字段、宿主每次请求现读 ⇒ **即时生效**（旧串立即 401、新串立即 200），不需要重载插件行。</p>
       <div className="wdp-grid">
         <button
           type="button"
-          className="wdp-btn"
+          className="wdp-btn wdp-btn-stacked"
           data-testid={WRITE_TOKEN_TESTID.check}
           data-settings-control="1"
           disabled={busy}
           onClick={onCheck}
         >
-          检查服务端配置状态（只报布尔）
+          检查服务端配置状态
+          <span className="wdp-btn-sub">（只报布尔）</span>
         </button>
         {confirmingClear ? (
           <>
@@ -247,8 +270,9 @@ export function WriteTokenBlock(props: {
             </button>
           </>
         ) : (
-          <button type="button" className="wdp-btn" data-testid={WRITE_TOKEN_TESTID.clear} data-settings-control="1" disabled={busy} onClick={onClearRequest}>
-            清除凭据（二次确认）
+          <button type="button" className="wdp-btn wdp-btn-stacked" data-testid={WRITE_TOKEN_TESTID.clear} data-settings-control="1" disabled={busy} onClick={onClearRequest}>
+            清除凭据
+            <span className="wdp-btn-sub">（二次确认）</span>
           </button>
         )}
       </div>
@@ -256,26 +280,6 @@ export function WriteTokenBlock(props: {
         <p className="wdp-secondary" data-testid={WRITE_TOKEN_TESTID.note}>
           {note}
         </p>
-      )}
-      {issued === null ? null : (
-        <div>
-          <p className="wdp-error">
-            ⚠️ 这串**离开后将不再显示，请立即复制**（页面不提供「再显示一次」的入口）。它**不进无障碍树**（屏幕阅读器读不到该值）—— 请用下面的「复制写通道凭据」按钮，或鼠标选中手工复制。
-          </p>
-          <p aria-hidden="true">
-            <code className="wdp-pre" data-testid={WRITE_TOKEN_TESTID.once}>
-              {issued}
-            </code>
-          </p>
-          <button type="button" className="wdp-btn" data-testid={WRITE_TOKEN_TESTID.copy} onClick={() => void copyIssued()}>
-            复制写通道凭据
-          </button>
-          {copyNote === null ? null : (
-            <p className="wdp-secondary" data-testid={WRITE_TOKEN_TESTID.copyNote}>
-              {copyNote}
-            </p>
-          )}
-        </div>
       )}
       <p className="wdp-muted" data-testid={WRITE_TOKEN_TESTID.delivery}>
         ⚠️ **2026-10-12 真机已订正**：`settings/describe` 里会出现本插件命名空间，凭据经 `secrets` 脱敏下发（服务端不回显值）；

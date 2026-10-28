@@ -24,14 +24,17 @@ export const PAGE_CSS = `
   /* 017 六订·十五：控件/按钮/标签/提示走 chunk 的 .wdp-cfg-*（与配置内页同一份）；这里只留骨架，颜色只取宿主真名 token */
 .wdp-containers { display: flex; flex-direction: column; gap: 10px; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
 .wdp-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wdp-token-row { flex-wrap: nowrap; }
+.wdp-token-row > .wdp-cfg-input { flex: 1 1 auto; min-width: 0; width: auto; }
+.wdp-token-row > .wdp-cfg-btn { flex: none; }
 .wdp-toolbar { gap: 8px; }
 .wdp-tab-title { font-weight: 500; }
 .wdp-muted { font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); }
 .wdp-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); }
 .wdp-warn { margin: 0; padding: 6px 10px; border-left: 2px solid var(--dsw-alias-state-warn-primary, currentColor); font-size: 12px; line-height: 1.6; color: var(--dsw-alias-label-secondary, inherit); }
 .wdp-danger { margin: 0; font-size: 12px; line-height: 1.6; color: var(--dsw-alias-state-error-primary, inherit); }
-.wdp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.wdp-table th { text-align: left; padding: 4px 6px; font-size: 11px; font-weight: 500; color: var(--dsw-alias-label-secondary, inherit); border-bottom: 0.5px solid var(--dsw-alias-border-l2, transparent); }
+.wdp-table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+.wdp-table th { text-align: left; padding: 4px 6px; font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-secondary, inherit); border-bottom: 0.5px solid var(--dsw-alias-border-l2, transparent); }
 .wdp-table td { text-align: left; padding: 4px 6px; vertical-align: middle; border-bottom: 0.5px solid var(--dsw-alias-border-l2, transparent); }
 .wdp-table tbody tr:last-child td { border-bottom: none; }
 .wdp-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }

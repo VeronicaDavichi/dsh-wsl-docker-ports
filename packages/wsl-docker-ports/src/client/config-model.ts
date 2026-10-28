@@ -67,6 +67,32 @@ export function checkedPresetsOf(declared: readonly string[]): readonly string[]
   return PORT_PRESETS.filter((preset) => isManagedPort(ports, preset.port)).map((preset) => preset.name);
 }
 
+/**
+ * 勾掉/勾上一个 preset 后的新草稿（017 六订·十八）。
+ *
+ * 主人 2026-10-28：「通过打勾维护上来的都用逗号维护」⇒ **勾选当场**把原文按半角逗号重排：
+ * - 勾上 ⇒ 该端口并进原文（已存在则去重，不重复写）；
+ * - 取消 ⇒ 从原文里摘掉**恰好等于该端口号**的那一项（区间项不动），否则「取消了却还在」。
+ *   ⚠️ 已知取舍：用户自己敲进去的同一个数字，勾一次再取消会被一并摘掉 —— 文本层无法区分来源，
+ *   这一条写在这里而不是留给下一个人猜。
+ * presets 仍按表序重排（关了再开不许改顺序 ⇒ 不造「假脏」）。
+ */
+export function togglePreset(draft: Draft, name: string, on: boolean): Draft {
+  const presets = PORT_PRESETS.filter((preset) => (preset.name === name ? on : draft.presets.includes(preset.name))).map(
+    (preset) => preset.name,
+  );
+  const port = PORT_PRESETS.find((preset) => preset.name === name)?.port;
+  const base =
+    on || port === undefined
+      ? draft.managedPortsText
+      : draft.managedPortsText
+          .split(/[\n,，、]+/u)
+          .filter((item) => item.trim() !== String(port))
+          .join(', ');
+  const next: Draft = { ...draft, presets };
+  return { ...next, managedPortsText: managedPortsText(mergeManagedPortsDecl(base, presetPortsOf(next))) };
+}
+
 /** 当前草稿的非法项原因（空 = 合法，可保存） */
 export function draftIssues(draft: Draft): readonly string[] {
   return managedPortsIssues(mergedManagedPorts(draft)).issues;

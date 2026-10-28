@@ -23,6 +23,9 @@
  */
 
 export const STYLE_ID = 'dsh-wsl-docker-ports/config';
+/** 当前有几个消费者共享这张表（侧栏页 / 配置内页 / 写通道面板） */
+let configStyleRefs = 0;
+
 export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描述与组件行之间」）──────────────────────────
  * 版式**逐条抄宿主的插件设置表单**（「@deepseek-ai/dsh-client-ui-primitives」 的
  * 「lib/settings-form/fields.module.css」 与 「SettingsForm.module.css」；2026-10-27 读实物核对）：
@@ -48,6 +51,14 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
 /* 主人 2026-10-27：「点击查看原始输出的时候下拉一个窗口展开里面是内容」⇒ 展开区是一块面板 */
 .wdp-cfg-raw-panel { display: flex; flex-direction: column; align-self: stretch; max-width: 100%; max-height: 260px; overflow: auto; padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-2); }
 .wdp-cfg-raw-panel .wdp-pre { margin: 0; }
+/* 两行按钮：主标题一行 + 括号部分一行；括号整体不断行（模板字符串里不写反引号） */
+/* 凭据 + 复制按钮一行：凭据吃剩余宽度（可断行不撑破），按钮不缩不换行 */
+.wdp-once-row { display: flex; align-items: center; gap: 8px; }
+.wdp-once-code { flex: 1 1 auto; min-width: 0; margin: 0; }
+.wdp-once-code .wdp-pre { display: block; max-width: 100%; overflow-x: auto; white-space: pre; overflow-wrap: normal; }
+.wdp-once-copy { flex: none; white-space: nowrap; }
+.wdp-btn-stacked { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; height: auto; min-height: 34px; padding: 5px 14px; line-height: 1.35; text-align: center; }
+.wdp-btn-stacked > .wdp-btn-sub { white-space: nowrap; }
 .wdp-cfg-field-body { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .wdp-cfg-field-body .wdp-pre { align-self: stretch; max-width: 100%; }
 .wdp-cfg-field { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; }
@@ -92,16 +103,27 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
 /** 挂载时注入、返回移除器；同一 id 的旧节点先摘掉（重复挂载不产生第二份） */
 export function installConfigStyles(): () => void {
   if (typeof document === 'undefined') return () => undefined;
-  const selector = `style[data-plugin="${STYLE_ID}"]`;
-  document.querySelector(selector)?.remove();
-  const style = document.createElement('style');
-  style.dataset['plugin'] = STYLE_ID;
-  style.textContent = CONFIG_CSS;
-  document.head.append(style);
-  let removed = false;
+  // 017 六订·二十一：**引用计数**，不再"先删后插"。
+  // 侧栏页与配置内页共用同一张表 ⇒ 谁后挂载就把前者的节点删掉、前者卸载时再删自己的，
+  // 结果两边都没样式（实测：从配置页返回右栏，两行按钮与凭据行版式一起消失）。
+  // 现在：第一个消费者进来插一次，最后一个离开摘一次。
+  const selector = `style[data-plugin="dsh-wsl-docker-ports/config"]`;
+  let style = document.querySelector(selector) as HTMLStyleElement | null;
+  if (style === null) {
+    style = document.createElement('style');
+    style.dataset['plugin'] = STYLE_ID;
+    style.textContent = CONFIG_CSS;
+    document.head.append(style);
+  }
+  configStyleRefs += 1;
+  let released = false;
   return () => {
-    if (removed) return;
-    removed = true;
-    style.remove();
+    if (released) return;
+    released = true;
+    configStyleRefs -= 1;
+    if (configStyleRefs <= 0) {
+      configStyleRefs = 0;
+      style?.remove();
+    }
   };
 }
