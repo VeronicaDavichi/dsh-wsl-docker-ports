@@ -110,7 +110,7 @@ export function PortsBlock(props: {
   const { rows, note, scopeDraft, onScope, listenDraft, onListenAddress, onForward } = props;
   return (
     <section className="wdp-sec">
-      <h3>端口转发（五态）</h3>
+      <h3>端口转发</h3>
       {note !== null ? <p className="wdp-error">{note}</p> : null}
       <table className="wdp-table" data-testid={TESTID.ports}>
         <thead>

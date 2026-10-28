@@ -97,3 +97,35 @@ describe('017 六订·十七：括号说明单独一行（按钮加高，不拆�
     expect(pane).toContain('installConfigStyles()');
   });
 });
+
+describe('017 六订·二十四：端口表改名「端口转发」并提到刷新按钮下面', () => {
+  const pane = read('pane.tsx');
+  const tables = read('pane-tables.tsx');
+
+  it('① 标题去掉「（五态）」', () => {
+    expect(tables).toContain('<h3>端口转发</h3>');
+    expect(tables).not.toContain('端口转发（五态）');
+  });
+
+  it('② 端口表紧跟 PaneHeader（刷新那行），排在 NAT 硬前提之前', () => {
+    const header = pane.indexOf('<PaneHeader');
+    const ports = pane.indexOf('<PortsBlock');
+    const nat = pane.indexOf('<NatGateBlock');
+    expect(header).toBeGreaterThan(-1);
+    expect(ports).toBeGreaterThan(header);
+    expect(nat).toBeGreaterThan(ports);
+    // 中间不许夹别的区块（错误提示除外）
+    const between = pane.slice(header, ports);
+    for (const forbidden of ['<ElevationBlock', '<ManagedPortsSummary', '<WriteTokenBlock', '<ExternalRulesBlock']) {
+      expect(between.includes(forbidden), `刷新与端口表之间不该有 ${forbidden}`).toBe(false);
+    }
+  });
+
+  it('③ udpTip 跟着端口表走（不隔着别的块）', () => {
+    const ports = pane.indexOf('<PortsBlock');
+    const tip = pane.indexOf('data-testid={TESTID.udpTip}');
+    const nat = pane.indexOf('<NatGateBlock');
+    expect(tip).toBeGreaterThan(ports);
+    expect(tip).toBeLessThan(nat);
+  });
+});

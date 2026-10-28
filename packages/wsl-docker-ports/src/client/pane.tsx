@@ -272,18 +272,8 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
           {actionError}
         </p>
       ) : null}
-      <NatGateBlock nat={view.nat} />
-      {/* 010 收口（真机反馈 2026-10-22）：配置页在本机 profile 的「内置插件」里没有座位
-          （那是 `@deepseek-ai/dsh-plugin-manager` 自己的列表）⇒ 提权档写入口**必须**留在右栏页，
-          而且**放在最上面**：主人连着两次「找不到」，埋在端口声明下面等于没做。 */}
-      <ElevationBlock elevation={view.elevation} onChange={(policy) => void writeSettings(async () => runtime.settings?.writeElevationPolicy(policy))} />
-      {/* 017 三订（主人 2026-10-27）：「侧边栏里面的目标发行版可以去掉了」⇒ 下拉搬去配置页。
-          这里只留**漂移 / 解析失败**的告警（REQ-6 的安全网要留着：规则指向失效地址是安全事故，
-          平时为空 ⇒ 正常情况下这块根本不渲染，不占版面）。 */}
-      <DistroAlarmBlock distro={view.distro} />
-      {/* D1（2026-10-23 真机）：容器表 / 启停重启 / 日志抽屉已移入容器页（`client.containers.js`）。
-          转发页只保留端口转发；这里仅保留 docker **读数失败**的诊断行（不是容器表、不是动作入口）。 */}
-      {view.docker.ok === false ? <DockerFailureBlock docker={view.docker} /> : null}
+      {/* 017 六订·二十四（主人 2026-10-28）：「端口转发（五态）的名字改为 端口转发，并且把位置提到
+          刷新按钮的下面」⇒ 端口表是右栏第一块，紧跟 PaneHeader（刷新那行）。udpTip 跟着它走，别隔着别的块。 */}
       <PortsBlock
         rows={view.ports}
         note={view.portsNote}
@@ -303,6 +293,18 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
       <p className="wdp-muted" data-testid={TESTID.udpTip}>
         {view.udpTip.text}
       </p>
+      <NatGateBlock nat={view.nat} />
+      {/* 010 收口（真机反馈 2026-10-22）：配置页在本机 profile 的「内置插件」里没有座位
+          （那是 `@deepseek-ai/dsh-plugin-manager` 自己的列表）⇒ 提权档写入口**必须**留在右栏页，
+          而且**放在最上面**：主人连着两次「找不到」，埋在端口声明下面等于没做。 */}
+      <ElevationBlock elevation={view.elevation} onChange={(policy) => void writeSettings(async () => runtime.settings?.writeElevationPolicy(policy))} />
+      {/* 017 三订（主人 2026-10-27）：「侧边栏里面的目标发行版可以去掉了」⇒ 下拉搬去配置页。
+          这里只留**漂移 / 解析失败**的告警（REQ-6 的安全网要留着：规则指向失效地址是安全事故，
+          平时为空 ⇒ 正常情况下这块根本不渲染，不占版面）。 */}
+      <DistroAlarmBlock distro={view.distro} />
+      {/* D1（2026-10-23 真机）：容器表 / 启停重启 / 日志抽屉已移入容器页（`client.containers.js`）。
+          转发页只保留端口转发；这里仅保留 docker **读数失败**的诊断行（不是容器表、不是动作入口）。 */}
+      {view.docker.ok === false ? <DockerFailureBlock docker={view.docker} /> : null}
       <UnsupportedBlock rows={view.unsupported} />
       <ExternalRulesBlock external={view.external} />
       {/* 017 二订（主人 2026-10-27）：「端口声明放到插件页面的配置里，展示放在外面容器的侧边栏里」
