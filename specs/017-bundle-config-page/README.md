@@ -720,3 +720,35 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
 
 **没做**：配置页 textarea 仍按**原始顺序**回填（那是可编辑草稿，排序会把用户刚敲的顺序打乱）；
 常用端口那一行的中文标签顺序也没动（它跟 preset 表序走）。
+
+#### 六订·二十三（2026-10-28，主人第二十一次拍板）
+
+主人原话：「docker容器页面的总margin和端口转发的保持一致」。
+
+**改前实测（43391 / 侧栏 412px）**
+
+```
+转发页 .wdp-page      padding: 0px 12px 12px   首个子元素相对页面左内边距 = 12px
+容器页 .wdp-containers padding: 0px            首个子元素相对页面左内边距 = 0px   ← 贴边
+```
+
+**改法（一行，主包 31,141 → 31,163 B）**
+
+`.wdp-containers` 补上 `padding: 0 12px 12px;` —— 与转发侧 `.wdp-page` **逐字同值**（左右各 12、底部 12、顶部 0）。
+内部 `gap` 仍是 10px（转发侧是 `.wdp-sec` 的 `padding: 12px 0` 自己撑出的 24px 间距）—— 这一项没动，
+因为主人这句点的是**总留白**；要连内部节奏一起并轨再说一声。
+
+**真机复测（同一个实例）**
+
+```
+容器页 .wdp-containers  padding = "0px 12px 12px"  首个子元素左内边距 = 12px
+转发页 .wdp-page        padding = "0px 12px 12px"  首个子元素左内边距 = 12px
+```
+
+- 判据：`tests/client/sidebar-style-parity.test.tsx` 第 ⑤ 条（`.wdp-containers` 必须带 `padding: 0 12px 12px`，
+  且与写死的转发侧同值 `padding: 0 12px 12px;` 对齐 —— 改一边不改另一边就红）。
+- 证据：[evidence-containers-page-padding.png](./evidence-containers-page-padding.png)。
+
+**没做（老问题，仍只报不改）**：容器页 5 列表格实测 `width 558px` > 内容宽 388px ⇒ 右边「状态/动作」
+两列被裁到侧栏外（本轮加了左右各 12px 的内边距后更明显）。要修得先定一条：缩列宽 / 横向滚 / 改两行卡片，
+三条都动版式，等主人拍。
