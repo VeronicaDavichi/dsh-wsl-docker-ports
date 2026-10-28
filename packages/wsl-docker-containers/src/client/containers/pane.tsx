@@ -73,6 +73,16 @@ export function actionTestId(id: string, action: ContainersAction): string {
 
 const LOG_TAIL = 200;
 
+/**
+ * 五列的**显式**宽度（017 六订·三十三，2026-10-28 主人：「将名称栏宽度缩小20%，镜像栏宽度缩小30%」）。
+ *
+ * 量法（真机 43391、侧栏内容宽 412 px、表 545 px）：名称 171 → **137**（= 171×0.8，-20%）、
+ * 镜像 189 → **132**（= 189×0.7，-30%）；状态 / 端口 / 动作**保持原 px**（58 / 85 / 42）。
+ * 为什么必须写死 px + `table-layout: fixed`：自动布局下 `<col>` 宽度只是「建议」，
+ * 内容最小宽会把它顶回去（实测加了 colgroup 后仍是 171/189，一个像素没动）。
+ */
+export const CONTAINERS_COL_WIDTHS = ['137px', '132px', '58px', '85px', '42px'] as const;
+
 const pad2 = (n: number): string => String(n).padStart(2, '0');
 
 /**
@@ -269,7 +279,13 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
     error === null ? null : createElement('p', { className: 'wdp-danger', 'data-testid': 'txt-containers-error-action' }, error),
     createElement(
       'table',
-      { className: 'wdp-table', 'data-testid': CID.table },
+      // 固定布局 + 逐列显式宽度：自动布局会把缩掉的宽度又还给内容（六订·三十三）
+      { className: 'wdp-table', 'data-testid': CID.table, style: { tableLayout: 'fixed' } },
+      createElement(
+        'colgroup',
+        null,
+        CONTAINERS_COL_WIDTHS.map((width, index) => createElement('col', { key: `col-${String(index)}`, style: { width } })),
+      ),
       createElement('thead', null, createElement('tr', null, ['名称', '镜像', '状态', '端口', '动作'].map((label) => createElement('th', { key: label }, label)))),
       createElement(
         'tbody',

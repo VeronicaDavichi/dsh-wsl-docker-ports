@@ -1049,3 +1049,34 @@ computed max-width = 139px
 - 门：containers `node --test` **26/26**、vitest 4 files/**29** tests、tsc root/client 0、
   exports 22/22、split 14/14（主 **31,165** ≤ 棘轮 31,324）、borders 247、size 0；chunk 32,334 → **32,476 B**。
 - 证据：[evidence-containers-last-refresh-datetime.png](./evidence-containers-last-refresh-datetime.png)。
+
+#### 六订·三十三（2026-10-28，主人第三十二次拍板）
+
+主人（截图指向容器表表头）：「将名称栏宽度缩小20%，镜像栏宽度缩小30%」。
+
+**量法（先量再改，不是拍脑袋）**：真机 43391、侧栏内容宽 412 px、表 545 px 时逐列实测
+`名称 171 / 镜像 189 / 状态 58 / 端口 85 / 动作 42`。
+
+- 名称：171 × 0.8 = 136.8 ⇒ **137 px**（-19.9%）；
+- 镜像：189 × 0.7 = 132.3 ⇒ **132 px**（-30.2%）；
+- 状态 / 端口 / 动作：**保持原 px**（58 / 85 / 42）一个没动。
+
+**为什么必须 `table-layout: fixed`**：实测（真机注入 DOM 对照）——只加 `<colgroup>` 而保持自动布局，
+浏览器把缩掉的宽度**原样还回去**（171/189 一个像素没动）；加 `fixed` 后才真生效。
+
+**真机复测（43391）**
+
+```
+tableLayout = fixed，colgroup 5 列 = [137px, 132px, 58px, 85px, 42px]
+实测 th 宽度 = 名称 137 / 镜像 132 / 状态 58 / 端口 85 / 动作 42
+表宽 545 → 454 px（溢出 412 px 的侧栏从 133 px 降到 42 px）
+```
+
+- 判据（`containers-pane.test.tsx` 新增 describe「六订·三十三」）：colgroup 恰好 5 列、宽度逐项相等、
+  `table.style.tableLayout === "fixed"`，并把 137/132 与真机基线挂钩（`round(171×0.8)`、`round(189×0.7)`）。
+- 门：containers `node --test` **26/26**、vitest 4 files/**30** tests、tsc root/client 0、exports 22/22、
+  split 14/14（主 **31,165** ≤ 棘轮 31,324）、loader 13/13、borders 247、size 0；chunk 32,476 → **32,925 B**。
+- 证据：[evidence-containers-col-widths.png](./evidence-containers-col-widths.png)。
+
+**仍未修（报告不擅自改）**：表 454 px 仍比侧栏内容 412 px 宽 42 px ⇒「动作」列在 417 px 侧栏里要横向滚才能看全，
+这是六订·十四 起就挂着的老问题；要「一屏装下」得再定 状态/端口/动作 的收窄口径，等主人点名。

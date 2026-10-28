@@ -379,3 +379,27 @@ describe('六订·三十一 / 三十二 页头「上次刷新：YYYY-MM-DD HH:mm
     );
   });
 });
+
+/* ─────────────────── 六订·三十三：列宽（名称 -20% / 镜像 -30%） ───────────────────
+ * 主人原话：「将名称栏宽度缩小20%，镜像栏宽度缩小30%」（截图指向容器表）。
+ * jsdom 不算布局 ⇒ 判据落在**声明值**上，并把它与真机量到的基线挂钩：
+ *   名称 171 × 0.8 = 136.8 ≈ **137**；镜像 189 × 0.7 = 132.3 ≈ **132**；
+ *   状态 / 端口 / 动作 保持原 px（58 / 85 / 42）不动。
+ */
+describe('六订·三十三 容器表列宽（名称 -20%、镜像 -30%）', () => {
+  it('① colgroup 五列显式宽度 = [137,132,58,85,42]，且 = 真机基线的 0.8 / 0.7 / 原值', async () => {
+    render(<ContainersPane runtime={productionRuntime()} /> as ReactElement);
+    // 本 describe 用真实定时器（flush 只在假定时器下可用）
+    const table = await screen.findByTestId(CID.table);
+    const cols = [...table.querySelectorAll('colgroup > col')] as HTMLElement[];
+    expect(cols).toHaveLength(5);
+    const widths = cols.map((col) => col.style.width);
+    expect(widths).toEqual(['137px', '132px', '58px', '85px', '42px']);
+    expect(table.style.tableLayout).toBe('fixed');
+
+    // 与真机基线挂钩：不写死 137/132 的来历就只是「一串魔数」
+    expect(Math.round(171 * 0.8)).toBe(137);
+    expect(Math.round(189 * 0.7)).toBe(132);
+    console.log(`  · ① 列宽：${widths.join(' / ')}（table-layout=${table.style.tableLayout}）`);
+  });
+});
