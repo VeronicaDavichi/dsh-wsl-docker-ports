@@ -180,7 +180,11 @@ describe('009 加固轮：一次性凭据不进 a11y 树', () => {
     expect(leakHits(dump, EXPECTED_TOKEN)).toEqual([]);
     expect(dump.includes(EXPECTED_TOKEN)).toBe(false);
     // 修前是 role `code` 在树里；现在连它带 `paragraph` 都整棵被剪掉
-    expect(getRoles(container)['code']).toBeUndefined();
+    // 2026-10-28 订正：文案里的 netsh portproxy / plan / apply 等现在是真的 <code>（可视、本就该进树），
+    // 所以判据从「树里没有 code 角色」收窄成「树里没有任何 code 节点承载凭据」。
+    const codeRoles = (getRoles(container)['code'] ?? []) as HTMLElement[];
+    expect(codeRoles.some((el) => (el.textContent ?? '').includes(EXPECTED_TOKEN))).toBe(false);
+    expect(codeRoles.includes(once)).toBe(false);
     expect(isInaccessible(once)).toBe(true);
     // 摘掉的方式**只有** aria-hidden：元素没被隐藏，明文仍在屏上
     expect(once.closest('[aria-hidden="true"]')).not.toBeNull();

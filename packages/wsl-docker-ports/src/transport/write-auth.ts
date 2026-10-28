@@ -51,11 +51,11 @@ export type {
  * 表现为「配了还是不生效」—— 比直接 401 更难查。
  */
 export const WRITE_TOKEN_CONFIG_HINT =
-  '配置方法：① 本包配置页的「生成并保存写通道凭据」（写进 settings 命名空间的 `writeToken` 字段，' +
-  '推荐）；或 ② profile 的 cordis.patch.yml 里给 `- id: dsh-wsl-docker-ports` 条目加一项 ' +
-  '`config: { writeToken: "<随机长串>" }`（与 elevationPolicy 同一处）。' +
-  '两种写法都**即时生效**（字段是 volatile，宿主每次请求现读凭据，不需要重载插件）。' +
-  '之后以 `Authorization: Bearer <令牌>` 或 `?token=<令牌>` 调用本通道。';
+  '配置方法：① 本包配置页的「生成并保存写通道凭据」（写进 settings 命名空间的 writeToken 字段，' +
+  '推荐）；或 ② profile 的 cordis.patch.yml 里给 - id: dsh-wsl-docker-ports 条目加一项 ' +
+  'config: { writeToken: "<随机长串>" }（与 elevationPolicy 同一处）。' +
+  '两种写法都即时生效（字段是 volatile，宿主每次请求现读凭据，不需要重载插件）。' +
+  '之后以 Authorization: Bearer <令牌> 或 ?token=<令牌> 调用本通道。';
 
 /** 转发侧鉴权器：共享实现 + 转发侧提示（缺省参数让既有单参调用点一行不用改） */
 export function createWriteAuthenticator(source: ConfigValueSource): WriteAuthenticator {

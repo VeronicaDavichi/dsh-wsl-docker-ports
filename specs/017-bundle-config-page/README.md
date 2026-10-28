@@ -875,3 +875,45 @@ computed max-width = 139px
 
 **如果主人要的是「整串不截断」**：12px 下实测需要 ≈ **152px**（再 +9%）。那是另一个数，一句话我就改；
 现在这版严格按「+20%」执行，没有擅自加码。
+
+#### 六订·二十八（2026-10-28，主人第二十七次拍板）
+
+主人原话：「本会话持有凭据：是；服务端配置 writeToken：未检查（这里**只报布尔**，不回显凭据本体） 和
+再点一次 = **轮换**（新值覆盖旧值）… **即时生效**（旧串立即 401、新串立即 200），不需要重载插件行。 和
+写操作会改动本机 `netsh portproxy` 与 Windows 防火墙规则… 这里的特殊字体没有正常加粗反而显示了 markdown 语法」。
+
+**根因**：这些都是 JSX 里的**纯文本**（或 `string` 类型的 note），`**…**` 与反引号从来没有被解析 ⇒ 原样上屏。
+
+**改法**
+
+| 位置 | 修前 | 修后 |
+| --- | --- | --- |
+| `pane-settings.tsx` 凭据布尔行 | `**只报布尔**` | `<strong>只报布尔</strong>`（真粗体，700） |
+| `pane-settings.tsx` 改动面说明 | `netsh portproxy` 带反引号 | `<code>netsh portproxy</code>` |
+| `pane-settings.tsx` 401 后果行 | `plan` / `apply` / `audit` / `writeToken` + `**即时生效**` | 四个 `<code>` + `<strong>即时生效</strong>` |
+| `pane-settings.tsx` 一次性凭据提示 | `**离开后将不再显示，请立即复制**` / `**不进无障碍树**` | 两个 `<strong>` |
+| `pane-settings.tsx` 轮换说明 | `**轮换**`、`writeToken`、`**即时生效**` | `<strong>` + `<code>` + `<strong>` |
+| `pane-settings.tsx` 确认清除提示 | `**unset**` / `**不是写空串**` | 两个 `<strong>` |
+
+**只能出纯文本的地方**（`string` 通道，给标签就等于把标签当字显示）⇒ 把记号换成中文「」并去掉反引号：
+`pane.tsx` 的 tokenNote（「已配置」/「未配置」）、`settings-pipe.ts` 的清除回执（「已配置」）、
+`write-token.ts` 的 `CREDENTIAL_REJECTED_HINT` 与「只显示这一次」提示、`transport/write-auth.ts` 的 401 配置说明。
+
+**真机复测（43391 / 右栏 412px）**
+
+```
+整页文本含 "**" ？ false       整页文本含反引号？ false
+写通道凭据块里 strong = ["只报布尔","即时生效","轮换","即时生效"]   computed font-weight = 700
+写通道凭据块里 code   = ["netsh portproxy","plan","apply","audit","writeToken","writeToken"]  font-family = monospace
+```
+
+- 新判据：`tests/client/raw-markdown.test.tsx`（2 条）—— 首帧与生成后各扫一遍**渲染出来的 textContent**：
+  `**` 0 处、反引号 0 处；并断言 `<strong>` 里确实有「只报布尔/轮换/即时生效/离开后将不再显示，请立即复制」，
+  `<code>` 里确实有「netsh portproxy / plan / writeToken」。**这条门只看渲染结果，不看源码**。
+- 既有判据订正：`write-token-a11y.test.tsx` 门① 原断言「a11y 树里没有 `code` 角色」——
+  那在「文案里出现真 `<code>`」之后就成了误判。已收窄为「树里没有任何 `code` 节点**承载凭据**」
+  +「凭据那个 `code` 不在树里」（`isInaccessible(once) === true` 原样保留）。
+- 证据：[evidence-write-token-bold-fixed.png](./evidence-write-token-bold-fixed.png)。
+
+**只报不改**：`<code>` 走浏览器默认样式 `font-size: 0.92em` ⇒ 实测 **12px**（正文 13px），等宽字体看着略小一号。
+要完全等大加一条 `.wdp-page code { font-size: inherit; }` 即可（≈55 B，主包余 73 B 够），等主人点头再动。

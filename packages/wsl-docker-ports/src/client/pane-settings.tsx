@@ -204,14 +204,14 @@ export function WriteTokenBlock(props: {
         data-session-credential={sessionPresent ? '1' : '0'}
         data-config-configured={configured === null ? 'unknown' : configured ? '1' : '0'}
       >
-        本会话持有凭据：{sessionPresent ? '是' : '否'}；服务端配置 writeToken：{configuredText}（这里**只报布尔**，不回显凭据本体）
+        本会话持有凭据：{sessionPresent ? '是' : '否'}；服务端配置 writeToken：{configuredText}（这里<strong>只报布尔</strong>，不回显凭据本体）
       </p>
       <p className="wdp-muted">
-        写操作会改动本机 `netsh portproxy` 与 Windows 防火墙规则；本凭据用于阻止本机其它用户进程调用写通道（它不是加密、不是账号体系）。
+        写操作会改动本机 <code>netsh portproxy</code> 与 Windows 防火墙规则；本凭据用于阻止本机其它用户进程调用写通道（它不是加密、不是账号体系）。
       </p>
       {sessionPresent && configured !== false ? null : (
         <p className="wdp-error" data-testid={WRITE_TOKEN_TESTID.consequence}>
-          后果：写入口会 401（凭据缺失 ⇒ `plan` / `apply` / `audit` 一律 unauthorized，零执行零写入）⇒ 请先在本页「生成并保存写通道凭据」（`writeToken` 是 volatile 字段、宿主每请求现读 ⇒ **即时生效**，不需要重载插件行）。
+          后果：写入口会 401（凭据缺失 ⇒ <code>plan</code> / <code>apply</code> / <code>audit</code> 一律 unauthorized，零执行零写入）⇒ 请先在本页「生成并保存写通道凭据」（<code>writeToken</code> 是 volatile 字段、宿主每请求现读 ⇒ <strong>即时生效</strong>，不需要重载插件行）。
         </p>
       )}
       <button
@@ -227,7 +227,7 @@ export function WriteTokenBlock(props: {
       {issued === null ? null : (
         <div>
           <p className="wdp-error">
-            ⚠️ 这串**离开后将不再显示，请立即复制**（页面不提供「再显示一次」的入口）。它**不进无障碍树**（屏幕阅读器读不到该值）—— 请用下面的「复制写通道凭据」按钮，或鼠标选中手工复制。
+            ⚠️ 这串<strong>离开后将不再显示，请立即复制</strong>（页面不提供「再显示一次」的入口）。它<strong>不进无障碍树</strong>（屏幕阅读器读不到该值）—— 请用下面的「复制写通道凭据」按钮，或鼠标选中手工复制。
           </p>
           <div className="wdp-once-row">
             <p className="wdp-once-code" aria-hidden="true">
@@ -246,7 +246,9 @@ export function WriteTokenBlock(props: {
           )}
         </div>
       )}
-      <p className="wdp-muted">再点一次 = **轮换**（新值覆盖旧值）；`writeToken` 是 volatile 字段、宿主每次请求现读 ⇒ **即时生效**（旧串立即 401、新串立即 200），不需要重载插件行。</p>
+      <p className="wdp-muted">
+        再点一次 = <strong>轮换</strong>（新值覆盖旧值）；<code>writeToken</code> 是 volatile 字段、宿主每次请求现读 ⇒ <strong>即时生效</strong>（旧串立即 401、新串立即 200），不需要重载插件行。
+      </p>
       <div className="wdp-grid">
         <button
           type="button"
@@ -261,7 +263,7 @@ export function WriteTokenBlock(props: {
         </button>
         {confirmingClear ? (
           <>
-            <span className="wdp-error">确认清除？清除后服务端 writeToken 会被 **unset**（把字段真的删掉，**不是写空串** —— 空串在宿主判据里仍算「已配置」）⇒ 写入口回到一律 401（fail-safe），本会话凭据同时清掉。</span>
+            <span className="wdp-error">确认清除？清除后服务端 writeToken 会被 <strong>unset</strong>（把字段真的删掉，<strong>不是写空串</strong> —— 空串在宿主判据里仍算「已配置」）⇒ 写入口回到一律 401（fail-safe），本会话凭据同时清掉。</span>
             <button type="button" className="wdp-btn wdp-btn-primary" data-testid={WRITE_TOKEN_TESTID.clearConfirm} data-settings-control="1" disabled={busy} onClick={onClearConfirm}>
               确认清除
             </button>

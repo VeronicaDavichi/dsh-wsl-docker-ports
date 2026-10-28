@@ -376,7 +376,7 @@ export function createSettingsPipe(getSettings: () => RemoteSettingsLike | undef
         return {
           ok: true,
           message: configured
-            ? '本会话凭据已清掉；但服务端写入后的视图仍报 writeToken **已配置**（该值来自更外层配置，unset 只能作用于 user 段）⇒ 写通道继续按它鉴权。'
+            ? '本会话凭据已清掉；但服务端写入后的视图仍报 writeToken「已配置」（该值来自更外层配置，unset 只能作用于 user 段）⇒ 写通道继续按它鉴权。'
             : '已清除：服务端 writeToken 已 unset（回到 fail-safe：plan / apply / audit 一律 401），本会话凭据同时清掉（本地拦下、零请求）。',
           writeTokenConfigured: configured,
           revisionPassed: revision !== undefined,

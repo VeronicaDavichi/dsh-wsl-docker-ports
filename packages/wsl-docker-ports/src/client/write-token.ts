@@ -52,8 +52,8 @@ export const CREDENTIAL_MISSING_HINT =
 /** 「服务端说凭据不对」时的提示（**不做重试循环**，只指路） */
 export const CREDENTIAL_REJECTED_HINT =
   '写通道凭据缺失或错误（服务端 401，零执行零写入）：请到「WSL Docker 端口」右栏页的「写通道凭据」块重新「生成并保存写通道凭据」，' +
-  '并确认服务端已读到该值（`writeToken` 是 **volatile** 字段、宿主**每次请求现读** ⇒ 改完**即时生效**，' +
-  '**不需要**重载插件行）。本客户端**不重试**，也不会把凭据写进日志。';
+  '并确认服务端已读到该值（writeToken 是 volatile 字段、宿主每次请求现读 ⇒ 改完即时生效，' +
+  '不需要重载插件行）。本客户端不重试，也不会把凭据写进日志。';
 
 /** `sessionStorage` / 假件的公共面（只要这两个方法就够） */
 export interface StorageLike {
@@ -193,7 +193,7 @@ export async function issueWriteToken(input: {
     token,
     message:
       '已写入插件配置，并保存在本会话（sessionStorage：刷新不丢、不落盘、不进日志/审计）。' +
-      '这串**只显示这一次 —— 离开后将不再显示，请立即复制**（页面不提供「再显示一次」的入口）。',
+      '这串只显示这一次 —— 离开后将不再显示，请立即复制（页面不提供「再显示一次」的入口）。',
   };
 }
 

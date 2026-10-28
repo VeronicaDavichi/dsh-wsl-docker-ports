@@ -173,8 +173,8 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
       setConfigConfigured(config.writeTokenConfigured);
       setTokenNote(
         config.writeTokenConfigured
-          ? '服务端配置里**已配置** writeToken（只报布尔，不回显本体）。'
-          : '服务端配置里**未配置** writeToken ⇒ 写入口一律 401（fail-safe，未放宽）。',
+          ? '服务端配置里「已配置」writeToken（只报布尔，不回显本体）。'
+          : '服务端配置里「未配置」writeToken ⇒ 写入口一律 401（fail-safe，未放宽）。',
       );
     } catch (error) {
       setConfigConfigured(null);
