@@ -1152,3 +1152,43 @@ wbr 数量：redis:6-alpine 1 个 / langgenius/dify-sandbox:0.2.15 2 个 / semit
 - 门：containers `node --test` **26/26**、vitest **5 files / 32 tests**、tsc root/client 0、exports 22/22、
   split 14/14（主 **31,165** ≤ 31,324）、loader 13/13、borders 248、size exit 0；chunk 32,924 → **34,483 B**。
 - 证据：[evidence-containers-image-wrap.png](./evidence-containers-image-wrap.png)。
+
+#### 六订·三十六（2026-10-28，主人第三十五次拍板）
+
+主人（截图）：「semitechnologies这种直接断掉词语本身，作为最低优先级使用。此外这边有几个超长单元格的
+动作一栏的边框歪了」。
+
+**问题①：动作格边框歪（真缺陷，根因已定）**
+
+- 根因：`.wdp-actions { display: flex; … }` 原本**挂在 `<td>` 上** ⇒ 这个 td 的 display 被改成 `flex`，
+  **不再是 table-cell** ⇒ 它不参与行高分配，高度只剩内容高。真机实测：
+  第 1 行其余 4 格 bottom = 264，动作格 bottom = **248**（高 65 vs 行 81）；超长行更夸张（498 vs **410**）。
+- 改法：`<td>` 保持裸 td，把按钮装进 `div.wdp-actions`。真机复测：**12 行 × 5 格 bottom 全部一致**
+  （动作格 display 回到 `table-cell`、className 为空）。
+
+**问题②：断词降为最低优先级**
+
+- 镜像格 `overflow-wrap` 由 `anywhere` 改为 **`break-word`**：两者都是「无处可断时才断」的 emergency 断行，
+  但 `break-word` 语义上**明确只做兜底**（`anywhere` 还会影响 min-content 尺寸计算）⇒ 与主人要求
+  「断词作为最低优先级」逐字对齐；换行机会仍由 `/` `:` 后的 `<wbr>` 提供。
+- 真机：镜像格 computed `overflow-wrap = break-word`，逐格 `scrollWidth == clientWidth == 92`（零溢出）。
+
+**真机证据（43391）**
+
+```
+rows[0..3]  rowBottom 264 / 345 / 498 / 579 —— 每行 5 个 cell 的 bottom 全等（aligned = true）
+动作格 display = table-cell、className = ""        （修前：display = flex、bottom 比行底少 16~88 px）
+整表 12 行复核：allAligned = true                  （colgroup 110/92/58/85/64，表宽 409 px）
+镜像格 overflow-wrap = break-word
+```
+
+> 证据图里动作列被临时拉宽到 130 px（仅注入 DOM，非代码）—— 目的是复刻主人截图里「两个按钮一行」的场景，
+> 该场景下修前边框错位最明显；拉宽后 12 行边框仍逐格同线。
+
+- 判据（`containers-pane-layout.test.tsx` 新增 describe「六订·三十六」2 条）：
+  ① 动作格 `className === ""`、`getComputedStyle().display === "table-cell"`、内有 `div.wdp-actions` 且 4 个按钮；
+  ② `CONFIG_CSS` 里镜像格规则必须是 `break-word`，且**这一条**不是 `anywhere`
+  （`.wdp-cfg-hint` / `.wdp-cfg-notice` 本就用 `anywhere`，不许误伤 —— 断言已收窄到整条选择器）。
+- 门：containers `node --test` **26/26**、vitest **5 files / 34 tests**、tsc root/client/build 全 0、
+  exports 22/22、split 14/14（主 **31,165** ≤ 31,324）、borders 248、size exit 0；chunk 34,483 → **35,321 B**。
+- 证据：[evidence-containers-actions-aligned.png](./evidence-containers-actions-aligned.png)。

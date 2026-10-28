@@ -345,9 +345,14 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
                 createElement('td', { className: 'wdp-cell-image' }, breakableImage(row.image)),
                 createElement('td', null, `${row.state} / ${row.status}`),
                 createElement('td', null, row.ports.length === 0 ? '（未发布）' : row.ports.join(', ')),
+                // 🔴 动作格**必须是普通 td**：`.wdp-actions` 带 `display:flex`，挂在 td 上会让它
+                //    不再是 table-cell ⇒ 该格高度只有内容高（真机 65 px vs 行 81 px），
+                //    行底边框在这一列歪掉（主人 2026-10-28：「几个超长单元格的动作一栏的边框歪了」）。
+                //    改成「td > div.wdp-actions」后 td 回归 table-cell，边框与整行同线。
                 createElement(
                   'td',
-                  { className: 'wdp-actions' },
+                  null,
+                  createElement('div', { className: 'wdp-actions' },
                   (['start', 'stop', 'restart'] as const).map((action) =>
                     createElement(
                       'button',
@@ -363,6 +368,7 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
                     ),
                   ),
                   createElement('button', { type: 'button', className: 'wdp-cfg-btn wdp-cfg-btn-sm', 'data-testid': `btn-containers-logs-${row.id}`, disabled: busy !== null, onClick: () => void openLogs(row.id) }, '日志'),
+                  ),
                 ),
               ),
             ),

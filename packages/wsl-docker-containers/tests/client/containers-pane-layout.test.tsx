@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactElement } from 'react';
 
 import { ContainersPane, CID, splitImageAtSeparators } from '../../src/client/containers/pane.tsx';
+import { CONFIG_CSS } from '../../src/client/containers/config-css.ts';
 import type { ContainersRuntime } from '../../src/client/containers/runtime.ts';
 import type { SettingsPipe } from '../../src/client/settings-pipe.ts';
 
@@ -195,5 +196,37 @@ describe('六订·三十五 镜像列按 / 与 : 换行', () => {
     expect(cell.querySelectorAll('wbr')).toHaveLength(1);
     expect(cell.textContent).toBe('nginx:1.27');
     console.log(`  · ② 镜像格：textContent=${String(cell.textContent)}、wbr=${String(cell.querySelectorAll('wbr').length)} 个`);
+  });
+});
+
+/* ─────────────── 六订·三十六：动作格回归 table-cell（边框歪）+ 镜像断词降为最低优先级 ───────────────
+ * 主人（截图）：「semitechnologies这种直接断掉词语本身，作为最低优先级使用。此外这边有几个超长单元格的
+ * 动作一栏的边框歪了」。
+ * 根因：`.wdp-actions { display: flex }` 原本**挂在 `<td>` 上** ⇒ 该 td 不再是 table-cell，
+ * 高度只剩内容高（真机 65 px vs 行 81 px），行底边框在这一列错位。
+ */
+describe('六订·三十六 动作格是 table-cell；镜像断词为最低优先级', () => {
+  it('① 动作格 = 普通 td（无 wdp-actions 类）> div.wdp-actions，且节点数不变', async () => {
+    globalThis.fetch = (async () =>
+      ({ ok: true, status: 200, json: async () => SNAPSHOT })) as unknown as typeof globalThis.fetch;
+    render(<ContainersPane runtime={productionRuntime()} /> as ReactElement);
+    const table = await screen.findByTestId(CID.table);
+
+    const cell = table.querySelector('tbody tr td:nth-child(5)') as HTMLTableCellElement;
+    // 🔴 这一条就是「边框歪」的回归判据：td 上不许挂 display:flex 的类
+    expect(cell.className).toBe('');
+    expect(getComputedStyle(cell).display).toBe('table-cell');
+    const wrapper = cell.querySelector('div.wdp-actions');
+    expect(wrapper).not.toBeNull();
+    expect(wrapper?.querySelectorAll('button')).toHaveLength(4);
+    console.log(`  · ① 动作格 display=${getComputedStyle(cell).display}、按钮 ${String(wrapper?.querySelectorAll('button').length)} 个`);
+  });
+
+  it('② 镜像格的断词是 break-word（只在无处可断时才断词 = 最低优先级）', () => {
+    // 样式在 chunk 侧的 config-css 里；这里直接断言常量文本，避免 jsdom 未注入样式表时假绿
+    expect(CONFIG_CSS).toContain('.wdp-table td.wdp-cell-image { overflow-wrap: break-word; }');
+    // 只针对镜像格这一条规则断言「不是 anywhere」——.wdp-cfg-hint / .wdp-cfg-notice 本就用 anywhere，别误伤
+    expect(CONFIG_CSS).not.toContain('.wdp-table td.wdp-cell-image { overflow-wrap: anywhere; }');
+    console.log('  · ② 镜像格 overflow-wrap = break-word ✓');
   });
 });
