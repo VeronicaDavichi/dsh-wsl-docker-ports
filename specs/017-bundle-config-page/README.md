@@ -524,3 +524,47 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
 - 证据：[evidence-containers-pane-buttons.png](./evidence-containers-pane-buttons.png)。
 - ⚠️ **未做（留给你拍板）**：侧边栏表格仍是 5 列铺在 417 px 里，「状态」「动作」列换行/横向溢出，
   行高被文字换行撑到 124 px。这属于**布局**不是按钮样式，未擅自改。
+#### 六订·十五（2026-10-28，主人第十三次拍板）
+
+主人原话：「你先把两个侧边栏的css都和内页配置页统一好吗？剩下的我们挨个调整」。
+
+**先把「统一」定义成可复算的四件事**（不然「看起来差不多」永远说不清）：
+
+| 维度 | 口径 | 改前 | 改后 |
+| --- | --- | --- | --- |
+| 按钮盒子 | 34px 高 / `padding 0 14` / `radius-md` / `bg-layer-3` | 转发侧 `.wdp-btn` 28px+`radius-sm`；容器侧按钮**无 className** | 全部 34 / 0 14 / radius 12 |
+| 保存键 | 同一个盒子里只换「主色填充」 | `.wdp-cfg-save` 靠 `padding 5px 14` 拼出 32px | `height 34` / `padding 0 14` ⇒ 34px |
+| 输入框/下拉 | 34px / `radius-md` / `bg-layer-3` | 转发侧 `.wdp-input` 已是 34；容器侧裸元素 | 容器侧改挂 `.wdp-cfg-input` |
+| 表格分隔线 | `0.5px solid var(--dsw-alias-border-l2)` | 容器侧写着**宿主不存在的** `--dsw-alias-border-secondary` ⇒ 回落 `currentColor`（惨白 1px） | 0.5px / `border-l2`（实测 `rgba(255,255,255,0.12)`） |
+
+**两个侧边栏各自动了什么**
+
+- **转发侧（chunk `client.ports.js`）**：`styles.ts` 的 `.wdp-btn` 从 `28px/0 10/radius-sm/12px` 抬到
+  `34px/0 14/radius-md/13px`（与 `.wdp-cfg-btn` 逐项同值，主包**零字节增长**：四处替换都等长）；
+  删掉 `.wdp-card .wdp-btn` 与 `.wdp-cfg-plan .wdp-btn` 两条 30px 特例 —— 内页那排按钮也回到 34px。
+- **容器侧（chunk `client.containers.js`）**：`PAGE_CSS` 重写 —— 删掉 14 条**没人用**的死选择器与
+  7 处**假 token**（`border-primary` / `border-secondary` / `border-accent` / `bg-accent` /
+  `state-danger` / `state-success` / `state-warning`），只留侧栏骨架（`.wdp-containers` / `.wdp-row` /
+  `.wdp-toolbar` / `.wdp-table` / `.wdp-muted` / `.wdp-note` / `.wdp-warn` / `.wdp-danger` /
+  `.wdp-pre` / `.wdp-logs` / `.wdp-notes` / `.wdp-actions` / `.wdp-tab-title`），颜色一律真名 token。
+  按钮/输入框/保存键由 chunk 的 `config-css.ts` 供给（`installConfigStyles()` 在 `pane.tsx` 与配置页都调）。
+- **主包反而瘦了**：31,324 B → **30,961 B**（删死代码 + 假 token 名换短名）。
+
+**新增两条静态门（可复算，不是「看着像」）**
+
+- `packages/wsl-docker-ports/tests/client/sidebar-style-parity.test.tsx`：逐条比 `.wdp-btn` 与
+  `.wdp-cfg-btn` 的高度/内边距/圆角 token/底色 token，四项全同；再验输入框共用 `.wdp-input`。
+- `packages/wsl-docker-containers/tests/client/sidebar-style-parity.test.tsx`：`PAGE_CSS` **零假 token**、
+  表格线 = `0.5px border-l2`、侧栏控件只认 `.wdp-cfg-*`、`pane.tsx` 与配置页都注入同一份表。
+
+**真机实测（acceptance 实例 43391）**
+
+- 侧边栏（417px）：刷新 **34 × 56** / 保存凭据 **34 × 82** / 行内动作 **26 × 30**，`radius 12`、
+  `bg rgb(53,54,56)`；表格 `td` 分隔线 `1px rgba(255,255,255,0.12)`（改前是 `currentColor` 近白）。
+- 内页：下拉 **34 × 799**、保存设置 **34 × 82**（改前 32），`radius 12`。
+- 证据：[evidence-sidebar-containers-unified.png](./evidence-sidebar-containers-unified.png)（侧栏）、
+  [evidence-inner-config-34.png](./evidence-inner-config-34.png)（内页）。
+
+**没做（按主人「剩下的我们挨个调整」）**：转发页表格仍是 5 列挤在 417px、容器页「状态/动作」列
+换行与横向溢出（布局问题）；`.wdp-sec` vs `.wdp-cfg-field` 两套段落壳的取舍；`.wdp-muted` vs
+`.wdp-cfg-hint` 是否合并成一个名字。这些都不影响「按钮/输入框/表格线已经同值」这条判据。

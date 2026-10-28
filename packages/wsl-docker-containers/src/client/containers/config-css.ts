@@ -28,15 +28,12 @@ select.wdp-cfg-input { padding-right: 32px; background-image: linear-gradient(45
 .wdp-cfg-btn[disabled] { opacity: 0.4; cursor: default; }
 /* 表格行内动作：同一套外壳的紧凑档（34 px 会把表格行撑开） */
 .wdp-cfg-btn-sm { height: 26px; padding: 0 8px; font-size: 12px; }
-/* 表格「动作」列：把四个按钮横排（否则窄侧栏里竖着堆成 4 层，每行被撑到 170 px） */
-.wdp-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.wdp-toolbar { gap: 8px; }
 /* 六订·十三（主人 2026-10-28：「这个页面缺少保存键」）：页脚 + 保存键，与转发侧同值 */
 .wdp-cfg-footer { display: flex; align-items: center; gap: 8px; padding-top: 16px; border-top: 0.5px solid var(--dsw-alias-border-l2, transparent); }
 .wdp-cfg-footer-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .wdp-cfg-status { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); }
 .wdp-cfg-hint-error { color: var(--dsw-alias-state-error-primary, inherit); }
-.wdp-cfg-save { flex: none; appearance: none; box-sizing: border-box; cursor: pointer; border: 1px solid transparent; border-radius: var(--dsw-radius-md, 8px); padding: 5px 14px; font: inherit; font-size: 13px; line-height: 1.5; background: var(--dsw-alias-label-primary, currentColor); color: var(--dsw-alias-bg-layer-3, transparent); }
+.wdp-cfg-save { flex: none; appearance: none; box-sizing: border-box; cursor: pointer; border: 1px solid transparent; border-radius: var(--dsw-radius-md, 8px); height: 34px; padding: 0 14px; align-self: flex-start; font: inherit; font-size: 13px; line-height: 1.5; background: var(--dsw-alias-label-primary, currentColor); color: var(--dsw-alias-bg-layer-3, transparent); }
 .wdp-cfg-save[disabled] { opacity: 0.4; cursor: default; }
 .wdp-cfg-save:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, currentColor)); outline-offset: 1px; }`;
 

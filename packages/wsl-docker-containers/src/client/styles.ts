@@ -21,30 +21,23 @@ export const ROOT_CLASS = 'wdp-page';
 
 /** 只用宿主 token，零硬编码颜色（回落值也刻意不是 hex —— 否则「零 hex」断言会变成文字游戏） */
 export const PAGE_CSS = `
-.wdp-page { color: var(--dsw-alias-label-primary, inherit); font-size: 13px; line-height: 1.6; padding: 8px 10px; display: flex; flex-direction: column; gap: 10px; }
-.wdp-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.wdp-muted { color: var(--dsw-alias-label-tertiary, inherit); }
-.wdp-secondary { color: var(--dsw-alias-label-secondary, inherit); }
-.wdp-card { border: 1px solid var(--dsw-alias-border-primary, currentColor); border-radius: 6px; padding: 8px 10px; background: var(--dsw-alias-bg-layer-1, transparent); }
-.wdp-card > h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
-.wdp-gate { border-left: 3px solid var(--dsw-alias-state-warning, currentColor); }
-.wdp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.wdp-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; border-top: 1px solid var(--dsw-alias-border-secondary, currentColor); padding: 4px 0; }
-.wdp-table { width: 100%; border-collapse: collapse; }
-.wdp-table th, .wdp-table td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--dsw-alias-border-secondary, currentColor); vertical-align: top; }
-.wdp-tag { border: 1px solid var(--dsw-alias-border-primary, currentColor); border-radius: 999px; padding: 0 6px; font-size: 12px; }
-.wdp-tag-ok { color: var(--dsw-alias-state-success, inherit); }
-.wdp-tag-warn { color: var(--dsw-alias-state-warning, inherit); }
-.wdp-tag-danger { color: var(--dsw-alias-state-danger, inherit); }
-.wdp-tag-muted { color: var(--dsw-alias-label-tertiary, inherit); }
-.wdp-pre { background: var(--dsw-alias-bg-layer-2, transparent); border-radius: 4px; padding: 6px 8px; overflow-x: auto; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 12px; }
-.wdp-btn { font: inherit; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--dsw-alias-border-primary, currentColor); background: var(--dsw-alias-bg-layer-2, transparent); color: inherit; cursor: pointer; }
-.wdp-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
-.wdp-btn-primary { background: var(--dsw-alias-bg-accent, transparent); border-color: var(--dsw-alias-border-accent, currentColor); }
-.wdp-field { display: flex; flex-direction: column; gap: 4px; }
-.wdp-inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.wdp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px 10px; }
-.wdp-error { color: var(--dsw-alias-state-danger, inherit); }
+  /* 017 六订·十五：控件/按钮/标签/提示走 chunk 的 .wdp-cfg-*（与配置内页同一份）；这里只留骨架，颜色只取宿主真名 token */
+.wdp-containers { display: flex; flex-direction: column; gap: 10px; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
+.wdp-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wdp-toolbar { gap: 8px; }
+.wdp-tab-title { font-weight: 500; }
+.wdp-muted { font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); }
+.wdp-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary, inherit); }
+.wdp-warn { margin: 0; padding: 6px 10px; border-left: 2px solid var(--dsw-alias-state-warn-primary, currentColor); font-size: 12px; line-height: 1.6; color: var(--dsw-alias-label-secondary, inherit); }
+.wdp-danger { margin: 0; font-size: 12px; line-height: 1.6; color: var(--dsw-alias-state-error-primary, inherit); }
+.wdp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.wdp-table th { text-align: left; padding: 4px 6px; font-size: 11px; font-weight: 500; color: var(--dsw-alias-label-secondary, inherit); border-bottom: 0.5px solid var(--dsw-alias-border-l2, transparent); }
+.wdp-table td { text-align: left; padding: 4px 6px; vertical-align: middle; border-bottom: 0.5px solid var(--dsw-alias-border-l2, transparent); }
+.wdp-table tbody tr:last-child td { border-bottom: none; }
+.wdp-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.wdp-pre { margin: 0; padding: 8px 10px; border: 0.5px solid var(--dsw-alias-border-l2, transparent); border-radius: var(--dsw-radius-sm, 6px); background: var(--dsw-alias-bg-layer-2, transparent); white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 12px; overflow-x: auto; }
+.wdp-logs { display: flex; flex-direction: column; gap: 6px; }
+.wdp-notes { margin: 0; padding-left: 18px; font-size: 12px; color: var(--dsw-alias-label-tertiary, inherit); }
 `;
 
 /** `document.querySelector` / `createElement` 的最小面（测试用假 doc 注入，生产走真 document） */

@@ -19,7 +19,7 @@
  *                    相邻段落之间 **0.5px `border-l2`** 细分隔线（不再是独立卡片框）
  *   标题 `h3`      = 13px / 500 / `label-primary`（配置页 `.wdp-cfg-label` 同款）
  *   控件 `.wdp-input` = 高 34 / padding 0 12 / 0.5px `border-l4` / `radius-md` / `bg-layer-3`
- *   按钮 `.wdp-btn`   = 0.5px `border-l4` / `radius-sm` / `bg-layer-3`；`.wdp-save` 用主色填充
+ *   按钮 `.wdp-btn`   = 0.5px `border-l4` / `radius-md` / `bg-layer-3` / 34px 高（**与配置内页 `.wdp-cfg-btn` 同值**，017 六订·十五）；`.wdp-save` 用主色填充
  *   提示 `.wdp-muted` = 12px / `label-tertiary`
  *   内嵌面板 `.wdp-card` = 0.5px `border-l2` + `radius-md` + `bg-layer-2`
  *                        （与配置页「计划 / 回执」那块完全同款：写通道、回执、确认框用它）
@@ -76,10 +76,9 @@ export const PAGE_CSS = `
 .wdp-input:disabled { color: var(--dsw-alias-label-tertiary, inherit); cursor: default; }
 select.wdp-input { padding-right: 32px; background-image: linear-gradient(45deg, transparent 50%, var(--dsw-alias-label-tertiary, currentColor) 50%), linear-gradient(135deg, var(--dsw-alias-label-tertiary, currentColor) 50%, transparent 50%); background-position: calc(100% - 17px) 15px, calc(100% - 12px) 15px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
 .wdp-input.wdp-textarea { height: auto; min-height: 74px; padding: 8px 12px; resize: none; overflow: hidden; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.6; background-image: none; }
-.wdp-btn { height: 28px; padding: 0 10px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-sm, 6px); background: var(--dsw-alias-bg-layer-3, transparent); font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
+.wdp-btn { height: 34px; padding: 0 14px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-md, 8px); background: var(--dsw-alias-bg-layer-3, transparent); font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
 .wdp-btn[disabled] { opacity: 0.4; cursor: default; }
 .wdp-btn-primary { border-color: transparent; background: var(--dsw-alias-label-primary, currentColor); color: var(--dsw-alias-bg-layer-3, transparent); }
-.wdp-card .wdp-btn { height: 30px; padding: 0 12px; font-size: 13px; }
 .wdp-save { flex: none; border: 1px solid transparent; border-radius: var(--dsw-radius-md, 8px); padding: 5px 14px; font-size: 13px; line-height: 1.5; background: var(--dsw-alias-label-primary, currentColor); color: var(--dsw-alias-bg-layer-3, transparent); }
 .wdp-save[disabled] { opacity: 0.4; cursor: default; }
 .wdp-textbtn { appearance: none; border: none; background: none; padding: 0; font: inherit; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-secondary, inherit); cursor: pointer; }

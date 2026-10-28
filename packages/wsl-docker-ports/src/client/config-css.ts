@@ -87,7 +87,6 @@ export const CONFIG_CSS = `/* ── 017：bundle 级配置页（卡片页「描
 .wdp-cfg-plan .wdp-card { border: 0.5px solid var(--dsw-alias-border-l2, currentColor); border-radius: var(--dsw-radius-md, 8px); padding: 10px 12px; background: var(--dsw-alias-bg-layer-2, transparent); }
 .wdp-cfg-plan .wdp-card > h3 { font-size: 12px; font-weight: 500; color: var(--dsw-alias-label-secondary, inherit); }
 /* 计划面板里的按钮跟配置页同一套尺寸（原来是右栏页那套 2px 内边距的小按钮，贴在 34px 控件下面像缩水了） */
-.wdp-cfg-plan .wdp-btn { height: 30px; padding: 0 12px; border: 0.5px solid var(--dsw-alias-border-l4, currentColor); border-radius: var(--dsw-radius-sm, 6px); background: var(--dsw-alias-bg-layer-3, transparent); font-size: 13px; }
 .wdp-cfg-plan .wdp-btn:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary, currentColor)); outline-offset: 1px; }`;
 
 /** 挂载时注入、返回移除器；同一 id 的旧节点先摘掉（重复挂载不产生第二份） */
