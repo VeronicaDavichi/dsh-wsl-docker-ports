@@ -65,11 +65,11 @@ describe('017 六订·十五：侧边栏 CSS 与配置内页同一套', () => {
     expect(read('containers/config-page.tsx')).toContain('installConfigStyles');
   });
 
-  it('⑤ 页面总留白与转发侧一致：0 12px 12px（转发侧 .wdp-page 同值）', () => {
-    // 2026-10-28 主人：「docker容器页面的总margin和端口转发的保持一致」
-    expect(PAGE_CSS).toContain('.wdp-containers { display: flex; flex-direction: column; gap: 10px; padding: 0 12px 12px;');
+  it('⑤ 页面总留白与转发侧一致：8px 12px 12px（首屏内容距顶 12px，与转发侧齐平）', () => {
+    // 2026-10-28 主人：「docker容器页面的总margin和端口转发的保持一致」→「容器margintop还是小了」
+    // 顶 8px 是页内留白；首行 34px 按钮在 42px 行高里再居中出 4px ⇒ 首屏内容距顶 12px（转发侧 .wdp-sec 的 12px 同值）
+    expect(PAGE_CSS).toContain('.wdp-containers { display: flex; flex-direction: column; gap: 10px; padding: 8px 12px 12px;');
     // 转发侧那份在另一个包里，值写死在这里做「同值」对照（改一边就得两边一起改，否则这条红）
-    const PORTS_PAGE_PADDING = 'padding: 0 12px 12px;';
-    expect(PAGE_CSS).toContain(PORTS_PAGE_PADDING);
+    expect(PAGE_CSS).toContain('padding: 8px 12px 12px;');
   });
 });

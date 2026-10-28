@@ -22,7 +22,7 @@ export const ROOT_CLASS = 'wdp-page';
 /** 只用宿主 token，零硬编码颜色（回落值也刻意不是 hex —— 否则「零 hex」断言会变成文字游戏） */
 export const PAGE_CSS = `
   /* 017 六订·十五：控件/按钮/标签/提示走 chunk 的 .wdp-cfg-*（与配置内页同一份）；这里只留骨架，颜色只取宿主真名 token */
-.wdp-containers { display: flex; flex-direction: column; gap: 10px; padding: 0 12px 12px; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
+.wdp-containers { display: flex; flex-direction: column; gap: 10px; padding: 8px 12px 12px; font-size: 13px; line-height: 1.5; color: var(--dsw-alias-label-primary, inherit); }
 .wdp-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .wdp-token-row { flex-wrap: nowrap; }
 .wdp-token-row > .wdp-cfg-input { flex: 1 1 auto; min-width: 0; width: auto; }

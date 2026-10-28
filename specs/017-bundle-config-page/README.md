@@ -749,6 +749,12 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
   且与写死的转发侧同值 `padding: 0 12px 12px;` 对齐 —— 改一边不改另一边就红）。
 - 证据：[evidence-containers-page-padding.png](./evidence-containers-page-padding.png)。
 
+**订正（同日，主人第二十二次拍板）**：「容器margintop还是小了」⇒ 顶留白 `0 → 8px`
+（`padding: 8px 12px 12px`）。为什么是 8 而不是 12：首行那枚 34px 按钮在 42px 行高里**自带 4px 居中留白**，
+所以 8 + 4 = **12px** 才是「首屏内容距侧栏顶」与转发侧（`.wdp-sec` 的 12px）真正齐平的那个数。
+真机复测：容器页 `padding = 8px 12px 12px`、首个控件距侧栏顶 **12px**（= 转发侧 12px）；
+判据同步改成第 ⑤ 条（`padding: 8px 12px 12px`）。证据：[evidence-containers-page-padding.png](./evidence-containers-page-padding.png)。
+
 **没做（老问题，仍只报不改）**：容器页 5 列表格实测 `width 558px` > 内容宽 388px ⇒ 右边「状态/动作」
 两列被裁到侧栏外（本轮加了左右各 12px 的内边距后更明显）。要修得先定一条：缩列宽 / 横向滚 / 改两行卡片，
 三条都动版式，等主人拍。
