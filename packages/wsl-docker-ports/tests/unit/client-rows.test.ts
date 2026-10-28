@@ -21,6 +21,7 @@ import {
   buildUnsupportedRows,
   managedPortsIssues,
   managedPortsText,
+  sortDeclaredText,
   mergeManagedPortsDecl,
   natReason,
   scopeTestId,
@@ -358,4 +359,23 @@ test('D1 容器端口映射：不再进入转发页视图（容器端口只在�
   assert.equal('containers' in view, false, '容器端口映射文本不得再进转发页视图');
   assert.equal(view.docker.ok, true);
   console.log('  · 扫了 1 个带 2 条映射的容器：转发页容器字段 0 个');
+});
+
+test('T5.10 只读展示：按端口号从小到大（前导数字作键，非法项排最后且保序）', () => {
+  // 主人截图里的原文（13 个 preset 的乱序）→ 升序
+  const raw = '3306, 1521, 8080, 5432, 6379, 27017, 5672, 9092, 9200, 8848, 9000, 5173, 5000';
+  assert.equal(
+    sortDeclaredText(raw),
+    '1521, 3306, 5000, 5173, 5432, 5672, 6379, 8080, 8848, 9000, 9092, 9200, 27017',
+  );
+  // 区间按起始号参与排序
+  assert.equal(sortDeclaredText('9000, 1000-3000, 3306'), '1000-3000, 3306, 9000');
+  // 非法项原样留到最后（不许被排序藏起来，也不许被"修好"）
+  // 区间按**起始号**排（1000 < 3306 < 9000），非法项 abc 排最后
+  assert.equal(sortDeclaredText('9000, abc, 3306, 1000-3000'), '1000-3000, 3306, 9000, abc');
+  // 换行 / 全角逗号 / 顿号照认，输出统一半角逗号（区间仍按起始号 1000 排最前）
+  assert.equal(sortDeclaredText('5432\n3306，9000、1000-3000'), '1000-3000, 3306, 5432, 9000');
+  // 空串不炸
+  assert.equal(sortDeclaredText('   '), '');
+  console.log(`  · 只读排序 = 「${sortDeclaredText(raw)}」`);
 });

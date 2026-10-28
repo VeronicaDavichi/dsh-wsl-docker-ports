@@ -13,7 +13,7 @@
 
 import { useState, type ReactElement } from 'react';
 
-import { TESTID } from './rows.ts';
+import { sortDeclaredText, TESTID } from './rows.ts';
 import type { ElevationPolicyValue } from './settings-pipe.ts';
 import type { ExecControlView, PortsPageView } from './types.ts';
 
@@ -63,7 +63,8 @@ export const WRITE_TOKEN_TESTID = {
  */
 export function ManagedPortsSummary(props: { readonly form: PortsPageView['managedPorts'] }): ReactElement {
   const { form } = props;
-  const declared = form.rangeText.trim();
+  // 六订·二十二：只读展示按端口号从小到大（写入口那边仍用原始顺序）
+  const declared = form.rangeText.trim() === '' ? '' : sortDeclaredText(form.rangeText);
   return (
     <section className="wdp-sec" data-testid="managed-ports-summary">
       <h3>端口声明（managedPorts）</h3>

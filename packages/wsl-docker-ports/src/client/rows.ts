@@ -295,6 +295,30 @@ export function mergeManagedPortsDecl(draft: string, presetPorts: readonly numbe
   return items;
 }
 
+/**
+ * 只读展示用的排序原文（017 六订·二十二，主人 2026-10-28：「这里显示端口声明的时候按照 数字从小到大排序」）。
+ *
+ * 排序键 = 每项的**前导数字**（`3306` 与 `1000-3000` 都按起始号比）；不是数字开头的项（非法项 / 区间写歪的）
+ * 排在最后且**保持原顺序** —— 非法项要原样看得见，不许因为排序被藏起来或被"修好"。
+ * 分隔符与 `mergeManagedPortsDecl` 同一套（逗号 / 换行 / 全角逗号 / 顿号），输出统一半角逗号。
+ * ⚠️ 只改**展示**：草稿、写回、保存一律仍用原始顺序的那一份（排序不许制造"假脏"）。
+ */
+export function sortDeclaredText(text: string): string {
+  const items = text
+    .split(/[\n,，、]+/u)
+    .map((item) => item.trim())
+    .filter((item) => item !== '');
+  const keyOf = (item: string): number => {
+    const match = /^(\d+)/u.exec(item);
+    return match === null ? Number.POSITIVE_INFINITY : Number(match[1]);
+  };
+  return items
+    .map((item, index) => ({ item, index, key: keyOf(item) }))
+    .sort((a, b) => (a.key === b.key ? a.index - b.index : a.key - b.key))
+    .map((entry) => entry.item)
+    .join(', ');
+}
+
 /** 解析声明并给出**全部**非法项的可读原因（REQ-16.1：给出原因含所在项） */
 export function managedPortsIssues(decls: readonly string[]): { readonly ok: boolean; readonly ports: ManagedPorts | null; readonly issues: readonly string[] } {
   const parsed = parseManagedPorts(decls);
