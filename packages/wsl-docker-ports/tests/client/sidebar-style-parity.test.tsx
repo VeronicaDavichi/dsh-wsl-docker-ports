@@ -129,3 +129,32 @@ describe('017 六订·二十四：端口表改名「端口转发」并提到刷�
     expect(tip).toBeLessThan(nat);
   });
 });
+
+describe('017 六订·二十五：去掉「证据」列 / 事实位文案收紧 / 表格内按钮与表格正文同字号', () => {
+  const tables = read('pane-tables.tsx');
+
+  it('① 端口表只剩 4 列（端口/状态/作用域/动作），「证据」表头不再出现', () => {
+    const thead = tables.slice(tables.indexOf('<thead>'), tables.indexOf('</thead>'));
+    expect(thead).toContain('<th>端口</th>');
+    expect(thead).toContain('<th>状态</th>');
+    expect(thead).toContain('<th>作用域</th>');
+    expect(thead).toContain('<th>动作</th>');
+    expect(thead).not.toContain('证据');
+  });
+
+  it('② 漂移 / 修复序列没丢（并入状态列，testid 不变）', () => {
+    expect(tables).toContain('data-testid={`drift-${String(row.port)}`}');
+    expect(tables).toContain('data-testid={`fix-${String(row.port)}`}');
+  });
+
+  it('③ 事实位文案 = 「监听地址与声明作用域不一致」（括号说明已删）', () => {
+    expect(tables).toContain('监听地址与声明作用域不一致');
+    expect(tables).not.toContain('不判冲突');
+  });
+
+  it('④ 表格内按钮 26px / 12px（= 表格正文 12px，也与容器页表格按钮同值）', () => {
+    expect(PAGE_CSS).toContain('.wdp-table .wdp-btn { height: 26px; padding: 0 8px; font-size: 12px;');
+    // 表格正文 12px 是这条判据的基准，改一边就红
+    expect(PAGE_CSS).toContain('.wdp-table { width: 100%; border-collapse: collapse; font-size: 12px; }');
+  });
+});

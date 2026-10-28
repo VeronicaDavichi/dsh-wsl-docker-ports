@@ -119,7 +119,6 @@ export function PortsBlock(props: {
             <th>状态</th>
             <th>作用域</th>
             <th>动作</th>
-            <th>证据</th>
           </tr>
         </thead>
         <tbody>
@@ -131,7 +130,17 @@ export function PortsBlock(props: {
                   {row.stateLabel}
                 </span>
                 {row.reasonText !== null ? <div className="wdp-muted">{row.reasonText}</div> : null}
-                {row.scopeMismatch ? <div className="wdp-muted">监听地址与声明作用域不一致（事实位，不判冲突）</div> : null}
+                {row.scopeMismatch ? <div className="wdp-muted">监听地址与声明作用域不一致</div> : null}
+                {/* 017 六订·二十五：原「证据」列并入本列（主人要求去掉那一列，但漂移/修复序列的信息不丢、testid 不变） */}
+                {row.drift !== null ? <div data-testid={`drift-${String(row.port)}`}>{row.drift.text}</div> : null}
+                {row.fix !== null ? (
+                  <div data-testid={`fix-${String(row.port)}`}>
+                    <div className="wdp-muted">
+                      修复序列（先删后加）：{row.fix.steps.map((step) => `${String(step.order)}.${step.kind}`).join(' → ')}
+                    </div>
+                    {row.fix.blocked !== null ? <div className="wdp-error">{row.fix.blocked.message}</div> : null}
+                  </div>
+                ) : null}
               </td>
               <td>
                 <select
@@ -158,17 +167,6 @@ export function PortsBlock(props: {
               </td>
               <td>
                 <PortRowActions row={row} onForward={onForward} />
-              </td>
-              <td>
-                {row.drift !== null ? <div data-testid={`drift-${String(row.port)}`}>{row.drift.text}</div> : null}
-                {row.fix !== null ? (
-                  <div data-testid={`fix-${String(row.port)}`}>
-                    <div className="wdp-muted">
-                      修复序列（先删后加）：{row.fix.steps.map((step) => `${String(step.order)}.${step.kind}`).join(' → ')}
-                    </div>
-                    {row.fix.blocked !== null ? <div className="wdp-error">{row.fix.blocked.message}</div> : null}
-                  </div>
-                ) : null}
               </td>
             </tr>
           ))}
