@@ -1,0 +1,21 @@
+{
+  "name": "dsh-wsl-docker-ports-bundle",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "WSL Docker Ports（组合包壳）：只声明卡片标题与两个组件行，实现都在 dsh-wsl-docker-ports / dsh-wsl-docker-containers",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "dsh-wsl-docker-ports": "workspace:*",
+    "dsh-wsl-docker-containers": "workspace:*"
+  },
+  "files": [
+    "cordis.patch.yml",
+    "locale/**",
+    "README.md"
+  ]
+}

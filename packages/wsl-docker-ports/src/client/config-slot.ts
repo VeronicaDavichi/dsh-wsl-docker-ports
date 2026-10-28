@@ -38,7 +38,7 @@ export const CONFIG_SLOT_NAME = 'plugins.bundle.config';
 export const ROW_SLOT_NAME = 'plugins.row.config';
 
 /** 注册键 = 组合包包名（bundle 级槽按包名寻址；写错 = 卡片上没有这一页） */
-export const CONFIG_ROW_KEY = 'dsh-wsl-docker-ports';
+export const CONFIG_ROW_KEY = 'dsh-wsl-docker-ports-bundle';
 
 export const AUTO_FORM_EFFECT_LABEL = `${CONFIG_SLOT_NAME}: auto-form off`;
 

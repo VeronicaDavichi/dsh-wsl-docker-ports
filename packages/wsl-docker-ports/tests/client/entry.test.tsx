@@ -242,13 +242,13 @@ describe('T5.1 注册形状（contract §C9/§C10）', () => {
     // 017：配置槽换成**组合包级**（plugins.bundle.config）⇒ key = **包名**（不是行 id）
     expect(CONFIG_SLOT_NAME).toBe('plugins.bundle.config');
     // 017 六订·六（主人 2026-10-27：「内页有了的外页就不需要了」）⇒ 组合包级槽不再注册
-    expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === CONFIG_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['dsh-wsl-docker-ports']);
+    expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === CONFIG_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['dsh-wsl-docker-ports-bundle']);
     // 017 六订·二：行级槽 key = 宿主 `rowConfigKey(bundle, rowId)` = `包名#行 id`
     expect(ROW_SLOT_NAME).toBe('plugins.row.config');
-    expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === ROW_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['dsh-wsl-docker-ports#wsl-ports']);
+    expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === ROW_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['dsh-wsl-docker-ports-bundle#wsl-ports']);
     // 017 六订·二：行级槽 key = 宿主 `rowConfigKey(bundle, rowId)` = `包名#行 id`
     expect(ROW_SLOT_NAME).toBe('plugins.row.config');
-    expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === ROW_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['dsh-wsl-docker-ports#wsl-ports']);
+    expect(fake.slotRegistrations.filter((registration) => registration.options['name'] === ROW_SLOT_NAME).map((registration) => registration.options['key'])).toEqual(['dsh-wsl-docker-ports-bundle#wsl-ports']);
     expect(fake.slotRegistrations.every((registration) => typeof registration.component === 'function')).toBe(true);
     // 016：样式 / 右栏注册 / 配置槽 —— 只剩本包一条 ⇒ 3 个 effect
     expect(fake.effects).toHaveLength(4);

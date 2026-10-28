@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "WSL Docker Ports",
+    "description": "Inspect container port mappings and portproxy rules; apply or remove forwarding per port (read-only fact layer, no side effects on open)."
+  }
+}

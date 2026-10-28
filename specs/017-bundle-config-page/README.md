@@ -945,3 +945,49 @@ computed max-width = 139px
 
 **只报不改**：容器页页签仍是 `WSL Docker 容器`（121px，窄栏里会被截成 `WSL Docker 容…` —— 就是主人截图里那个样子）。
 要不要一起改成 `WSL 容器`（≈70px，不会被截）？一个常量的事，等一句话。
+
+#### 六订·三十（2026-10-28，主人第二十九次拍板）
+
+主人（截图：卡片大标题 `WSL Docker Ports`、组件行也被跟着改成同名）：「你改上面的不要把下面包含组件改了，
+现在把包含组件改回 WSL Port Forwarding」。问过一轮后主人选 **C：拆一个壳包**。
+
+**根因（读宿主源码确认，不是猜）**
+
+| 界面位置 | 宿主取值 |
+| --- | --- |
+| 卡片大标题 | `packageText(pkg)` ⇒ **组合包** `locale/*.json` 的 `meta.title` |
+| 「包含的组件」行标题 | `rowText(row)` ⇒ 该行 `name` 指向的**那个包**的 `meta.title` |
+
+拆包前本包既是组合包又是自己的第一行 ⇒ 两处读同一份文件，**必然同名**，改一个就是改两个。
+
+**改法**
+
+1. 新壳包 `packages/wsl-docker-ports-bundle`（**零代码**）：`package.json`（`dsh.bundle.patch`）+
+   `cordis.patch.yml`（插 `wsl-ports` / `wsl-containers` 两行，行 id 不变）+ `locale/{zh,en}.json`
+   （`meta.title` = `WSL Docker Ports`）+ `README.md`。
+2. `dsh-wsl-docker-ports`：摘掉 `dsh.bundle`、交出 `cordis.patch.yml`；locale 标题回 `WSL Port Forwarding`。
+3. 组合包名变了 ⇒ 客户端两个配置槽的键跟着改（宿主按 `entryKey: pkg.name` / `${bundle}#${rowId}` 匹配）：
+   `CONFIG_ROW_KEY` = `dsh-wsl-docker-ports-bundle`、行级键 = `dsh-wsl-docker-ports-bundle#wsl-ports`。
+   **若不改，卡片页上的「目标发行版」配置区会整块空掉** —— 这是拆包的唯一副作用，已用真机反证。
+4. 验收 profile：`dependencies` 增壳包 `link:`、`dsh.profile.bundles` 改指壳包（两个真实包仍 `link:` 装，
+   因为 `link:` 不装依赖），`pnpm install` exit 0。
+
+**真机复测（43391 / 插件页）**
+
+```
+卡片大标题：WSL Docker Ports        包 id：dsh-wsl-docker-ports-bundle
+包含的组件（2）：WSL Port Forwarding（wsl-ports / dsh-wsl-docker-ports）
+                 Docker Containers（wsl-containers / dsh-wsl-docker-containers）
+目标发行版配置区：在场（证明新的组合包键匹配成功）
+右侧页签：["WSL Docker 容器", "WSL 端口转发"] 都在，无「配置页未注册」告警
+```
+
+- 判据：`tests/unit/locale-title.test.ts` 重写为 3 条**文件级**断言 ——
+  ① 壳包 locale = `WSL Docker Ports` 且 `dsh.bundle.patch` 指向的文件真实存在；
+  ② 本包 locale = `WSL Port Forwarding` 且 `dsh.bundle` 已摘、`cordis.patch.yml` 不在了；
+  ③ 壳包 patch 插的两行 name 就是两个真实包名（反向断言：行 name 不得是壳包自己）。
+- 键的判据同步：`config-slot.test.ts` 3 处、`entry.test.tsx` 3 处改为新组合包键。
+- 证据：[evidence-card-vs-row-titles.png](./evidence-card-vs-row-titles.png)。
+
+**超出主人原话的一处改动（已在报告里点名）**：`src/client/config-slot.ts` / `src/client/index.ts`
+两个槽键 + 三处注释——不改则卡片配置区消失，属「拆包的必然连带」，不是顺手改。

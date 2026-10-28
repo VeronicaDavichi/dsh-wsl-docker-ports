@@ -225,8 +225,8 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
         paneProps: { ...ownerProps, settings, write, loadRawOutput: rawOutput },
       });
   for (const [key, slot, exportName] of [
-    ['dsh-wsl-docker-ports', CONFIG_SLOT_NAME, 'BundleConfigPage'],
-    ['dsh-wsl-docker-ports#wsl-ports', ROW_SLOT_NAME, 'RowConfigPage'],
+    ['dsh-wsl-docker-ports-bundle', CONFIG_SLOT_NAME, 'BundleConfigPage'],
+    ['dsh-wsl-docker-ports-bundle#wsl-ports', ROW_SLOT_NAME, 'RowConfigPage'],
   ] as const) {
     const slotOutcome = registerConfigSlot(ctx as unknown as ConfigSlotContext, seatOf(exportName) as unknown as (props: never) => unknown, key, slot);
     if (!slotOutcome.registered) console.warn(`${CLIENT_LOG_TAG} 配置页未注册（${slot}）：${slotOutcome.reason ?? '原因未记录'}`);

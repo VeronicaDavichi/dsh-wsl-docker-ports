@@ -1,5 +1,5 @@
 /**
- * **行级配置页**（宿主 `plugins.row.config`，键 = `dsh-wsl-docker-ports#wsl-ports`）的整页装配。
+ * **行级配置页**（宿主 `plugins.row.config`，键 = `dsh-wsl-docker-ports-bundle#wsl-ports`）的整页装配。
  *
  * 主人 2026-10-27 两次拍板（原话）：
  * 「把 写通道 / 写通道预演 / 端口声明（managedPorts）/ 端口转发页刷新频次 / 提权策略 / 端口作用域 都放进去」

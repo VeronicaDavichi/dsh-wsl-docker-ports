@@ -1,0 +1,18 @@
+# 017 六订·三十（2026-10-28 主人拍板）：把「卡片标题」与「组件行标题」拆成两个来源。
+#
+# 宿主的事实（读源码确认，不是猜）：
+# - 卡片大标题 = `packageText(pkg)` ⇒ 本**组合包**包的 locale 的 `meta.title`；
+# - 「包含的组件」行标题 = `rowText(row)` ⇒ **该行 name 指向的那个包**的 locale `meta.title`。
+# 两者在「组合包自己既是卡又是行」时读同一份文件 ⇒ 必然同名。所以拆出本壳包：
+#   卡片（本包）= WSL Docker Ports；行（dsh-wsl-docker-ports）= WSL Port Forwarding。
+#
+# 行 id **故意短于包名**：宿主组件行会同时渲染 `rowId` 与 `moduleName`，
+# 两者相同就出现重复文字。行 id 同时是 settings 命名空间 ⇒ 改它必须同步
+# `src/client/settings-pipe.ts` 与 profile 的 config 块。
+- insert:
+    - id: wsl-ports
+      name: dsh-wsl-docker-ports
+
+- insert:
+    - id: wsl-containers
+      name: dsh-wsl-docker-containers

@@ -68,11 +68,11 @@ test('U3 · 注册键 = plugins.bundle.config + 组合包名；关闭自动表�
 
   assert.equal(result.registered, true);
   assert.equal(result.slotName, 'plugins.bundle.config');
-  assert.equal(result.key, 'dsh-wsl-docker-ports');
+  assert.equal(result.key, 'dsh-wsl-docker-ports-bundle');
   assert.equal(CONFIG_SLOT_NAME, 'plugins.bundle.config');
-  assert.equal(CONFIG_ROW_KEY, 'dsh-wsl-docker-ports');
+  assert.equal(CONFIG_ROW_KEY, 'dsh-wsl-docker-ports-bundle');
   assert.deepEqual(calls.injects, ['plugins.bundle.config']);
-  assert.deepEqual(calls.registers, [{ name: 'plugins.bundle.config', key: 'dsh-wsl-docker-ports' }]);
+  assert.deepEqual(calls.registers, [{ name: 'plugins.bundle.config', key: 'dsh-wsl-docker-ports-bundle' }]);
   assert.equal(configureCalls.length >= 1, true, 'configure({auto:false}) 必须真调（否则同一份配置出现两张表单）');
   assert.deepEqual(configureCalls.at(-1), { auto: false, fiber: { fake: 'fiber' } });
   assert.equal(result.autoForm.kind, 'configured');
