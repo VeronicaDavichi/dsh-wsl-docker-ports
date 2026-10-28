@@ -21,6 +21,8 @@
  */
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import { installConfigStyles } from './config-css.ts';
 import type { ReactElement } from 'react';
 
 import type { FetchLike } from '../host.ts';
@@ -78,6 +80,9 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
   const [tokenDraft, setTokenDraft] = useState('');
   const [tokenPresent, setTokenPresent] = useState<boolean>(() => (runtime?.token() ?? '') !== '');
   const alive = useRef(true);
+
+  // 侧边栏与配置内页**同一份版式**（主人 2026-10-28：「这个css和插件配置内页保持一致」）
+  useEffect(() => installConfigStyles(), []);
   const lastSnapshot = useRef<ContainersSnapshotView | null>(null);
   // D2：错误态去重后再 setState —— 轮询成功且数据未变时**连 `setError(null)` 都不发**，
   // 否则 React 仍会为一次同值 dispatch 付一次提交（实测 1 次重绘，Profiler 计数不撒谎）。
@@ -202,7 +207,7 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
     createElement(
       'div',
       { className: 'wdp-row wdp-toolbar' },
-      createElement('button', { type: 'button', 'data-testid': CID.refresh, onClick: () => void load(), disabled: busy !== null }, '刷新'),
+      createElement('button', { type: 'button', className: 'wdp-cfg-btn', 'data-testid': CID.refresh, onClick: () => void load(), disabled: busy !== null }, '刷新'),
       createElement('span', { className: 'wdp-muted', 'data-testid': CID.tokenState }, tokenPresent ? '容器通道凭据：已保存（本会话）' : '容器通道凭据：未保存'),
     ),
     createElement(
@@ -210,12 +215,13 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
       { className: 'wdp-row' },
       createElement('input', {
         type: 'password',
+        className: 'wdp-cfg-input',
         'data-testid': CID.token,
         placeholder: '容器通道凭据（与转发侧各自独立）',
         value: tokenDraft,
         onChange: (event: { target: { value: string } }) => setTokenDraft(event.target.value),
       }),
-      createElement('button', { type: 'button', 'data-testid': CID.tokenSave, onClick: saveToken }, '保存凭据'),
+      createElement('button', { type: 'button', className: 'wdp-cfg-btn', 'data-testid': CID.tokenSave, onClick: saveToken }, '保存凭据'),
     ),
     configNote === null ? null : createElement('p', { className: 'wdp-note' }, configNote),
     snapshot?.distro?.message == null ? null : createElement('p', { className: 'wdp-warn' }, snapshot.distro.message),
@@ -248,6 +254,7 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
                       {
                         key: action,
                         type: 'button',
+                        className: 'wdp-cfg-btn wdp-cfg-btn-sm',
                         'data-testid': actionTestId(row.id, action),
                         disabled: busy !== null,
                         onClick: () => void act(row.id, action),
@@ -255,7 +262,7 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
                       action === 'start' ? '启动' : action === 'stop' ? '停止' : '重启',
                     ),
                   ),
-                  createElement('button', { type: 'button', 'data-testid': `btn-containers-logs-${row.id}`, disabled: busy !== null, onClick: () => void openLogs(row.id) }, '日志'),
+                  createElement('button', { type: 'button', className: 'wdp-cfg-btn wdp-cfg-btn-sm', 'data-testid': `btn-containers-logs-${row.id}`, disabled: busy !== null, onClick: () => void openLogs(row.id) }, '日志'),
                 ),
               ),
             ),
@@ -266,7 +273,7 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
       : createElement(
           'div',
           { className: 'wdp-logs' },
-          createElement('div', { className: 'wdp-row' }, createElement('strong', null, `日志：${logs.id}`), createElement('button', { type: 'button', 'data-testid': CID.logsClose, onClick: () => setLogs(null) }, '关闭')),
+          createElement('div', { className: 'wdp-row' }, createElement('strong', null, `日志：${logs.id}`), createElement('button', { type: 'button', className: 'wdp-cfg-btn', 'data-testid': CID.logsClose, onClick: () => setLogs(null) }, '关闭')),
           createElement('pre', { 'data-testid': CID.logs, className: 'wdp-pre' }, logs.text),
         ),
     snapshot !== null && snapshot.notes.length > 0

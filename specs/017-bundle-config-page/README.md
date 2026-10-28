@@ -507,3 +507,20 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
   `~/.dsh/profiles/accept-docker-ports/cordis.patch.yml` 的 `wsl-containers.refreshIntervalSec` 落盘为 `15`；
   随后 `15 → 关闭(0)` 再保存 → 落盘回 `0`（**验收后已还原**）。
 - 证据：[evidence-containers-row-save.png](./evidence-containers-row-save.png)（「有未保存的改动」+ 保存键亮点）。
+#### 六订·十四（2026-10-28，主人第十二次拍板）
+
+主人原话：「回到侧边栏这边，这个css和插件配置内页保持一致」（截图指向右侧栏容器页的「刷新」键）。
+
+根因：侧边栏 `pane.tsx` 的按钮**一个 className 都没有**（`<button>` 裸元素 ⇒ 吃宿主默认外观，
+截图里那种白描边就是这么来的），而配置内页用的是 `.wdp-cfg-btn` / `.wdp-cfg-input`。
+
+- **同一份样式、同一个类**：`pane.tsx` 挂载时 `installConfigStyles()`（幂等），按钮改用
+  `wdp-cfg-btn`、凭据输入框改用 `wdp-cfg-input` ⇒ 与配置内页**字面同一套规则**，不是抄数值。
+- 表格行内动作（启动/停止/重启/日志）用 `wdp-cfg-btn wdp-cfg-btn-sm`（26px，否则 34px 会把行撑开）；
+  `.wdp-actions { display:flex; flex-wrap:wrap; gap:4px }` 让它们横排（原先竖着堆 4 层）。
+- 实测（侧边栏 417 px）：刷新 **34 × 56**、保存凭据 **34 × 82**、行内动作 **26 × 30**，
+  三者 `radius 12` / `bg rgb(53,54,56)` / 边框 `1px rgba(255,255,255,0.2)` —— 与配置内页「保存设置」逐项一致。
+- 判据：`containers-pane.test.tsx` 断言 `btn-containers-refresh` 的 `className === 'wdp-cfg-btn'`。
+- 证据：[evidence-containers-pane-buttons.png](./evidence-containers-pane-buttons.png)。
+- ⚠️ **未做（留给你拍板）**：侧边栏表格仍是 5 列铺在 417 px 里，「状态」「动作」列换行/横向溢出，
+  行高被文字换行撑到 124 px。这属于**布局**不是按钮样式，未擅自改。

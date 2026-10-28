@@ -295,7 +295,9 @@ describe('D2 容器页刷新间隔（017 后：页头无控件，只按配置值
     await flush();
     await flush();
 
-    fireEvent.click(screen.getByTestId(CID.refresh));
+    // 主人 2026-10-28：「回到侧边栏这边，这个css和插件配置内页保持一致」⇒ 按钮用配置页同一套类名
+  expect((screen.getByTestId(CID.refresh) as HTMLButtonElement).className).toBe('wdp-cfg-btn');
+  fireEvent.click(screen.getByTestId(CID.refresh));
     await flush();
     await flush();
 
