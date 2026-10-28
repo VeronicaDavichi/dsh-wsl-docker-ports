@@ -306,3 +306,76 @@ describe('D2 容器页刷新间隔（017 后：页头无控件，只按配置值
     console.log(`  · D2-5 点「刷新」后：配置写 ${String(writes.length)} 次、请求 ${String(probeCalls)} 次`);
   });
 });
+/* ─────────────────── 六订·三十一：页头「上次刷新 HH:mm:ss」（2026-10-28 主人） ───────────────────
+ * 主人原话：「先在刷新的右边容器通道凭据的左边插入上次刷新时间」。
+ * 判据三条（都可二值判定）：
+ *   ① 页头同一行里三件套的**顺序** = 刷新 → 上次刷新 → 容器通道凭据，且没成功前写 `上次刷新 —`；
+ *   ② 首屏取数成功 ⇒ 变成 `上次刷新 HH:mm:ss`（本地时间，逐字符比对）；
+ *   ③ 手动点「刷新」⇒ 时间跟着走；**轮询到同一份数据 ⇒ 时间不动**（保住 D2-3 的零重绘）。
+ */
+describe('六订·三十一 页头「上次刷新 HH:mm:ss」', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    // 固定本地时间 09:07:05 ⇒ 断言可以写死字面量（不看运行机时区/系统时钟）
+    vi.setSystemTime(new Date(2026, 9, 28, 9, 7, 5));
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it('① 顺序 = 刷新 → 上次刷新 → 容器通道凭据；还没成功刷新时写 `上次刷新 —`', async () => {
+    // 取数永不 resolve ⇒ 停在「还没成功过」那一刻
+    globalThis.fetch = (() => new Promise(() => undefined)) as unknown as typeof globalThis.fetch;
+    const { container } = render(<ContainersPane runtime={productionRuntime()} /> as ReactElement);
+    await flush();
+
+    const toolbar = container.querySelector('.wdp-toolbar');
+    expect(toolbar).not.toBeNull();
+    const parts = [...(toolbar?.children ?? [])].map((node) => (node.textContent ?? '').trim());
+    expect(parts).toEqual(['刷新', '上次刷新 —', '容器通道凭据：未保存']);
+    console.log(`  · ① 页头三件套顺序：${parts.join(' → ')}`);
+  });
+
+  it('② 首屏取数成功 ⇒ 显示 `上次刷新 09:07:05`（本地时间）', async () => {
+    globalThis.fetch = (async () =>
+      ({ ok: true, status: 200, json: async () => SNAPSHOT })) as unknown as typeof globalThis.fetch;
+    render(<ContainersPane runtime={productionRuntime()} /> as ReactElement);
+    await flush();
+    await flush();
+
+    const stamp = screen.getByTestId(CID.refreshedAt);
+    expect(stamp.textContent).toBe('上次刷新 09:07:05');
+    console.log(`  · ② 首屏成功后：${String(stamp.textContent)}`);
+  });
+
+  it('③ 手动刷新 ⇒ 时间走到当前时刻；轮询同一份数据 ⇒ 时间**不动**（D2 零重绘不破）', async () => {
+    let version = 0;
+    globalThis.fetch = (async () => {
+      version += 1;
+      return { ok: true, status: 200, json: async () => SNAPSHOT };
+    }) as unknown as typeof globalThis.fetch;
+
+    const runtime: ContainersRuntime = { ...productionRuntime(), settings: () => recordingSettings(15, []) };
+    render(<ContainersPane runtime={runtime} /> as ReactElement);
+    await flush();
+    await flush();
+    expect(screen.getByTestId(CID.refreshedAt).textContent).toBe('上次刷新 09:07:05');
+
+    // 轮询到同一份数据（载荷逐字节相同）：时间原地不动
+    vi.setSystemTime(new Date(2026, 9, 28, 9, 7, 20));
+    await advance(15_000);
+    expect(screen.getByTestId(CID.refreshedAt).textContent).toBe('上次刷新 09:07:05');
+
+    // 手动刷新：即便载荷没变，也盖上新时刻（这次刷新本来就重绘）
+    vi.setSystemTime(new Date(2026, 9, 28, 9, 8, 42));
+    fireEvent.click(screen.getByTestId(CID.refresh));
+    await flush();
+    await flush();
+    expect(screen.getByTestId(CID.refreshedAt).textContent).toBe('上次刷新 09:08:42');
+    console.log(
+      `  · ③ 轮询(未变)后 ${String(screen.getByTestId(CID.refreshedAt).textContent)}、手动刷新后 09:08:42、请求 ${String(version)} 次`,
+    );
+  });
+});

@@ -45,9 +45,15 @@ const PORTS_SERVICE = 'wslDockerPorts';
  */
 const PACKAGES = [
   { dir: 'packages/wsl-docker-core', name: 'dsh-wsl-docker-core', plugin: false, bundle: false },
-  { dir: 'packages/wsl-docker-ports', name: 'dsh-wsl-docker-ports', plugin: true, bundle: true },
+  // 017 六订·三十：**卡与行分家** —— 壳包出卡（有 dsh.bundle.patch、无客户端产物），
+  // 两个真包都只是卡里的组件行（标题因此各读自己的 locale）。
+  { dir: 'packages/wsl-docker-ports-bundle', name: 'dsh-wsl-docker-ports-bundle', plugin: false, bundle: true },
+  { dir: 'packages/wsl-docker-ports', name: 'dsh-wsl-docker-ports', plugin: true, bundle: false },
   { dir: 'packages/wsl-docker-containers', name: 'dsh-wsl-docker-containers', plugin: true, bundle: false },
 ];
+
+/** 带 locale 的包（= 会在界面上出现一串显示名的那些）：两张卡标题 + 两条行标题 */
+const TEXT_PACKAGES = PACKAGES.filter((pkg) => pkg.plugin || pkg.bundle);
 
 const readJson = (rel: string): any => JSON.parse(readFileSync(path.join(REPO, rel), 'utf8'));
 
@@ -107,9 +113,9 @@ test('D3-4 行 id / 服务名 / settings 命名空间三件套与转发侧零重
 
 /* ───────────── 3. 三个包的显示名真的不同（包级 locale） ───────────── */
 
-test('D3-5 两个插件的 zh / en 显示名两两不同（宿主读的就是 meta.title）', () => {
-  // ⚠️ 只测**插件**包：core 是纯库，没有 locale、也不出现在插件列表里（见 D3-6）
-  const plugins = PACKAGES.filter((pkg) => pkg.plugin);
+test('D3-5 带 locale 的包 zh / en 显示名两两不同（宿主读的就是 meta.title）', () => {
+  // ⚠️ 只测有 locale 的包：core 是纯库，没有 locale、也不出现在插件列表里（见 D3-6）
+  const plugins = TEXT_PACKAGES;
   const zh = plugins.map((pkg) => readJson(path.posix.join(pkg.dir, 'locale/zh.json')).meta);
   const en = plugins.map((pkg) => readJson(path.posix.join(pkg.dir, 'locale/en.json')).meta);
 
@@ -127,7 +133,9 @@ test('D3-5 两个插件的 zh / en 显示名两两不同（宿主读的就是 me
   const enTitles = en.map((meta) => meta.title);
   assert.equal(new Set(zhTitles).size, zhTitles.length, `两个插件的 zh 显示名必须不同：${zhTitles.join(' / ')}`);
   assert.equal(new Set(enTitles).size, enTitles.length, `两个插件的 en 显示名必须不同：${enTitles.join(' / ')}`);
-  assert.notEqual(zhTitles[0], zhTitles[1], '转发包与容器包的显示名必须分得清（插件列表里两行并排）');
+  assert.notEqual(zhTitles[0], zhTitles[1], '卡片标题与转发行的标题必须分得清（同一张卡上并排）');
+  assert.notEqual(zhTitles[0], zhTitles[2], '卡片标题与容器行的标题必须分得清');
+  assert.notEqual(zhTitles[1], zhTitles[2], '两条组件行的标题必须分得清');
 });
 
 /* ───────────── 4. 三种角色：纯库 / 卡（bundle）/ 组件 ───────────── */
@@ -159,8 +167,8 @@ test('D3-6 只有转发包是 bundle（出卡）；容器包是组件包（不�
   }
 });
 
-test('D3-7 一张卡两个组件：转发包的 patch 插两行，指向不同模块；行 id 短于包名（避免组件行重复文字）', () => {
-  const patchFile = path.join(REPO, 'packages/wsl-docker-ports/cordis.patch.yml');
+test('D3-7 一张卡两个组件：壳包的 patch 插两行，指向不同模块；行 id 短于包名（避免组件行重复文字）', () => {
+  const patchFile = path.join(REPO, 'packages/wsl-docker-ports-bundle/cordis.patch.yml');
   const yml = readFileSync(patchFile, 'utf8');
 
   // 行 id 与模块名都抓出来（本仓的 patch 形态固定：- id: X / name: Y）
@@ -184,4 +192,14 @@ test('D3-7 一张卡两个组件：转发包的 patch 插两行，指向不同�
   for (const row of rows) {
     assert.notEqual(row.id, row.name, `行 id 与模块名相同会让组件行重复渲染同一串文字：${row.id}`);
   }
+
+  // 🔴 017 六订·三十：卡与行**必须**读不同的包 —— 卡片名读壳包 locale，行标题读行包 locale。
+  //    若两者又指回同一个包，这张卡的两个标题必然同名（就是主人截图里那个 bug）。
+  const shellManifest = readJson('packages/wsl-docker-ports-bundle/package.json');
+  assert.equal(shellManifest.name, 'dsh-wsl-docker-ports-bundle');
+  assert.equal(shellManifest.dsh?.bundle?.patch, './cordis.patch.yml');
+  assert.equal(readJson('packages/wsl-docker-ports/package.json').dsh?.bundle, undefined, '转发包不再是卡');
+  const shellTitle = readJson('packages/wsl-docker-ports-bundle/locale/zh.json').meta.title;
+  const portsTitle = readJson('packages/wsl-docker-ports/locale/zh.json').meta.title;
+  assert.notEqual(shellTitle, portsTitle, `卡片标题与组件行标题必须不同（现在是「${shellTitle}」/「${portsTitle}」）`);
 });
