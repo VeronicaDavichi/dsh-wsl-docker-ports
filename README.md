@@ -240,4 +240,6 @@ node packages/wsl-docker-containers/scripts/build-client.mjs   # 三个插件包
 
 ## 许可证
 
-**暂未选择许可证**（仓库里的 `package.json` 均为 `private: true`）。在主人拍板前按「保留所有权利」处理；要开源的话先定 MIT / Apache-2.0，我再补 `LICENSE` 与各包 `license` 字段。
+[MIT](./LICENSE) © 2026 VeronicaDavichi
+
+随便用、改、商用、再分发，只要保留版权与许可声明；**不提供任何担保**。本仓所有包（`package.json` 的 `license` 字段）统一 MIT。
