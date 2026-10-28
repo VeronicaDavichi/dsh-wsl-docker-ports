@@ -101,10 +101,10 @@ Windows 上跑 WSL2 的人都会撞上同一堵墙：容器在 WSL 里监听着 
 
 > 两条路，按需要选：**A. 从 npm 装**（一行，适合只想用）；**B. `link:` 本地路径**（适合改源码，路径即版本）。
 
-### A. 从 npm 装（`0.1.1` 起）
+### A. 从 npm 装（`0.1.0` 起）
 
 ```powershell
-dsh plugin --profile <name> add "dsh-wsl-docker-ports-bundle@0.1.1"
+dsh plugin --profile <name> add "dsh-wsl-docker-ports-bundle@0.1.0"
 dsh --profile <name>
 ```
 
@@ -114,7 +114,7 @@ GUI 里「添加插件」直接输包名即可：
 dsh-wsl-docker-ports-bundle
 ```
 
-公共 npm 上的五个包（**无 scope**，`latest` = 0.1.1）：
+公共 npm 上的五个包（**无 scope**，`latest` = 0.1.0）：
 
 | 包 | 作用 |
 | --- | --- |
@@ -124,7 +124,7 @@ dsh-wsl-docker-ports-bundle
 | `dsh-wsl-docker-core` | 运行时核心（多锚点解析宿主 schemastery、探测解析等） |
 | `dsh-wsl-shared` | 纯逻辑共享层（`wsl -l -v` / `netsh` 解析、路径翻译、错误模型） |
 
-> ⚠️ **别装 `0.1.0`**：那一版的 `dsh-wsl-shared` / `dsh-wsl-docker-core` 还是**源码包**（`exports` 指向 `src/*.ts`），装进 `node_modules` 后 Node 明确禁止类型剥离（`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`）⇒ 插件加载即崩。0.1.0 已在 npm 上 `deprecate`，用 `0.1.1`。
+> 📌 **版本沿革**：2026-10-28 首次发布的 `0.1.0` 是坏的（`dsh-wsl-shared` / `dsh-wsl-docker-core` 当时是**源码包**，`exports` 指向 `src/*.ts`，装进 `node_modules` 后 Node 禁止类型剥离 `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` ⇒ 插件加载即崩）。该版本已**整包删除**，现在 npm 上的 `0.1.0` 是**修复版**（shared/core 已编译为 `lib/`）。
 >
 > `dsh-terminal-profiles`（受管终端）**尚未发布**，目前只能走 B 路 `link:`。
 

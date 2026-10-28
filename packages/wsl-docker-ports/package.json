@@ -1,6 +1,6 @@
 {
   "name": "dsh-wsl-docker-ports",
-  "version": "0.1.1",
+  "version": "0.1.0",
   "license": "MIT",
   "type": "module",
   "description": "WSL Docker 管理器 · 端口转发可视化（插件包）：只读事实层（docker／netsh）与提权写路径",
