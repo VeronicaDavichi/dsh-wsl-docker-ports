@@ -470,3 +470,22 @@ C11 改「逗号写法能保存」、C12 改「控件是 TEXTAREA + 一行一项
   `0.5px border-l4` / `radius-md 12` / `bg-layer-3` / `13px`）。实测两颗按钮除宽度（文字长度）外
   完全一致：`wdp-cfg-btn · 34 px 高 · radius 12 px · bg rgb(53,54,56) · padding 14 px · 13 px`。
   判据：`config-raw-page.test.tsx` R1 断言 `className === 'wdp-cfg-btn'`（不再允许自造类）。
+#### 六订·十二（2026-10-28，主人第十次拍板）
+
+主人原话：「把 WSL Docker 容器（本行配置）『只显示容器行独占的字段：刷新频次与通道凭据。目标发行版是
+两个组件共用的……』这些字去掉 剩下的东西保持 css 和其他的一致」。
+
+- **删字**：容器行配置页不再自带 `<h3>WSL Docker 容器（本行配置）</h3>` 与那段说明（宿主已经在上方画了
+  「Docker Containers」标题与行描述，重复讲一遍只是噪音）。
+- **换版式**：字段语法与转发侧配置页同一套 —— `.wdp-cfg` / `.wdp-cfg-field`（`padding 12px 0`、
+  相邻 0.5px `border-l2` 分隔）/ `.wdp-cfg-label`（13px / 500）/ `.wdp-cfg-input`
+  （34px / `radius-md` / `bg-layer-3` / 0.5px `border-l4`）/ `.wdp-cfg-btn`（34px / 14px 内边距）/
+  `.wdp-cfg-hint`（12px / `label-tertiary`）。实测：`select` 34px / radius 12 / `rgb(53,54,56)`；
+  「保存凭据」34px / radius 12；label 13px；field 上内边距 12px ⇒ 与转发侧逐项一致。
+- 🔴 **体积账**：这 15 条规则塞进主包 `styles.ts` 会让容器主包 **31,324 → 34,202 B**，顶穿棘轮地板
+  （`main-bundle-budgets.mjs` 的 `dsh-wsl-docker-containers: 31,324` 只降不升）⇒ 搬到 chunk 侧新模块
+  `containers/config-css.ts`（挂载时注入、卸载时移除），主包回到 **31,324 B**、
+  `client.containers.js` 23,700 → **27,282 B**（chunk 无地板），`assert-client-split` 14/14 绿。
+- 判据：`containers-config-page.test.tsx` R1 增加「没有『本行配置』/『只显示容器行独占』字样」+
+  `label`/`select`/`button` 的 `className` 分别是 `wdp-cfg-label` / `wdp-cfg-input` / `wdp-cfg-btn`。
+- 证据：[evidence-containers-row-config-clean.png](./evidence-containers-row-config-clean.png)。

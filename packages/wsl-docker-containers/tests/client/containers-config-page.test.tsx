@@ -55,6 +55,13 @@ describe('容器行配置页：刷新频次就在这一页', () => {
       expect((screen.getByTestId(CONFIG_CID.refresh) as HTMLSelectElement).value).toBe('30');
     });
     expect(screen.getByTestId(CONFIG_CID.refreshState).textContent).toContain('每 30 秒');
+    // 主人 2026-10-28：「把『WSL Docker 容器（本行配置）』『只显示容器行独占的字段……』这些字去掉
+    // 剩下的东西保持 css 和其他的一致」⇒ 只剩字段，且用与转发侧同一套类名
+    expect(screen.queryByText(/本行配置/u)).toBeNull();
+    expect(screen.queryByText(/只显示容器行独占/u)).toBeNull();
+    expect(screen.getByText('容器页刷新频次').className).toBe('wdp-cfg-label');
+    expect((screen.getByTestId(CONFIG_CID.refresh) as HTMLSelectElement).className).toBe('wdp-cfg-input');
+    expect((screen.getByTestId(CONFIG_CID.tokenSave) as HTMLButtonElement).className).toBe('wdp-cfg-btn');
 
     fireEvent.change(screen.getByTestId(CONFIG_CID.refresh), { target: { value: '60' } });
     await act(async () => {
