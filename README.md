@@ -101,10 +101,10 @@ Windows 上跑 WSL2 的人都会撞上同一堵墙：容器在 WSL 里监听着 
 
 > 两条路，按需要选：**A. 从 npm 装**（一行，适合只想用）；**B. `link:` 本地路径**（适合改源码，路径即版本）。
 
-### A. 从 npm 装（`0.1.0` 起）
+### A. 从 npm 装（`0.1.2` 起）
 
 ```powershell
-dsh plugin --profile <name> add "dsh-wsl-docker-ports-bundle@0.1.0"
+dsh plugin --profile <name> add "dsh-wsl-docker-ports-bundle@0.1.2"
 dsh --profile <name>
 ```
 
@@ -114,7 +114,7 @@ GUI 里「添加插件」直接输包名即可：
 dsh-wsl-docker-ports-bundle
 ```
 
-公共 npm 上的五个包（**无 scope**，`latest` = 0.1.0）：
+公共 npm 上的五个包（**无 scope**，`latest` = 0.1.2）：
 
 | 包 | 作用 |
 | --- | --- |
@@ -124,7 +124,7 @@ dsh-wsl-docker-ports-bundle
 | `dsh-wsl-docker-core` | 运行时核心（多锚点解析宿主 schemastery、探测解析等） |
 | `dsh-wsl-shared` | 纯逻辑共享层（`wsl -l -v` / `netsh` 解析、路径翻译、错误模型） |
 
-> 📌 **版本沿革**：2026-10-28 首次发布的 `0.1.0` 是坏的（`dsh-wsl-shared` / `dsh-wsl-docker-core` 当时是**源码包**，`exports` 指向 `src/*.ts`，装进 `node_modules` 后 Node 禁止类型剥离 `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` ⇒ 插件加载即崩）。该版本已**整包删除**，现在 npm 上的 `0.1.0` 是**修复版**（shared/core 已编译为 `lib/`）。
+> 📌 **版本沿革**：`0.1.0` 首发是坏的（shared/core 当时是源码包，装进 `node_modules` 后 Node 禁止类型剥离），`0.1.1` 修好但随后被删 —— npm 对被删版本号**永久占位**，两者都不可复用，所以现在用 **`0.1.2`**。
 >
 > `dsh-terminal-profiles`（受管终端）**尚未发布**，目前只能走 B 路 `link:`。
 
@@ -227,7 +227,7 @@ node scripts/release-smoke.mjs --tarballs <坏包目录> --expect-fail
 | 规矩 | 内容 |
 | --- | --- |
 | **① 冒烟绿才发** | `release-smoke` exit 0（4 个包 import 全通 + ports/containers 的 `Config`/`apply` 都是函数）⇒ 允许 publish；红则**禁止发布** |
-| **② 永不删包、永不删版本** | 有问题一律**发新版本号**修（`0.1.1`、`0.1.2`…）。整包 unpublish 会触发 npm「**24 小时内不得重发同名**」（实测 `cannot be republished until 24 hours have passed`）⇒ 直接断供 24 小时 |
+| **② 永不删包、永不删版本** | 有问题一律**发新版本号**修。两级代价都实测过：① 整包 unpublish ⇒ npm「**24 小时内不得重发同名**」（`cannot be republished until 24 hours have passed`）⇒ 断供 24 小时；② 即便过了 24h，**被删的版本号本身也永久不可复用**（`Cannot publish over previously published version "0.1.0"`）⇒ `0.1.0`/`0.1.1` 双双作废、只能发 `0.1.2` |
 | **③ 发布后三步验证** | registry 快照（`versions` / `latest` / bundle 的 `dependencies`）→ 干净目录 `pnpm add <bundle>@<ver>` → 壳包上下文四个 `import` 全成功；缺一条视为未发成功 |
 
 **真实判据（2026-10-28 实测，同一脚本两个方向）**

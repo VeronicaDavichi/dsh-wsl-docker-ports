@@ -1,6 +1,6 @@
 {
   "name": "dsh-wsl-docker-core",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "license": "MIT",
   "type": "module",
   "description": "WSL Docker 端口转发/容器的共享底座（非插件包，纯库）：schema 工厂、只读探针、HTTP／凭据／健康／错误模型",
