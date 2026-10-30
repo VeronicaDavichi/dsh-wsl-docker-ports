@@ -45,6 +45,15 @@ npm 公共包的三次发布（`0.1.0` 坏包 → 整包删除 → `0.1.2` 成�
 - 每个包上方另有一个 `0.0.0-stage` 占位版本（npm 分阶段发布自动生成，2 文件，**不是 latest**）⇒ **不要删它**（删了又占一个号）。
 - 首次装机的正确写法：`dsh plugin --profile <name> add "dsh-wsl-docker-ports-bundle@0.1.2"`（GUI 里输 `dsh-wsl-docker-ports-bundle@0.1.2`）。
 
+## 真机装机验收（2026-10-30，0.1.2）
+
+- 装法：在**主人自己指定**的 `desktop` profile 里装 `dsh-wsl-docker-ports-bundle@0.1.2`（本次由主人手工完成，非我方代装 —— 探针红线仍原样有效）。
+- 落盘事实：`dependencies` 里 `dsh-wsl-docker-ports-bundle = 0.1.2`；`dsh.profile.bundles` 末位含该包；
+  `node_modules` 下五个包**全是 real dir、全 v0.1.2**（不再是 `link:`），插件入口 `lib/index.js` + `lib/client.js` 与壳包 `cordis.patch.yml` 均在。
+- 加载结果（**主人目视确认**）：重启后侧栏出现两页 —— **WSL 端口转发** + **WSL Docker 容器**；插件卡片标题为 **WSL Docker Ports**，卡片内两行组件 = **WSL Port Forwarding** / **WSL Docker Containers**（即 016「一张卡两组件」的设计在 npm 安装形态下同样成立）。
+- 观察点（非缺陷）：`profiles/desktop/cordis.patch.yml` 里只会出现 `- id: wsl-ports`（settings 落盘写进去的，带 `config.writeToken`）；`wsl-containers` 行**来自壳包自己的 patch**，不落到 profile patch —— 别把这个差异误判成「只装了一个插件」。
+- 我方无法自证的边界：本地 GUI（`127.0.0.1:51955`）直连返回 **401**，需会话凭据 ⇒ 界面确认只能由主人完成；文件层判据由本 Agent 只读核查（见上）。
+
 ## 待办
 
 - 凭据：发布用 bypass-2FA granular token，**用完即从 `~/.npmrc` 移除**；用过的 token 一律吊销（本次两枚已吊销/清理）。
