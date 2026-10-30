@@ -99,7 +99,7 @@ Windows 上跑 WSL2 的人都会撞上同一堵墙：容器在 WSL 里监听着 
 
 ## 安装
 
-> 两条路，按需要选：**A. 从 npm 装**（一行，适合只想用）；**B. `link:` 本地路径**（适合改源码，路径即版本）。
+> 三条路，按需要选：**A. 从 npm 装**（一行，首选）；**B. 从 Release 下 tgz 离线装**（离网/存档）；**C. `link:` 本地路径**（改源码即生效）。
 
 ### A. 从 npm 装（`0.1.2` 起）
 
@@ -128,7 +128,33 @@ dsh-wsl-docker-ports-bundle
 >
 > `dsh-terminal-profiles`（受管终端）**尚未发布**，目前只能走 B 路 `link:`。
 
-### B. `link:` 本地路径（改源码即生效）
+### B. 从 Release 附件装（离线可用，`0.1.2` 起）
+
+GitHub Release 页挂了 5 个 `*.tgz`（就是 npm 上的同一份二进制，`sha1` 与 registry 一致）。**整目录离网也能装** —— 2026-10-30 实测：`npm install <5 个 tgz> --offline` → `added 5 packages` exit 0，装完四个 `import` 全通。
+
+```powershell
+# ① 把 5 个 tgz 放进同一个目录，然后在该目录下：
+npm install .\dsh-wsl-shared-0.1.2.tgz .\dsh-wsl-docker-core-0.1.2.tgz `
+            .\dsh-wsl-docker-containers-0.1.2.tgz .\dsh-wsl-docker-ports-0.1.2.tgz `
+            .\dsh-wsl-docker-ports-bundle-0.1.2.tgz --offline
+```
+
+要点（少一个就装不起来）：
+
+- **5 个 tgz 必须一次性一起装**：壳包的 `dependencies` 写的是 `dsh-wsl-docker-ports@0.1.2` / `dsh-wsl-docker-containers@0.1.2`，只装壳包会去 registry 找这两个包 ⇒ 离网失败；
+- 装到 **profile 目录**（`~/.dsh/profiles/<name>`）里，而不是仓库目录；
+- 还要把壳包登记进插件清单，否则 DSH 不会应用它的 `cordis.patch.yml`：
+
+```powershell
+cd $env:USERPROFILE\.dsh\profiles\<name>
+node -e "const fs=require('fs');const f='package.json';const j=JSON.parse(fs.readFileSync(f,'utf8'));j.dsh.profile.bundles=[...new Set([...(j.dsh.profile.bundles||[]),'dsh-wsl-docker-ports-bundle'])];fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n')"
+```
+
+改完**重启 DSH**（清单变更不热加载）。验收判据与 A 路相同：侧栏多出「WSL 端口转发」「WSL Docker 容器」两页。
+
+> ⚠️ 附件不能替代 npm 发布：`npm install dsh-wsl-docker-ports-bundle` 不会去 Release 找包；A 路仍是首选，B 路是**离网/存档/自校验**兜底。
+
+### C. `link:` 本地路径（改源码即生效）
 
 **① 装进某个 profile**（改 `~/.dsh/profiles/<name>/package.json`，`<ABS>` = 本仓 `packages/<pkg>` 的绝对路径，用正斜杠）：
 
