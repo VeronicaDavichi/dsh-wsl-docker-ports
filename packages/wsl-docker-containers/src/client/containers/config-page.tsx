@@ -1,6 +1,7 @@
 /**
  * **容器行自己的配置页**（015 `P4`；017 收窄 + 换版式）—— 挂在 `plugins.row.config` 槽、键 =
- * `<组合包包名>#<行 id>`（`dsh-wsl-docker-ports#wsl-containers`，见 `config-slot.ts` 的说明）。
+ * `<卡片所属包名>#<行 id>`（`dsh-wsl-docker-ports-bundle#wsl-containers`，见 `config-slot.ts` 的说明：
+ * 2026-10-31 已从改壳前的 `dsh-wsl-docker-ports#…` 纠正过来，否则这一行在 GUI 里没有「配置」入口）。
  *
  * ## 017 六订·九：`refreshIntervalSec` 回到**这一页**
  *

@@ -144,14 +144,14 @@ test('拆包后**无探活**、**不主动开页**：注册即成功 + 零 openT
   assert.deepEqual(surface.registerTab(tabs, slots).length, 3, '一次注册返回 3 个 disposer（类型 + 两个 seat）');
 });
 
-test('配置槽用**复合键**注册（`组合包包名#行 id`，宿主按这个键查「配置」按钮）', () => {
+test('配置槽用**复合键**注册（`卡片所属包名#行 id`，宿主按这个键查「配置」按钮）', () => {
   const rig = harness({});
   const surface = surfaceOf(rig);
   surface.registerConfig(rig.ctx);
   assert.deepEqual(
     rig.calls.map((call) => call.text),
-    [`seat:plugins.row.config@dsh-wsl-docker-ports#wsl-containers`],
-    '配置槽恰好注册一次，且 key = `组合包包名#行 id`（2026-10-27 真机：写成只行 id ⇒ 宿主查不到 ⇒ 这一行没有「配置」按钮）',
+    [`seat:plugins.row.config@dsh-wsl-docker-ports-bundle#wsl-containers`],
+    '配置槽恰好注册一次，且 key = `卡片所属包名#行 id`（2026-10-27 真机：写成只行 id ⇒ 宿主查不到 ⇒ 无「配置」按钮；2026-10-31 真机二次纠正：017 把卡片收进组合包后，键的前半必须是 `dsh-wsl-docker-ports-bundle`）',
   );
 
   // 宿主没有 slots ⇒ 只降级、不抛（配置页是可选的编辑入口，不该拖垮整包加载）
