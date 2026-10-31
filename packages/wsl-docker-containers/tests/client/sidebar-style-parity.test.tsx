@@ -50,12 +50,14 @@ describe('017 六订·十五：侧边栏 CSS 与配置内页同一套', () => {
     expect(PAGE_CSS).toContain('border-bottom: 0.5px solid var(--dsw-alias-border-l2, transparent); }');
   });
 
-  it('③ 控件外壳只来自 CONFIG_CSS：侧边栏源码用 .wdp-cfg-btn / .wdp-cfg-input，不自造按钮类', () => {
+  it('③ 控件外壳只来自 CONFIG_CSS：侧边栏源码用 .wdp-cfg-btn，不自造按钮类；侧边栏已不再有输入框（019 D7）', () => {
     expect(CONFIG_CSS).toContain('.wdp-cfg-btn {');
     expect(CONFIG_CSS).toContain('.wdp-cfg-input {');
     const pane = read('containers/pane.tsx');
     expect(pane).toContain("className: 'wdp-cfg-btn'");
-    expect(pane).toContain("className: 'wdp-cfg-input'");
+    // 019 D7（主人 2026-10-31 选 B）：页内凭据输入框 + 「保存」已删，唯一写入口在配置内页
+    expect(pane).not.toContain("className: 'wdp-cfg-input'");
+    expect(pane).not.toContain('inp-containers-token');
     // 旧的「裸按钮」占位类不许回来
     expect(pane).not.toContain('wdp-btn');
   });

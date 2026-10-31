@@ -90,6 +90,11 @@ describe('六订·三十一 / 三十二 页头「上次刷新：YYYY-MM-DD HH:mm
     // 019 D4：多一格「服务端：…」布尔态（值本体不进 UI）
     expect(parts).toEqual(['刷新', '上次刷新：—', '容器通道凭据：未保存', '服务端：未配置（写入口一律 401）']);
     console.log(`  · ① 页头四件套顺序：${parts.join(' → ')}`);
+
+    // 019 D7（2026-10-31 主人选 B）：页内**没有**凭据输入框、也没有「保存」按钮 —— 唯一写入口是配置内页
+    expect(container.querySelector('.wdp-token-row')).toBeNull();
+    expect(screen.queryByPlaceholderText('容器通道凭据（与转发侧各自独立）')).toBeNull();
+    expect(container.querySelectorAll('input').length).toBe(0);
   });
 
   it('② 首屏取数成功 ⇒ 显示 `上次刷新：2026-10-28 09:07:05`（本地日期 + 时间、全角冒号）', async () => {

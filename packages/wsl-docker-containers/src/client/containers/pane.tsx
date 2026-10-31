@@ -59,8 +59,12 @@ export const CID = {
   error: 'txt-containers-error',
   logs: 'pre-containers-logs',
   logsClose: 'btn-containers-logs-close',
-  token: 'inp-containers-token',
-  tokenSave: 'btn-containers-token-save',
+  /**
+   * 019 D7（主人 2026-10-31 拍板选 B）：页内凭据输入框 + 「保存」按钮**已删除** ——
+   * 那个按钮只写本机 localStorage（`saveToken`），不写服务端，与配置内页一字不差的 placeholder
+   * 容易误导（以为它会写服务端，其实写完仍 401）⇒ 唯一写入口收敛到「容器」行配置内页。
+   * 页头保留两个**只读**状态：本机是否已记住（`tokenState`）、服务端是否已配置（`serverState`）。
+   */
   tokenState: 'txt-containers-token-state',
   /** 019 D4：服务端是否已配置 `writeToken`（**只报布尔**，不回显凭据本体） */
   serverState: 'txt-containers-server-token-state',
@@ -164,10 +168,8 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
   // D2：默认「关闭」——配置读不到时也不猜默认秒数（不偷偷轮询）
   const [refreshSec, setRefreshSec] = useState<number>(0);
   const [configNote, setConfigNote] = useState<string | null>(null);
-  const [tokenDraft, setTokenDraft] = useState('');
   // 上次成功刷新的本地时刻（null = 还没成功过）
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
-  const [tokenPresent, setTokenPresent] = useState<boolean>(() => (runtime?.token() ?? '') !== '');
   /** 019 D4：服务端有没有配置 `writeToken`（`null` = 还没读到 / 设置服务不可用） */
   const [serverConfigured, setServerConfigured] = useState<boolean | null>(null);
   const alive = useRef(true);
@@ -287,15 +289,12 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
     [deps, writeError],
   );
 
-  const saveToken = useCallback((): void => {
-    if (runtime === undefined) return;
-    const value = tokenDraft.trim();
-    runtime.saveToken(value);
-    setTokenPresent(value !== '');
-    setTokenDraft('');
-  }, [runtime, tokenDraft]);
-
   const rows: readonly ContainerRow[] = snapshot?.containers ?? [];
+  /**
+   * 本机有没有容器通道凭据 —— **每次渲染现取**（`runtime.token()` 本来就每次读存储）。
+   * 019 D7：页内已没有写入点（唯一写入口在配置内页），所以不持有本地副本，免得状态与实际脱钩。
+   */
+  const tokenPresent = (runtime?.token() ?? '') !== '';
   // 017 六订·二十（P7）：全页纵向滚动条只在宿主壳上出现一次（行数变了重新量）
   usePageScrollFix(rootRef, rows.length);
 
@@ -313,19 +312,6 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
         { className: 'wdp-muted', 'data-testid': CID.serverState },
         serverConfigured === null ? '服务端：未知' : serverConfigured ? '服务端：已配置' : '服务端：未配置（写入口一律 401）',
       ),
-    ),
-    createElement(
-      'div',
-      { className: 'wdp-row wdp-token-row' },
-      createElement('input', {
-        type: 'password',
-        className: 'wdp-cfg-input',
-        'data-testid': CID.token,
-        placeholder: '容器通道凭据（与转发侧各自独立）',
-        value: tokenDraft,
-        onChange: (event: { target: { value: string } }) => setTokenDraft(event.target.value),
-      }),
-      createElement('button', { type: 'button', className: 'wdp-cfg-btn', 'data-testid': CID.tokenSave, onClick: saveToken }, '保存'),
     ),
     configNote === null ? null : createElement('p', { className: 'wdp-note' }, configNote),
     snapshot?.distro?.message == null ? null : createElement('p', { className: 'wdp-warn' }, snapshot.distro.message),
