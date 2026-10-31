@@ -55,3 +55,17 @@ updated_at: 2026-10-31T06:06:59.466941700Z
 ## 变更留痕
 
 - 2026-10-31 建立（主人当日拍板 D1–D5；起因 = 真机截图里「本会话已保存」与服务端 401 并存）。
+- 2026-10-31 **AC8 追加 + D6**（真机验收时主人原话：「本包配置页的入口理应点击进入，但是没有可以点击的地方」）：
+  容器行的配置页**根本进不去** —— 注册键 `plugins.row.config` 的前半还停在改壳前的
+  `dsh-wsl-docker-ports#wsl-containers`，而 017 之后卡片所属包已是 `dsh-wsl-docker-ports-bundle`
+  ⇒ 宿主 `rowConfigKey(pkg.name, row.rowId)` 恒不命中 ⇒ 无「配置」按钮。**服务端本身是好的**
+  （真机实测 `/dsh-wsl-docker-ports/snapshot` 200、`/dsh-wsl-docker-containers/snapshot` 200、
+  两侧 `/health` 200）⇒ 这是纯客户端注册键缺陷，与 0.1.4 的按钮实现无关。修法 = 键改为
+  `dsh-wsl-docker-ports-bundle#wsl-containers`（提交 `56819a1`）。
+- **AC8**：容器行与转发行的 `plugins.row.config` 注册键都等于 `卡片所属包名#行 id`
+  （`dsh-wsl-docker-ports-bundle#wsl-containers` / `…#wsl-ports`）⇒ GUI 里两行都有可点的「配置」入口。
+- **D6**：`link:` / `file:` 往 Electron 托管的 `desktop` profile 里塞包**不可行**（宿主自己拒绝
+  `dsh plugin --profile desktop`：「managed exclusively by the Electron application」；且 `file:` 装法
+  会让客户端主 bundle 的组合 URL rev 对不上 ⇒ 整包 404 ⇒ 配置槽不注册 ⇒ 就是你看到的「没有可点的地方」）。
+  ⇒ 交付路径只有一条：**发 npm → 从 GUI 装**；本地验证则先把仓库包 `link:` 进 profile 的
+  `dependencies`（bundle + 两条行插件，缺行插件则 patch 行解析不到）。
