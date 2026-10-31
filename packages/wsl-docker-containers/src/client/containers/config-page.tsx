@@ -39,6 +39,7 @@ import { createElement, useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 
 import { REFRESH_INTERVAL_OPTIONS } from '../refresh.ts';
+import { generateWriteToken } from '../write-token.ts';
 
 import { installConfigStyles } from './config-css.ts';
 import type { ContainersRuntime } from './runtime.ts';
@@ -48,6 +49,8 @@ export const CONFIG_CID = {
   refreshState: 'txt-containers-config-refresh-state',
   token: 'inp-containers-config-token',
   tokenState: 'txt-containers-config-token-state',
+  generate: 'btn-containers-config-token-generate',
+  issued: 'txt-containers-config-token-issued',
   status: 'txt-containers-config-status',
   save: 'btn-containers-config-save',
   message: 'txt-containers-config-message',
@@ -61,6 +64,8 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
   const [savedRefresh, setSavedRefresh] = useState(0);
   const [token, setToken] = useState('');
   const [tokenConfigured, setTokenConfigured] = useState(false);
+  /** 019 D1：刚生成的明文 —— **只显示这一次**（关掉/重挂载即消失），且不进无障碍树 */
+  const [issued, setIssued] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState<string | null>(null);
@@ -110,6 +115,7 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
       }
       if (nextToken !== '') {
         const result = await pipe.writeWriteToken(nextToken);
+        if (result.ok) runtime?.saveToken(nextToken);
         (result.ok ? messages : failures).push('容器通道凭据已更新');
       }
     } finally {
@@ -126,6 +132,35 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
     }
     setMessage(messages.length === 0 ? '没有需要保存的改动' : `设置已保存：${messages.join('；')}`);
   }, [refresh, savedRefresh, token, runtime]);
+
+  /**
+   * 019 D1（2026-10-31 主人拍板）：**一步到位** —— 生成 32 字节随机串 ⇒ 写服务端配置
+   * （`wsl-containers` 命名空间的 `writeToken`，volatile ⇒ 即时生效）⇒ **同一次动作**写客户端存储
+   * （`localStorage`，重启不用重填）。
+   *
+   * 🔴 顺序刻意如此：**只有服务端写入成功才存客户端**。否则页面会显示「已保存」却仍然 401
+   * （服务端没有这串），那是最难查的一类故障。
+   */
+  const generate = useCallback(async (): Promise<void> => {
+    const pipe = runtime?.settings();
+    if (pipe === undefined || runtime === undefined) return;
+    setBusy(true);
+    const next = generateWriteToken();
+    try {
+      const result = await pipe.writeWriteToken(next);
+      setIssued(next);
+      if (result.ok) {
+        runtime.saveToken(next);
+        setTokenConfigured(true);
+        setToken('');
+        setMessage('容器通道凭据已生成并保存：本机已记住（重启不用重填），服务端已生效。');
+      } else {
+        setMessage('保存失败：服务端没写入这串（可手工复制下面这串填进配置，或稍后重试）。');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [runtime]);
 
   if (unavailable !== null) {
     return createElement(
@@ -171,7 +206,19 @@ export function ContainersConfigPage(props: { readonly runtime?: ContainersRunti
         value: token,
         onChange: (event: { target: { value: string } }) => setToken(event.target.value),
       }),
+      createElement(
+        'button',
+        { type: 'button', className: 'wdp-cfg-btn', 'data-testid': CONFIG_CID.generate, disabled: busy, onClick: () => void generate() },
+        '生成并保存',
+      ),
       createElement('p', { className: 'wdp-cfg-hint', 'data-testid': CONFIG_CID.tokenState }, tokenConfigured ? '凭据：已配置（宿主不回显既有值）' : '凭据：未配置'),
+      issued === null
+        ? null
+        : createElement(
+            'p',
+            { className: 'wdp-cfg-hint', 'data-testid': CONFIG_CID.issued, 'aria-hidden': 'true' },
+            `本次生成的凭据（只显示这一次）：${issued}`,
+          ),
     ),
     createElement(
       'div',

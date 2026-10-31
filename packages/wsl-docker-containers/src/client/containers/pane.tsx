@@ -62,6 +62,8 @@ export const CID = {
   token: 'inp-containers-token',
   tokenSave: 'btn-containers-token-save',
   tokenState: 'txt-containers-token-state',
+  /** 019 D4：服务端是否已配置 `writeToken`（**只报布尔**，不回显凭据本体） */
+  serverState: 'txt-containers-server-token-state',
   /** 页头的「上次刷新：YYYY-MM-DD HH:mm:ss」（017 六订·三十一 / 三十二） */
   refreshedAt: 'txt-containers-refreshed-at',
 } as const;
@@ -166,6 +168,8 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
   // 上次成功刷新的本地时刻（null = 还没成功过）
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
   const [tokenPresent, setTokenPresent] = useState<boolean>(() => (runtime?.token() ?? '') !== '');
+  /** 019 D4：服务端有没有配置 `writeToken`（`null` = 还没读到 / 设置服务不可用） */
+  const [serverConfigured, setServerConfigured] = useState<boolean | null>(null);
   const alive = useRef(true);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -233,10 +237,13 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
         const view = await pipe.readConfig();
         if (!alive.current) return;
         setRefreshSec(readRefreshSec(view));
+        // 019 D4：只把布尔带进 UI（值本体在 settings-pipe 那层就被丢弃）
+        setServerConfigured(view.writeTokenConfigured === true);
         setConfigNote(null);
       } catch {
         if (!alive.current) return;
         setConfigNote('读容器侧配置失败：刷新频次按「关闭」处理（不猜默认值）');
+        setServerConfigured(null);
         setRefreshSec(0);
       }
     };
@@ -253,7 +260,6 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
     const timer = setInterval(() => void load(true), refreshSec * 1000);
     return () => clearInterval(timer);
   }, [refreshSec, load]);
-
 
   const act = useCallback(
     async (id: string, action: ContainersAction): Promise<void> => {
@@ -301,7 +307,12 @@ export function ContainersPane(props: { readonly runtime?: ContainersRuntime }):
       { className: 'wdp-row wdp-toolbar' },
       createElement('button', { type: 'button', className: 'wdp-cfg-btn', 'data-testid': CID.refresh, onClick: () => void load(), disabled: busy !== null }, '刷新'),
       createElement('span', { className: 'wdp-muted', 'data-testid': CID.refreshedAt }, refreshClockText(refreshedAt)),
-      createElement('span', { className: 'wdp-muted', 'data-testid': CID.tokenState }, tokenPresent ? '容器通道凭据：已保存（本会话）' : '容器通道凭据：未保存'),
+      createElement('span', { className: 'wdp-muted', 'data-testid': CID.tokenState }, tokenPresent ? '容器通道凭据：本机已记住（重启不丢）' : '容器通道凭据：未保存'),
+      createElement(
+        'span',
+        { className: 'wdp-muted', 'data-testid': CID.serverState },
+        serverConfigured === null ? '服务端：未知' : serverConfigured ? '服务端：已配置' : '服务端：未配置（写入口一律 401）',
+      ),
     ),
     createElement(
       'div',

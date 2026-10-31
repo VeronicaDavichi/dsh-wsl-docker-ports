@@ -108,7 +108,7 @@ export function PortsPane(props: PortsPaneProps): ReactElement {
   const [lastWrite, setLastWrite] = useState<LastWriteView | null>(null);
   /**
    * 写通道凭据的**本地**状态（T3.1 契约 1/2）：
-   * - `tokenPresent` 的初值直接读 sessionStorage（**零 IPC**：挂载期不许 `describe()`，
+   * - `tokenPresent` 的初值直接读本机凭据存储 localStorage（**零 IPC**：挂载期不许 `describe()`，
    *   否则 T5.1 的「开页 0 次配置读」判据立刻红）；
    * - `issuedToken` 只在刚生成后非空 ⇒ 明文**只显示一次**，刷新即不再出现；
    * - `configConfigured` 是**服务端配置的布尔态**（`null` = 未检查）：由用户点「检查服务端配置状态」

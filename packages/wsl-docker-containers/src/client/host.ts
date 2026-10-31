@@ -126,9 +126,9 @@ export interface ClientApplyOptions {
   readonly timers?: ClientTimers | undefined;
   /** 右栏服务晚到的宽限窗口（ms），缺省 2000；负数 = 不排定该告警 */
   readonly pendingWarnMs?: number | undefined;
-  /** 凭据存储（缺省 = 真 `sessionStorage`；取不到降级成内存，绝不落盘） */
-  readonly sessionStorage?: StorageLike | undefined;
-  /** 便于断言「仓库里到底有什么」；不传时由 `index.ts` 按 `sessionStorage` 造 */
+  /** 凭据存储（缺省 = 真 `localStorage`：**重启后仍可用**，019 D3；取不到降级 `sessionStorage` → 内存） */
+  readonly tokenStorage?: StorageLike | undefined;
+  /** 便于断言「仓库里到底有什么」；不传时由 `index.ts` 按 `tokenStorage` 造 */
   readonly tokenStore?: WriteTokenStore | undefined;
 }
 

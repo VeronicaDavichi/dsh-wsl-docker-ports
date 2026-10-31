@@ -18,7 +18,7 @@ export interface ContainersRuntime {
   readonly fetchImpl?: FetchLike | undefined;
   /** 容器通道凭据（**每次现取**：页内换了凭据，下一次动作就用新的） */
   readonly token: () => string | undefined;
-  /** 保存容器通道凭据（写 sessionStorage 的容器侧键；空串 = 清除） */
+  /** 保存容器通道凭据（写**持久化**存储 `localStorage` 的容器侧键 `wsl-containers.writeToken`；空串 = 清除） */
   readonly saveToken: (value: string) => void;
   /**
    * 容器侧命名空间的 settings 管道（**主包用同一个 `createSettingsPipe` 造的第二实例**）。

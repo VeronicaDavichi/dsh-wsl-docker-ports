@@ -34,7 +34,7 @@ import type {
 } from './host.ts';
 import { createSettingsPipe } from './settings-pipe.ts';
 import { PAGE_ID, PAGE_TITLE, containersTabDefinition, registerTabSeats } from './tab-def.ts';
-import { defaultSessionStorage } from './write-token.ts';
+import { WRITE_TOKEN_STORAGE_KEY, defaultTokenStorage } from './write-token.ts';
 
 declare const require: {
   (id: string): unknown;
@@ -90,10 +90,17 @@ export function createSurface(
 ): ContainersSurface {
   // 本包命名空间（`dsh-wsl-docker-containers`）：与转发侧**各走各的** ⇒ 凭据互不通用
   const settings = createSettingsPipe(() => softGet<RemoteSettingsLike>(ctx, 'remote.settings'), PAGE_ID);
-  const tokenKey = `${PAGE_ID}.writeToken`;
+  // 019 D5：键与仓库常量**同一个真相**（此前这里手拼、常量里写着转发侧的键名）
+  const tokenKey = WRITE_TOKEN_STORAGE_KEY;
+  const storage = (): ReturnType<typeof defaultTokenStorage> => {
+    if (options.tokenStorage !== undefined) return options.tokenStorage;
+    if (options.tokenStore !== undefined) return undefined; // 有仓库注入时不再碰真存储
+    return defaultTokenStorage();
+  };
   const readToken = (): string | undefined => {
+    if (options.tokenStore !== undefined) return options.tokenStore.read();
     try {
-      const raw = (options.sessionStorage ?? defaultSessionStorage())?.getItem(tokenKey) ?? null;
+      const raw = storage()?.getItem(tokenKey) ?? null;
       const text = raw === null ? '' : raw.trim();
       return text === '' ? undefined : text;
     } catch {
@@ -101,10 +108,15 @@ export function createSurface(
     }
   };
   const saveToken = (value: string): void => {
+    if (options.tokenStore !== undefined) {
+      if (value.trim() === '') options.tokenStore.clear();
+      else options.tokenStore.save(value);
+      return;
+    }
     try {
-      (options.sessionStorage ?? defaultSessionStorage())?.setItem(tokenKey, value);
+      storage()?.setItem(tokenKey, value);
     } catch {
-      // 存储被禁（隐私模式）⇒ 本次会话存不了凭据；页面会如实提示，不抛
+      // 存储被禁（隐私模式）⇒ 本次存不了凭据；页面会如实提示，不抛
     }
   };
   /**

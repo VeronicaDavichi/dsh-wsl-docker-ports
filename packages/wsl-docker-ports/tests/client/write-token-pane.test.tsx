@@ -111,7 +111,7 @@ describe('009 T2.1 判据②：一次性显示（离开后不再出现）', () =
     expect(TOKEN_SHAPE.test(second.innerHTML)).toBe(false);
     // 反向对照：凭据**没有**丢 —— 只显示一次 ≠ 只保存一次
     expect(test.runtime.write?.tokenStore.read()).toBe(EXPECTED_TOKEN);
-    expect(stateText()).toContain('本会话持有凭据：是');
+    expect(stateText()).toContain('本机持有凭据：是');
     console.log('  · 扫了 2 棵树：第一棵有明文 1 次，第二棵 0 次；sessionStorage 里仍是同一串');
   });
 });
@@ -232,7 +232,7 @@ describe('009 T2.1 判据⑦：错误路径（可读提示、不静默）', () =
       expect(screen.getByTestId(WRITE_TOKEN_TESTID.note).textContent).toContain('revision 冲突');
     });
     const note = screen.getByTestId(WRITE_TOKEN_TESTID.note).textContent ?? '';
-    expect(note).toContain('凭据**未**存入本会话');
+    expect(note).toContain('凭据**未**存入本机');
     expect(test.storage.box.has(WRITE_TOKEN_STORAGE_KEY)).toBe(false);
     expect(screen.getByTestId(WRITE_TOKEN_TESTID.once).textContent).toBe(EXPECTED_TOKEN);
     console.log(`  · 扫了 1 条失败路径：提示「…${note.slice(0, 24)}…」；本会话凭据 0 个，明文仍可复制`);

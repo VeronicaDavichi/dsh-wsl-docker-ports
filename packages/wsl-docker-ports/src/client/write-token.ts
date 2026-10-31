@@ -7,8 +7,10 @@
  *    服务端凭据 —— 生成是一个**用户在配置页显式点击**的动作（`issueWriteToken()`），
  *    生成后经既有 live 写入路径 `remote.settings.update(ns, { writeToken })` 落进插件配置。
  *    服务端未配置 ⇒ 仍然一律 401（fail-safe 一字不改，见 `../transport/write-auth.ts`）。
- * 2. **客户端持有 = `sessionStorage`**（键带包名命名空间）：刷新不丢、**不落盘**、
- *    关掉会话即消失。绝不写 `localStorage`（那才是落盘）。
+ * 2. **客户端持有 = `localStorage`**（键带包名命名空间）：刷新不丢、**重启不丢**。
+ *    ⚠️ **2026-10-31 主人拍板改了口径**（原口径是 `sessionStorage`「不落盘」；019 D3）：凭据本来就明文
+ *    躺在 profile 的 `cordis.patch.yml` 里，会话级换不来真实收益，只换来「每次重启重填一遍」。
+ *    容器侧（`dsh-wsl-docker-containers`）同步改成同一口径。
  * 3. **凭据绝不进日志/审计/错误文案**：本模块**没有任何 console 调用**；
  *    对外的文案（`CREDENTIAL_*_HINT`）只描述「去哪里配置」，不含凭据本体、期望值与长度。
  *    `read()` 的返回值只有一个去处 —— `Authorization: Bearer` 请求头（`write-channel.ts`）。
@@ -31,11 +33,11 @@
  * ## 可测性
  *
  * `randomBytes` 可注入（缺省 `crypto.getRandomValues`）⇒ 「生成了什么」在测试里是确定的；
- * `storage` 可注入（缺省真 `sessionStorage`，取不到就降级成内存实现）⇒ 无 DOM 也能断言
+ * `storage` 可注入（缺省真 `localStorage`/`sessionStorage`，都取不到就降级成内存实现）⇒ 无 DOM 也能断言
  * 「存了什么、清掉之后还剩什么」。
  */
 
-/** `sessionStorage` 的键（命名空间 = 包名，避免与别的插件撞键） */
+/** 客户端存储的键（命名空间 = 包名，避免与容器侧的键撞） */
 export const WRITE_TOKEN_STORAGE_KEY = 'dsh-wsl-docker-ports.writeToken';
 
 /** 一次生成的随机字节数（256 bit） */
@@ -55,7 +57,7 @@ export const CREDENTIAL_REJECTED_HINT =
   '并确认服务端已读到该值（writeToken 是 volatile 字段、宿主每次请求现读 ⇒ 改完即时生效，' +
   '不需要重载插件行）。本客户端不重试，也不会把凭据写进日志。';
 
-/** `sessionStorage` / 假件的公共面（只要这两个方法就够） */
+/** `localStorage` / `sessionStorage` / 假件的公共面（只要这两个方法就够） */
 export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -72,13 +74,16 @@ export interface WriteTokenStore {
   present(): boolean;
 }
 
-/** 真 `sessionStorage`；取不到（无 DOM / 被浏览器策略拒绝）⇒ `undefined` ⇒ 降级内存实现 */
-export function defaultSessionStorage(): StorageLike | undefined {
+/**
+ * 真存储：优先 `localStorage`（**重启后仍可用**，019 D3），取不到再退 `sessionStorage`；
+ * 都没有（无 DOM / 隐私模式）⇒ `undefined` ⇒ 调用方降级内存实现。
+ * ⚠️ 这里**不做**探写探测（省主包字节）：真不可写时由 `createWriteTokenStore` 的 try/catch 兜住。
+ */
+export function defaultTokenStorage(): StorageLike | undefined {
   try {
-    const candidate = (globalThis as { sessionStorage?: StorageLike | null }).sessionStorage;
-    return candidate === undefined || candidate === null ? undefined : candidate;
+    const scope = globalThis as { localStorage?: StorageLike | null; sessionStorage?: StorageLike | null };
+    return scope.localStorage ?? scope.sessionStorage ?? undefined;
   } catch {
-    // 某些环境（隐私模式 / 禁用存储）访问属性本身就抛 —— 那不是错误，是「没有存储」
     return undefined;
   }
 }
@@ -146,7 +151,7 @@ export function createWriteTokenStore(storage: StorageLike | undefined): WriteTo
       try {
         target.removeItem(WRITE_TOKEN_STORAGE_KEY);
       } catch {
-        // 同上：清不掉不是致命错误（凭据本来只活在本会话）
+        // 同上：清不掉不是致命错误（凭据本来只活在本机）
       }
     },
   };
@@ -184,7 +189,7 @@ export async function issueWriteToken(input: {
     return {
       ok: false,
       token,
-      message: `${saved.message}（凭据**未**存入本会话：请把这串手工填进服务端 config 的 writeToken，再重新生成一次）`,
+      message: `${saved.message}（凭据**未**存入本机：请把这串手工填进服务端 config 的 writeToken，再重新生成一次）`,
     };
   }
   input.store.save(token);
@@ -192,7 +197,7 @@ export async function issueWriteToken(input: {
     ok: true,
     token,
     message:
-      '已写入插件配置，并保存在本会话（sessionStorage：刷新不丢、不落盘、不进日志/审计）。' +
+      '已写入插件配置，并保存在本机（localStorage：刷新/重启都不丢、不进日志/审计）。' +
       '这串只显示这一次 —— 离开后将不再显示，请立即复制（页面不提供「再显示一次」的入口）。',
   };
 }

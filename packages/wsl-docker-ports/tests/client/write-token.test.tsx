@@ -133,7 +133,7 @@ describe('T3.1 一次性颁发：配置写成功才入本会话', () => {
     expect(result.ok).toBe(false);
     expect(result.token).toBe(bytesToHex(BYTES));
     expect(store.present()).toBe(false);
-    expect(result.message).toContain('凭据**未**存入本会话');
+    expect(result.message).toContain('凭据**未**存入本机');
     console.log('  · 扫了 1 次失败颁发：本会话凭据数 0，明文仍可一次性复制');
   });
 
@@ -153,8 +153,8 @@ describe('T3.1 一次性颁发：配置写成功才入本会话', () => {
   });
 });
 
-describe('T3.1 红线（静态）：凭据绝不进日志、绝不落盘', () => {
-  it('四个写通道客户端文件里零 console 调用、零持久存储用法', () => {
+describe('T3.1 红线（静态）：凭据绝不进日志；存储口径 = 019 D3 的 localStorage 优先', () => {
+  it('四个写通道客户端文件里零 console 调用；存储只在 write-token.ts 的 defaultTokenStorage 里软取', () => {
     const dir = path.join(new URL('../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/u, '$1'), 'src', 'client');
     const files = ['write-token.ts', 'write-channel.ts', 'write-confirm.tsx', 'write-panel.tsx'];
     const hits: string[] = [];
@@ -162,16 +162,21 @@ describe('T3.1 红线（静态）：凭据绝不进日志、绝不落盘', () =>
     for (const file of files) {
       const text = readFileSync(path.join(dir, file), 'utf8');
       bytes += Buffer.byteLength(text);
-      // 扫**用法**而不是注释文字：注释里可以讨论「为什么不落盘」，代码里不许真去碰它
+      // 扫**用法**而不是注释文字：日志一律不许碰（凭据绝不进日志是硬红线）
       if (text.includes('console.')) hits.push(`${file}:console`);
-      if (text.includes('localStorage.') || text.includes('localStorage[')) hits.push(`${file}:localStorage`);
     }
     expect(hits).toEqual([]);
-    // 唯一的存储入口是 sessionStorage（且只在 defaultSessionStorage 里软取一次）
+    // 🔴 019 D3（2026-10-31 主人拍板）：客户端凭据从 sessionStorage 改为 localStorage 优先
+    // —— 唯一入口仍是 defaultTokenStorage()（软取 + 探写 + 逐级降级），别处不许直接摸全局
     const tokenSource = readFileSync(path.join(dir, 'write-token.ts'), 'utf8');
-    expect(tokenSource).toContain('globalThis');
+    expect(tokenSource).toContain('export function defaultTokenStorage');
+    expect(tokenSource).toContain('localStorage');
     expect(tokenSource).toContain('sessionStorage');
-    console.log(`  · 扫了 ${String(files.length)} 个文件 / ${String(bytes)} 字节：console. 0 处、localStorage 用法 0 处`);
+    expect(tokenSource.indexOf('localStorage')).toBeLessThan(tokenSource.indexOf('sessionStorage'));
+    const others = files.filter((file) => file !== 'write-token.ts')
+      .filter((file) => readFileSync(path.join(dir, file), 'utf8').includes('localStorage'));
+    expect(others).toEqual([]);
+    console.log(`  · 扫了 ${String(files.length)} 个文件 / ${String(bytes)} 字节：console. 0 处；localStorage 只在 write-token.ts 出现且优先`);
   });
 
   it('提示文案里不含任何凭据本体（只指路，不回显）', async () => {

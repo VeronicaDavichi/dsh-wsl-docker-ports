@@ -78,7 +78,7 @@ describe('六订·三十一 / 三十二 页头「上次刷新：YYYY-MM-DD HH:mm
     vi.setSystemTime(new Date(2026, 9, 28, 9, 7, 5));
   });
 
-  it('① 顺序 = 刷新 → 上次刷新 → 容器通道凭据；还没成功刷新时写 `上次刷新：—`', async () => {
+  it('① 顺序 = 刷新 → 上次刷新 → 本机凭据 → 服务端布尔；还没成功刷新时写 `上次刷新：—`', async () => {
     // 取数永不 resolve ⇒ 停在「还没成功过」那一刻
     globalThis.fetch = (() => new Promise(() => undefined)) as unknown as typeof globalThis.fetch;
     const { container } = render(<ContainersPane runtime={productionRuntime()} /> as ReactElement);
@@ -87,8 +87,9 @@ describe('六订·三十一 / 三十二 页头「上次刷新：YYYY-MM-DD HH:mm
     const toolbar = container.querySelector('.wdp-toolbar');
     expect(toolbar).not.toBeNull();
     const parts = [...(toolbar?.children ?? [])].map((node) => (node.textContent ?? '').trim());
-    expect(parts).toEqual(['刷新', '上次刷新：—', '容器通道凭据：未保存']);
-    console.log(`  · ① 页头三件套顺序：${parts.join(' → ')}`);
+    // 019 D4：多一格「服务端：…」布尔态（值本体不进 UI）
+    expect(parts).toEqual(['刷新', '上次刷新：—', '容器通道凭据：未保存', '服务端：未配置（写入口一律 401）']);
+    console.log(`  · ① 页头四件套顺序：${parts.join(' → ')}`);
   });
 
   it('② 首屏取数成功 ⇒ 显示 `上次刷新：2026-10-28 09:07:05`（本地日期 + 时间、全角冒号）', async () => {

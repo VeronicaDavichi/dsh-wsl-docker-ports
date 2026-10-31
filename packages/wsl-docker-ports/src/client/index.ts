@@ -77,7 +77,7 @@ import type { ConfigSlotContext } from './config-slot.ts';
 import { installStylesWith } from './styles.ts';
 import { createWriteWiring } from './write-channel.ts';
 import type { WriteWiring } from './write-channel.ts';
-import { createWriteTokenStore, defaultSessionStorage } from './write-token.ts';
+import { createWriteTokenStore, defaultTokenStorage } from './write-token.ts';
 
 /**
  * 宿主注入的 CJS 工厂形参（`scripts/build-client.mjs` 的 banner 里就是 `(require) => {`）。
@@ -198,9 +198,9 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
   // ③ 配置管道先建：路由来源每次刷新要用它读声明（**读**，不是写）
   const settings = createSettingsPipe(() => softGet<RemoteSettingsLike>(ctx, 'remote.settings'));
 
-  // ⑤ 写通道（T3.1）：凭据仓库先建（缺省真 sessionStorage；取不到 ⇒ 内存降级 —— 绝不落盘）。
+  // ⑤ 写通道（T3.1）：凭据仓库先建（缺省真 localStorage，重启不丢；取不到 ⇒ 内存降级 —— 019 D3）。
   //    ⚠️ 017 起**提前到位**（配置页要同一份 `write`）⇒ 构造顺序必须排在座位之前；构造期**零请求**。
-  const tokenStore = options.tokenStore ?? createWriteTokenStore(options.sessionStorage ?? defaultSessionStorage());
+  const tokenStore = options.tokenStore ?? createWriteTokenStore(options.tokenStorage ?? defaultTokenStorage());
   const write: WriteWiring =
     options.write ??
     createWriteWiring({
@@ -266,7 +266,7 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
     settings,
     elevation: options.elevation,
     exec: options.exec,
-    // ⑧ 008 T3.1 写通道：路由客户端 + 凭据仓库（sessionStorage）+ 所有权声明读取器。
+    // ⑧ 008 T3.1 写通道：路由客户端 + 凭据仓库（localStorage）+ 所有权声明读取器。
     //    **构造期零请求**：channel 只在用户点「预演」时才发第一个请求。
     write,
   };

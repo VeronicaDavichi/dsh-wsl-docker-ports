@@ -24,11 +24,13 @@ interface SettingsWrite {
   readonly value: number | string;
 }
 
-function runtimeWith(pipe: SettingsPipe | undefined): ContainersRuntime {
+function runtimeWith(pipe: SettingsPipe | undefined, saved?: string[]): ContainersRuntime {
   return {
     baseUrl: '',
     token: () => undefined,
-    saveToken: () => undefined,
+    saveToken: (value: string) => {
+      saved?.push(value);
+    },
     settings: () => pipe,
   };
 }
@@ -106,7 +108,8 @@ describe('容器行配置页：刷新频次 + 凭据，共用一条「保存设�
 
   it('R3 凭据也走这一条保存：填了就脏，保存才写，写完清空并标「已配置」', async () => {
     const writes: SettingsWrite[] = [];
-    render(<ContainersConfigPage runtime={runtimeWith(recordingPipe(15, writes))} /> as never);
+    const saved: string[] = [];
+    render(<ContainersConfigPage runtime={runtimeWith(recordingPipe(15, writes), saved)} /> as never);
     await waitFor(() => {
       expect((screen.getByTestId(CONFIG_CID.refresh) as HTMLSelectElement).value).toBe('15');
     });
@@ -125,7 +128,55 @@ describe('容器行配置页：刷新频次 + 凭据，共用一条「保存设�
       expect((screen.getByTestId(CONFIG_CID.token) as HTMLInputElement).value).toBe('');
     });
     expect(screen.getByTestId(CONFIG_CID.tokenState).textContent).toContain('已配置');
-    console.log(`  · R3 凭据：保存前 0 写、保存后 ${String(writes.length)} 写（refresh 没动就不写）`);
+    // 019 AC3：手填保存也**一步到位**（服务端写完顺手写客户端存储）⇒ 不用再去右栏粘一次
+    expect(saved).toEqual(['abc123']);
+    console.log(`  · R3 凭据：保存前 0 写、保存后 ${String(writes.length)} 写（refresh 没动就不写）；客户端存储同步 1 次`);
+  });
+
+  it('R5「生成并保存」一步到位：恰好 1 次服务端写 + 客户端存储收同一串 + 明文只显示这一次', async () => {
+    const writes: SettingsWrite[] = [];
+    const saved: string[] = [];
+    render(<ContainersConfigPage runtime={runtimeWith(recordingPipe(0, writes), saved)} /> as never);
+    await waitFor(() => {
+      expect(screen.getByTestId(CONFIG_CID.generate)).toBeTruthy();
+    });
+    expect(screen.queryByTestId(CONFIG_CID.issued)).toBeNull(); // 没点之前没有明文
+
+    fireEvent.click(screen.getByTestId(CONFIG_CID.generate));
+    await waitFor(() => {
+      expect(writes).toHaveLength(1);
+    });
+
+    const written = writes[0];
+    expect(written?.kind).toBe('token');
+    const token = String(written?.value);
+    expect(token).toMatch(/^[0-9a-f]{64}$/u); // 32 字节 = 64 位 hex
+    expect(saved).toEqual([token]); // 019 AC1：客户端存储 = 同一串
+    expect(screen.getByTestId(CONFIG_CID.issued).textContent).toContain(token);
+    expect(screen.getByTestId(CONFIG_CID.tokenState).textContent).toContain('已配置');
+    // 明文不进无障碍树（与转发侧同口径）
+    expect(screen.getByTestId(CONFIG_CID.issued).getAttribute('aria-hidden')).toBe('true');
+    console.log(`  · R5 生成：服务端写 1 次、客户端存 1 次、明文 64hex 显示一次（aria-hidden）`);
+  });
+
+  it('R6「生成并保存」写服务端失败 ⇒ **不**写客户端存储（否则会显示已保存却仍 401）', async () => {
+    const saved: string[] = [];
+    const failing = {
+      readConfig: async () => ({ distro: 'Ubuntu2204', writeTokenConfigured: false, refreshIntervalSec: 0 }),
+      writeRefreshInterval: async () => ok(),
+      writeWriteToken: async () => ({ ok: false, message: 'revision conflict', revisionPassed: false }) as unknown as SettingsWriteResult,
+    } as unknown as SettingsPipe;
+    render(<ContainersConfigPage runtime={runtimeWith(failing, saved)} /> as never);
+    await waitFor(() => {
+      expect(screen.getByTestId(CONFIG_CID.generate)).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId(CONFIG_CID.generate));
+    await waitFor(() => {
+      expect(screen.getByTestId(CONFIG_CID.message).textContent ?? '').toContain('保存失败');
+    });
+    expect(saved).toEqual([]);
+    console.log('  · R6 服务端写失败：客户端 0 写、页面明说“保存失败”');
   });
 
   it('R4 没有 settings 管道 ⇒ 写明原因、控件不出现（不装成能用）', async () => {

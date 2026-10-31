@@ -172,7 +172,7 @@ export async function fetchContainersSnapshot(deps: ContainersClientDeps): Promi
 /** 执行一次动作（需凭据；**不重试**） */
 export async function runContainersAction(deps: ContainersClientDeps, id: string, action: ContainersAction): Promise<Outcome<null>> {
   const token = deps.token?.();
-  if (token === undefined) return { ok: false, message: '本会话没有容器通道凭据（本地拦下，零请求）：请先在容器页点「保存凭据」' };
+  if (token === undefined) return { ok: false, message: '本机没有容器通道凭据（本地拦下，零请求）：请先在插件配置页的「容器」内页点「生成并保存」' };
   try {
     const response = await deps.fetchImpl(`${joiner(deps)}${CONTAINERS_ACTION_URL}`, {
       method: 'POST',
@@ -193,7 +193,7 @@ export async function runContainersAction(deps: ContainersClientDeps, id: string
 /** 取日志（需凭据；服务端把 `tail` 夹紧到 1..200） */
 export async function fetchContainersLogs(deps: ContainersClientDeps, id: string, tail: number): Promise<Outcome<{ readonly text: string; readonly tail: number }>> {
   const token = deps.token?.();
-  if (token === undefined) return { ok: false, message: '本会话没有容器通道凭据：日志也走受保护通道，请先保存凭据' };
+  if (token === undefined) return { ok: false, message: '本机没有容器通道凭据：日志也走受保护通道，请先在插件配置页的「容器」内页点「生成并保存」' };
   try {
     const url = `${joiner(deps)}${CONTAINERS_LOGS_URL}?id=${encodeURIComponent(id)}&tail=${String(tail)}`;
     const response = await deps.fetchImpl(url, { method: 'GET', headers: { accept: 'application/json', authorization: `Bearer ${token}` } });

@@ -261,14 +261,14 @@ export interface ClientApplyOptions {
   readonly exec?: ExecServiceLike;
   /**
    * 008 T3.1：显式注入的写通道整包（测试/集成方）；给了就用它，
-   * 否则由 `index.ts` 用 `settings` + `sessionStorage` 现造一个。
+   * 否则由 `index.ts` 用 `settings` + `tokenStorage` 现造一个。
    */
   readonly write?: WriteWiring;
   /**
-   * 008 T3.1：凭据存储（缺省 = 真 `sessionStorage`；取不到就降级成**内存**实现 —— 宁可丢凭据，
-   * 也绝不落盘）。测试注入假件即可在无 DOM 下断言「存了什么」。
+   * 008 T3.1：凭据存储（缺省 = 真 `localStorage`：**重启后仍可用**，019 D3；取不到降级
+   * `sessionStorage` → **内存**实现）。测试注入假件即可在无 DOM 下断言「存了什么」。
    */
-  readonly sessionStorage?: StorageLike;
-  /** 便于断言「仓库里到底有什么」；不传时由 `index.ts` 按 `sessionStorage` 造 */
+  readonly tokenStorage?: StorageLike;
+  /** 便于断言「仓库里到底有什么」；不传时由 `index.ts` 按 `tokenStorage` 造 */
   readonly tokenStore?: WriteTokenStore;
 }

@@ -141,8 +141,8 @@ export function ElevationBlock(props: {
  * 写通道凭据（008 T3.1 契约 1 / 009 REQ-1.3）：**唯一的凭据生成入口**。
  *
  * - 契约要求「由**配置页**提供生成并保存动作」+「一次性显示」⇒ 这里只有一枚按钮与一段
- *   **生成后才有**的明文（`issued`）。刷新后 `issued` 为空 ⇒ 明文不再出现（凭据仍活在本会话的
- *   sessionStorage 里，客户端照常带得出去），这正是「一次性」的落地方式。
+ *   **生成后才有**的明文（`issued`）。刷新后 `issued` 为空 ⇒ 明文不再出现（凭据仍存在本机的
+ *   localStorage 里，客户端照常带得出去），这正是「一次性」的落地方式。
  * - 本块**不携带 `data-write-control`**：它不是提权写控件，非 NAT 时也必须可用
  *   （与 `sel-elevation` 同一口径 —— 否则「没凭据」与「非 NAT」两把锁会互相锁死）。
  * - 生成后要写服务端配置，故 `onGenerate` 是异步的；`busy` 期间按钮不可点（避免连点生成两串）。
@@ -190,7 +190,7 @@ export function WriteTokenBlock(props: {
     }
     try {
       await clipboard.writeText(issued);
-      setCopyNote('已复制到剪贴板。该值不进无障碍树、不进日志、不落盘（只活在本会话的 sessionStorage 里）。');
+      setCopyNote('已复制到剪贴板。该值不进无障碍树、不进日志（存在本机 localStorage 里，重启不丢）。');
     } catch (error) {
       setCopyNote(withoutValue(`复制失败：${error instanceof Error ? error.message : String(error)}（请直接选中上面那串手工复制）`));
     }
@@ -204,7 +204,7 @@ export function WriteTokenBlock(props: {
         data-session-credential={sessionPresent ? '1' : '0'}
         data-config-configured={configured === null ? 'unknown' : configured ? '1' : '0'}
       >
-        本会话持有凭据：{sessionPresent ? '是' : '否'}；服务端配置 writeToken：{configuredText}（这里<strong>只报布尔</strong>，不回显凭据本体）
+        本机持有凭据：{sessionPresent ? '是' : '否'}；服务端配置 writeToken：{configuredText}（这里<strong>只报布尔</strong>，不回显凭据本体）
       </p>
       <p className="wdp-muted">
         写操作会改动本机 <code>netsh portproxy</code> 与 Windows 防火墙规则；本凭据用于阻止本机其它用户进程调用写通道（它不是加密、不是账号体系）。
