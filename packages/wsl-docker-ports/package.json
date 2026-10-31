@@ -30,7 +30,7 @@
     "check:exports": "node scripts/check-exports.mjs",
     "check:size": "node ../wsl-shared/scripts/check-size.mjs",
     "check:host": "node scripts/verify-host-entry.mjs",
-    "check:borders": "node ../../wsl-docker-core/scripts/check-borders.mjs"
+    "check:borders": "node ../wsl-docker-core/scripts/check-borders.mjs"
   },
   "dependencies": {
     "dsh-wsl-docker-core": "workspace:*",
