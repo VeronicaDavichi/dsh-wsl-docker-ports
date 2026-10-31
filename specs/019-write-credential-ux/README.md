@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-10-31
 priority: high
 tags:
@@ -8,9 +8,12 @@ tags:
 - ux
 - client
 created_at: 2026-10-31T06:06:59.466941700Z
-updated_at: 2026-10-31T06:06:59.466941700Z
+updated_at: 2026-10-31T09:23:31.669697800Z
+completed_at: 2026-10-31T09:23:31.669697800Z
+transitions:
+- status: complete
+  at: 2026-10-31T09:23:31.669697800Z
 ---
-
 # 019 写凭据「一步到位」+ 客户端持久化
 
 ## 背景（2026-10-31 真机）
@@ -78,3 +81,15 @@ updated_at: 2026-10-31T06:06:59.466941700Z
   与「一键清空本机凭据」两条路径 —— 要换值就去配置内页重填（会轮换）或点「生成并保存」。
 - **AC9**：容器页 DOM 里 `input` 数为 0、无 `.wdp-token-row`、无 `inp-containers-token` / `btn-containers-token-save`
   ⇒ 凭据写入口唯一（配置内页）；页头仍显示「容器通道凭据：本机已记住/未保存」+「服务端：…」两个布尔。
+
+## 完成（2026-10-31）
+
+- 主人真机验收通过：「其他已经确认可用了」⇒ 配置入口可点、页内「生成并保存」产出一次性凭据并标「已配置」、
+  右栏只剩两个只读布尔、重启后两者仍在。状态置 `complete`。
+- 交付版本 **0.1.6**（npm latest，五个包）：`dsh-wsl-shared` / `dsh-wsl-docker-core` /
+  `dsh-wsl-docker-containers` / `dsh-wsl-docker-ports` / `dsh-wsl-docker-ports-bundle`。
+- ⛔ **0.1.5 作废**：那一版用 `npm publish` 直发包目录，`workspace:*` 未被改写 ⇒ registry 上装不上；
+  npm 侧已 `deprecate`，git tag `v0.1.5` 只留本地不推。教训：**发布必须走 `pnpm pack`（改写依赖）+
+  `npm publish <tgz>`**，且发布后要用 `registry 版本端点 + 干净目录从 registry 安装` 双向复验。
+- 提交留痕：`56819a1`（注册键）→ `c2e7b80`（门路径）→ `e2d8662`（删右栏输入框）→ `7fdd80f`（0.1.5）
+  → `20bd0c8`（0.1.6），作者身份统一改写为 `Veronica Davichi` 后 `7a4e769`。
