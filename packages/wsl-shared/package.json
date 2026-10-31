@@ -1,6 +1,6 @@
 {
   "name": "dsh-wsl-shared",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "license": "MIT",
   "type": "module",
   "description": "WSL 事实层共享底座（非插件包）：发行版发现 / eth0 IP / 路径翻译 / NAT 判定 / 结构化命令执行",

@@ -1,6 +1,6 @@
 {
   "name": "dsh-wsl-docker-containers",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "license": "MIT",
   "type": "module",
   "description": "WSL Docker 管理器 · 容器页（插件包）：列出/启停/重启容器并查看日志，零提权",
