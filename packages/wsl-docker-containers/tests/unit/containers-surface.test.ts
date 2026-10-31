@@ -8,15 +8,16 @@
  * `tabs.register(id)` → `slots.register(TAB, key)` → `slots.register(TAB_TITLE, key)` → `sidebar.openTab(kind)`
  * —— 不依赖宿主内部结构。
  *
- * ## 三条从 015 继承、一条因拆包消失
+ * ## 两条沿用 015、一条**于 2026-10-31 反转为禁令**、一条因拆包消失
  *
- * 1. **页签不出现**：宿主 `SidebarRightTabRegistry.register` 只把**类型**放进注册表 + 刷 `guide()`，
- *    **不创建 tab**；tab 是布局记录，只由 `openTab` / guide 胶囊 / `defaultSeed` 产生 ⇒ 必须主动
- *    `openTab`（真机 2026-10-23 两次复现）。
+ * 1. 🔴 **不许主动开页**（主人 2026-10-31 拍板）：宿主 `SidebarRightTabRegistry.register` 只把
+ *    **类型**放进注册表 + 刷 `guide()`，**不创建 tab** —— 这正是我们要的：页签是用户的布局记录。
+ *    发现入口 = 右栏空态里的 guide 胶囊（用户点一下才 `openTab`）。
+ *    ~~旧判据「必须主动 \`openTab\`」已作废~~：真机后果是启动时侧栏自己弹出容器页。
  * 2. **点开也空表**：`runtime` 只转发 `options.fetchImpl`；缺省回落属 chunk（`containers/pane.tsx`
  *    的 `deps`），由 `tests/client/containers-pane.test.tsx` 用真 DOM 证。
- * 3. **一开就崩**：`openTab` 抛错时**绝不许**订阅 `sidebarRight.mounted`（自激风暴把 renderer 搞崩，
- *    真机两次复现）⇒ 只允许**有限次定时重试**。
+ * 3. **零 openTab、零订阅**：本包不调用 `openTab`，也**绝不许**订阅 `sidebarRight.mounted`
+ *    （后者是历史崩溃根因：自激风暴把 renderer 搞崩）。用例直接钉死这两条。
  * 4. ~~health 404 ⇒ 撤页~~ **本条随 016 删除**：容器行成为独立包后，行没启用 ⇒ 宿主根本不加载本包的
  *    `client.js`，页面自然不会出现 ⇒ 探活与撤页整段删除（少一次启动请求、少一条失败路径）。
  *    取而代之的判据是**「注册路径一个请求都不发」**（下方第 1 条用例反向钉死：给了会炸的
@@ -28,7 +29,7 @@ import test from 'node:test';
 
 import type { ClientApplyOptions, ClientContextLike, FetchLike, RemoteSettingsLike, SettingsResponse, SidebarRightServiceLike, SlotsServiceLike } from '../../src/client/host.ts';
 import { createSurface } from '../../src/client/surface.ts';
-import { PAGE_ID, PAGE_KIND, TAB_SLOT, TAB_TITLE_SLOT } from '../../src/client/tab-def.ts';
+import { PAGE_ID, TAB_SLOT, TAB_TITLE_SLOT } from '../../src/client/tab-def.ts';
 
 interface Call {
   readonly text: string;
@@ -123,23 +124,24 @@ function servicesOf(rig: Harness): {
   };
 }
 
-test('拆包后**无探活**：注册即成功 + 主动 openTab + 零 store 订阅 + **零请求**', async () => {
+test('拆包后**无探活**、**不主动开页**：注册即成功 + 零 openTab + 零 store 订阅 + 零请求', async () => {
+  // 会话**已在屏**（最容易被误判成「该开页了」的状态）：即使这样也一次都不许开
   const rig = harness({ mountedSession: 'session-1' });
   // 注入「一碰就炸」的 fetchImpl：注册路径若还在探活，本用例必红
   const surface = surfaceOf(rig, { fetchImpl: FETCH_MUST_NOT_RUN });
-  const { tabs, slots, sidebar } = servicesOf(rig);
+  const { tabs, slots } = servicesOf(rig);
 
-  surface.registerTab(tabs, slots, sidebar);
+  surface.registerTab(tabs, slots);
 
   assert.deepEqual(
     rig.calls.map((call) => call.text),
-    [`tab:${PAGE_ID}`, `seat:${TAB_SLOT}@${PAGE_ID}`, `seat:${TAB_TITLE_SLOT}@${PAGE_ID}`, `open:${PAGE_KIND}`],
+    [`tab:${PAGE_ID}`, `seat:${TAB_SLOT}@${PAGE_ID}`, `seat:${TAB_TITLE_SLOT}@${PAGE_ID}`],
+    '注册轨迹只有「页类型 + 两个 seat」三件事：多一个 open 就是回归',
   );
-  assert.equal(rig.openTabArgs.length, 1, '恰好开一次（`multiple:false` ⇒ 重复 openTab 只 reveal）');
-  assert.equal(rig.openTabArgs[0]?.kind, 'wslDockerContainers');
+  assert.equal(rig.openTabArgs.length, 0, '🔴 插件不许替用户开页（2026-10-31 主人要求）');
   assert.equal(PAGE_ID, 'wsl-containers');
-  assert.equal(rig.mountSubscribes(), 0, '🔴 必须直连 `openTab`、不经宿主 store（崩溃根因）');
-  assert.deepEqual(surface.registerTab(tabs, slots, sidebar).length, 3, '一次注册返回 3 个 disposer（类型 + 两个 seat）');
+  assert.equal(rig.mountSubscribes(), 0, '🔴 一个 mounted 订阅都不许有（历史崩溃根因）');
+  assert.deepEqual(surface.registerTab(tabs, slots).length, 3, '一次注册返回 3 个 disposer（类型 + 两个 seat）');
 });
 
 test('配置槽用**复合键**注册（`组合包包名#行 id`，宿主按这个键查「配置」按钮）', () => {
@@ -168,56 +170,23 @@ test('`fetchImpl` / `baseUrl` 只**转发**注入值（缺省回落由 chunk 侧
   assert.equal(surfaceOf(harness({}), { routeBaseUrl: '/base/' }).runtime.baseUrl, '/base/');
 });
 
-test('会话晚到 ⇒ **有限次定时重试**，且一个 `mounted.subscribe` 都不许有', () => {
+test('没有在屏会话时**不排任何重试定时器**（开页逻辑已删，连带重试一起删）', () => {
   const rig = harness({ mountedSession: undefined });
-  const scheduled: { readonly callback: () => void; readonly ms: number }[] = [];
+  const scheduled: { readonly ms: number }[] = [];
   const timers = {
-    setTimeout: (callback: () => void, ms: number) => {
-      scheduled.push({ callback, ms });
+    setTimeout: (_callback: () => void, ms: number) => {
+      scheduled.push({ ms });
       return scheduled.length;
     },
     clearTimeout: () => undefined,
   };
   const surface = surfaceOf(rig, { timers });
-  const { tabs, slots, sidebar } = servicesOf(rig);
+  const { tabs, slots } = servicesOf(rig);
 
-  surface.registerTab(tabs, slots, sidebar);
+  surface.registerTab(tabs, slots);
 
-  assert.equal(rig.openTabArgs.length, 0, '首屏没有在屏会话 ⇒ openTab 抛，被吞掉（不炸 apply 的返回值）');
-  assert.equal(rig.mountSubscribes(), 0, '🔴 一个订阅都不许有：真机就是这一个把 renderer 搞崩的');
-  assert.deepEqual(scheduled.map((slot) => slot.ms), [300], '抛错后必须排一次重试');
-
-  rig.setMounted('session-1');
-  scheduled[0]?.callback();
-  assert.equal(rig.openTabArgs.length, 1, '会话挂上后重试成功');
-  assert.equal(rig.openTabArgs[0]?.kind, PAGE_KIND);
-  assert.equal(scheduled.length, 1, '成功即停：不许继续排');
-  assert.equal(rig.mountSubscribes(), 0);
-});
-
-test('重试是**有界**的（一直抛错就放弃，不无限自旋）', () => {
-  const rig = harness({ mountedSession: undefined });
-  const scheduled: { callback: () => void }[] = [];
-  const timers = {
-    setTimeout: (callback: () => void) => {
-      scheduled.push({ callback });
-      return scheduled.length;
-    },
-    clearTimeout: () => undefined,
-  };
-  const surface = surfaceOf(rig, { timers });
-  const { tabs, slots, sidebar } = servicesOf(rig);
-  surface.registerTab(tabs, slots, sidebar);
-
-  // 把排出来的回调逐个执行（每个回调失败后再排下一个），直到不再排新的
-  let executed = 0;
-  while (scheduled.length > executed && executed < 50) {
-    const slot = scheduled[executed];
-    executed += 1;
-    slot?.callback();
-  }
-  assert.equal(scheduled.length, 6, '最多 6 次重试（300ms × 6 ≈ 1.8s）后放弃');
   assert.equal(rig.openTabArgs.length, 0);
+  assert.equal(scheduled.length, 0, '不主动开页 ⇒ 不存在「稍后重试开页」的定时器');
   assert.equal(rig.mountSubscribes(), 0);
 });
 

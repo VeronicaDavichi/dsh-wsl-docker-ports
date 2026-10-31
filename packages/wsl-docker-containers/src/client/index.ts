@@ -28,7 +28,6 @@ import type {
   ClientApplyResult,
   ClientContextLike,
   ClientTimers,
-  SidebarRightServiceLike,
   SidebarRightTabsServiceLike,
   SlotsServiceLike,
 } from './host.ts';
@@ -120,17 +119,17 @@ export function apply(ctx: ClientContextLike, options: ClientApplyOptions = {}):
     injectFired = true;
     cancelPendingWarn();
     const tabs = softGet<SidebarRightTabsServiceLike>(scope, SIDEBAR_TAB_SERVICE);
-    const sidebar = softGet<SidebarRightServiceLike>(scope, SIDEBAR_SERVICE);
+    // 🔴 只依赖 `sidebarRightTabs`：本包**不主动开页** ⇒ 不再需要 `sidebarRight.openTab`
+    //    （2026-10-31 主人要求：插件不得在启动时替用户占右栏一栏）。
     const missing: string[] = [];
     if (tabs === undefined) missing.push(SIDEBAR_TAB_SERVICE);
-    if (sidebar === undefined) missing.push(SIDEBAR_SERVICE);
-    if (tabs === undefined || missing.length > 0) {
+    if (tabs === undefined) {
       lastMissing = missing;
       console.warn(`${CLIENT_LOG_TAG} 右栏页未注册：宿主未提供 ${missing.join(' / ')}（本包不抛异常）`);
       return;
     }
     const scopedSlots = softGet<SlotsServiceLike>(scope, 'slots') ?? slots;
-    for (const disposer of surface.registerTab(tabs, scopedSlots, sidebar)) collect(disposer);
+    for (const disposer of surface.registerTab(tabs, scopedSlots)) collect(disposer);
     registeredPage = true;
     if (warnedPending) {
       console.info(`${CLIENT_LOG_TAG} 右栏页已注册：${SIDEBAR_TAB_SERVICE} / ${SIDEBAR_SERVICE} 已到位，此前那条「等待超时」告警已解除`);

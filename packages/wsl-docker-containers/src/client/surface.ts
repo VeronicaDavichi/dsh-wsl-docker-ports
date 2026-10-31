@@ -4,7 +4,7 @@
  * ## 这里放什么、不放什么
  *
  * - **放**：注册**壳**（两个 chunk 座位组件、本命名空间的配置管道、本包会话凭据键、配置槽、
- *   页类型注册、`openTab`）。
+ *   页类型注册——**只登记、不主动开页**）。
  * - **不放**：任何 UI / 取数 / 渲染 —— 那些全在 `client.containers.js` 这个 chunk 里。
  *
  * ## 016 相对 015 的收敛（拆包直接带来的）
@@ -28,14 +28,12 @@ import type { ContainersRuntime } from './containers/runtime.ts';
 import type {
   ClientApplyOptions,
   ClientContextLike,
-  ClientTimers,
   RemoteSettingsLike,
-  SidebarRightServiceLike,
   SidebarRightTabsServiceLike,
   SlotsServiceLike,
 } from './host.ts';
 import { createSettingsPipe } from './settings-pipe.ts';
-import { PAGE_ID, PAGE_KIND, PAGE_TITLE, containersTabDefinition, registerTabSeats } from './tab-def.ts';
+import { PAGE_ID, PAGE_TITLE, containersTabDefinition, registerTabSeats } from './tab-def.ts';
 import { defaultSessionStorage } from './write-token.ts';
 
 declare const require: {
@@ -70,50 +68,18 @@ export const ContainersPaneSeat = seat('ContainersPane', PAGE_TITLE);
 /** 容器行配置页座位（同一个 chunk，取另一个导出名） */
 export const ContainersConfigSeat = seat('ContainersConfigPage', `${PAGE_TITLE} · 配置`);
 
-/**
- * 按 kind 打开容器页（**注册类型不会产生页签**：真机 2026-10-23 两次复现）。
- *
- * 纪律：**只试有限次、绝不订阅宿主 store**。
- * 🔴 事故原话：早先版本在 `openTab` 抛错时用 `sidebarRight.mounted.subscribe(...)` 递归重试，
- * 而宿主那个快照 store 的订阅回调并非「只响一次」⇒「抛错 → 再订阅 → 回调 → 再抛错」自激成风暴，
- * **renderer 直接崩**。⇒ 改成**有限次定时重试**，与宿主 store 彻底解耦；彻底失败的兜底仍是
- * 引导页胶囊（用户点一下同样能开）。
- */
-const OPEN_RETRY_MS = 300;
-const OPEN_RETRY_MAX = 6;
-
-/**
- * 全局定时器（**必须包一层**）。
- * 🔴 真机实证：把 `setTimeout` 直接塞进对象再当方法调用会让 `this` 变成那个对象，浏览器抛
- * **`TypeError: Illegal invocation`**。包成箭头函数，接收者仍是 `window`。
- */
-const GLOBAL_TIMERS: ClientTimers = {
-  setTimeout: (callback, ms) => setTimeout(callback, ms),
-  clearTimeout: (handle) => clearTimeout(handle as number),
-};
-
-export function openContainersPage(sidebar: SidebarRightServiceLike | undefined, timers: ClientTimers): void {
-  const attempt = (left: number): void => {
-    try {
-      sidebar?.openTab?.(PAGE_KIND);
-    } catch {
-      // 还没有在屏会话 ⇒ 稍后再试（有限次；幂等：`multiple:false` ⇒ 每次成功都只 reveal 同一页）
-      if (left > 0) timers.setTimeout(() => attempt(left - 1), OPEN_RETRY_MS);
-    }
-  };
-  attempt(OPEN_RETRY_MAX);
-}
-
 export interface ContainersSurface {
   readonly runtime: ContainersRuntime;
   /** 注册容器行**配置槽**（键 = 容器行 id；失败只降级、不抛） */
   readonly registerConfig: (ctx: ClientContextLike) => void;
-  /** 注册右栏页 + 两个 seat，并把页签开出来；返回 disposer（调用方挂 `ctx.effect`） */
-  readonly registerTab: (
-    tabs: SidebarRightTabsServiceLike,
-    slots: SlotsServiceLike,
-    sidebar?: SidebarRightServiceLike | undefined,
-  ) => (() => void)[];
+  /**
+   * 注册右栏页 + 两个 seat；返回 disposer（调用方挂 `ctx.effect`）。
+   *
+   * 🔴 **只登记、不主动开页**（2026-10-31 主人拍板）：页签是用户的布局记录，插件不许替用户
+   * 决定「开机就占一栏」。发现入口 = 右栏空态里的 guide 胶囊（`tab-def.ts` 的 `GUIDE_ENTRY_*`），
+   * 用户点一下才 `openTab`。真机反例：早先 `openTab` + 有限次重试会让侧栏在启动时自己弹出容器页。
+   */
+  readonly registerTab: (tabs: SidebarRightTabsServiceLike, slots: SlotsServiceLike) => (() => void)[];
 }
 
 export function createSurface(
@@ -162,7 +128,7 @@ export function createSurface(
       const slot = registerConfigSlot(scope as unknown as ConfigSlotContext, configSeat as unknown as (props: never) => unknown, CONFIG_ROW_KEY);
       if (!slot.registered) console.warn(`${logTag} 容器行配置页未注册：${slot.reason ?? '原因未记录'}`);
     },
-    registerTab: (tabs: SidebarRightTabsServiceLike, slots: SlotsServiceLike, sidebar?: SidebarRightServiceLike | undefined): (() => void)[] => {
+    registerTab: (tabs: SidebarRightTabsServiceLike, slots: SlotsServiceLike): (() => void)[] => {
       const disposers: (() => void)[] = [];
       const keep = (disposer: unknown): void => {
         if (typeof disposer === 'function') disposers.push(disposer as () => void);
@@ -176,8 +142,8 @@ export function createSurface(
       )) {
         keep(disposer);
       }
-      // 页类型已在册 ⇒ 把页签开出来（否则用户只能自己去引导页里点）
-      openContainersPage(sidebar, options.timers ?? GLOBAL_TIMERS);
+      // 🔴 到此为止：**不调用 `openTab`**。页签只在用户点右栏空态里的 guide 胶囊（或自己开页）时产生；
+      //    插件不得在启动时替用户占一栏（2026-10-31 主人明确要求）。
       return disposers;
     },
   };

@@ -189,7 +189,9 @@ dsh --profile <name>         # 改 package.json 清单必须重启
 
 （只改 `cordis.patch.yml` 时，`dsh.profile.patchReload: "live"` 会即时生效，不必重启。）
 
-**③ 装成功的判据**（三条同时成立）：① 插件行出现在 profile 行列表；② 右栏多出「WSL Docker 容器 / WSL 端口转发」两个页 + 插件详情页；③ 宿主 stderr **没有** `disabling profile plugin`。
+**③ 装成功的判据**（三条同时成立）：① 插件行出现在 profile 行列表；② 右栏开始页里能看到「WSL Docker 容器 / WSL 端口转发」两个入口（点进去才是页签）+ 插件详情页；③ 宿主 stderr **没有** `disabling profile plugin`。
+
+> 🚫 **插件不主动开页**（2026-10-31 主人拍板）：只登记页类型 + 开始页入口，**不会**在启动时替你把页签塞进右栏。要开页就点开始页里的入口胶囊。反例是 0.1.2 及更早的容器页 —— 它会自己弹出来，已修（0.1.3 起）。
 
 > ⚠️ 宿主加载的是 `lib/` **产物** —— 改过 `src/` 记得先构建再重载。
 > ⚠️ 别把它装进你正在用的 profile 做实验；探针请用一次性 profile，用完还原。
